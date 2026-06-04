@@ -450,7 +450,7 @@ pub async fn capture_current_dsp_code_snapshot(
     run_sampler(
         LYREBIRD_DURATION_SECS,
         &sample_path.display().to_string(),
-        &[instrument.score_spec().to_owned()],
+        &instrument_score_specs(instrument),
     )
     .await?;
     generate_mel_spectrogram(
@@ -1034,7 +1034,7 @@ async fn render_and_score_candidate(
     run_sampler_binary(
         LYREBIRD_DURATION_SECS,
         sample_path,
-        &[instrument.score_spec().to_owned()],
+        &instrument_score_specs(instrument),
     )
     .await
     .map_err(|err| {
@@ -1109,6 +1109,23 @@ fn append_candidate_suffix(path: &str, candidate_index: usize) -> String {
     path.with_file_name(file_name).display().to_string()
 }
 
+fn instrument_score_specs(instrument: LyrebirdInstrument) -> Vec<String> {
+    instrument
+        .score_specs()
+        .iter()
+        .map(|score_spec| (*score_spec).to_owned())
+        .collect()
+}
+
+fn format_score_specs(instrument: LyrebirdInstrument) -> String {
+    instrument
+        .score_specs()
+        .iter()
+        .map(|score_spec| format!("- {score_spec}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn summarize_retry_reasons(retry_reasons: &[String]) -> Option<String> {
     if retry_reasons.is_empty() {
         return None;
@@ -1147,19 +1164,20 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         "building lyrebird optimization prompt"
     );
 
+    let target_score_specs = format_score_specs(input.instrument);
     let mut contents = Vec::new();
     let mut system_text = format!(
         "Produce the next small iterative patch for `{}` so the generated {} audio moves closer to the target.\n\
 The patch must be valid Rust, must still compile inside `lyrebird-sample`, and must be a localized search/replace edit rather than a full-module rewrite.\n\
 Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
-Target score spec: {}.\nUse `{}` exactly once with `search`, `replacement`, and `note`.\n\
+Target score spec(s):\n{}.\nUse `{}` exactly once with `search`, `replacement`, and `note`.\n\
 The `note` must briefly explain the purpose of the change and stay within 100 characters.",
         input.instrument.relative_dsp_path(),
         input.instrument.render_subject(),
         input.iteration_id,
         input.prompt_attempt.saturating_add(1),
         input.code_branch.len().saturating_sub(1),
-        input.instrument.score_spec(),
+        target_score_specs,
         input.instrument.tool_name()
     );
     if let Some(retry_reason) = input.retry_reason {

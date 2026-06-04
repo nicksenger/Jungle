@@ -55,7 +55,7 @@ impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker> {
     }
 }
 
-pub type LyrebirdPromptPhaseJoinOutput = (((), ()), (((), ()), ()));
+pub type LyrebirdPromptPhaseJoinOutput = ((((), ()), ((), ())), ((), ()));
 
 pub struct FlattenLyrebirdPromptPhase<S>(PhantomData<S>);
 #[jungle::action]

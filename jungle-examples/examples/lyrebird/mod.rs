@@ -41,6 +41,26 @@ pub(crate) const VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[3
 pub(crate) const BACKUP_VOCALS_SCORE_SPEC: &str = "vocals(group-harmony):[150,71,384],[534,70,384],[918,68,384],[1302,66,384],[1686,73,384],[2070,72,384],[2454,70,384],[2838,68,384]";
 pub(crate) const GUITAR_SOLO_SCORE_SPEC: &str = "electric-guitar(sustained):[240,60,192],[432,72,128],[560,75,129],[689,82,896],[1585,82,128],[1713,81,129],[1842,80,704],[2546,78,96],[2642,79,96],[2738,73,672],[3410,73,224]";
 pub(crate) const BASS_SCORE_SPEC: &str = "bass:[150,32,192],[342,32,192],[534,30,192],[726,27,96],[822,32,192],[1014,27,96],[1110,30,192],[1302,29,192],[1494,27,192],[1686,32,192],[1878,32,192],[2070,30,192],[2262,27,96],[2358,32,192],[2550,27,96],[2646,42,96],[2838,42,96],[3030,42,96]";
+pub(crate) const DRUMS_CYMBAL_SCORE_SPEC: &str =
+    "cymbal:[150,57,192],[438,49,192],[726,57,192],[1686,57,192]";
+pub(crate) const DRUMS_HIHAT_SCORE_SPEC: &str =
+    "hihat:[1878,46,192],[2070,46,192],[2262,46,192],[2454,46,192],[2646,46,192],[2838,46,192],[3030,46,192],[3222,46,192]";
+pub(crate) const DRUMS_KICK_DRUM_SCORE_SPEC: &str =
+    "kick-drum:[150,36,192],[438,36,192],[726,36,192],[1110,36,192],[1686,36,48],[1686,36,192],[2454,36,192],[3030,36,192],[3222,36,192]";
+pub(crate) const DRUMS_SNARE_DRUM_SCORE_SPEC: &str =
+    "snare-drum:[1302,38,48],[1350,38,192],[2070,38,192],[2838,38,192],[3606,38,192]";
+
+const RHYTHM_GUITAR_SCORE_SPECS: [&str; 1] = [GUITAR_INTRO_SCORE_SPEC];
+const VOCALS_SCORE_SPECS: [&str; 1] = [VOCALS_SCORE_SPEC];
+const BACKUP_VOCALS_SCORE_SPECS: [&str; 1] = [BACKUP_VOCALS_SCORE_SPEC];
+const BASS_SCORE_SPECS: [&str; 1] = [BASS_SCORE_SPEC];
+const GUITAR_SOLO_SCORE_SPECS: [&str; 1] = [GUITAR_SOLO_SCORE_SPEC];
+const DRUMS_SCORE_SPECS: [&str; 4] = [
+    DRUMS_CYMBAL_SCORE_SPEC,
+    DRUMS_HIHAT_SCORE_SPEC,
+    DRUMS_KICK_DRUM_SCORE_SPEC,
+    DRUMS_SNARE_DRUM_SCORE_SPEC,
+];
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DspCode {
@@ -217,15 +237,17 @@ pub enum LyrebirdInstrument {
     BackupVocals,
     Bass,
     GuitarSolo,
+    Drums,
 }
 
 impl LyrebirdInstrument {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::RhythmGuitar,
         Self::Vocals,
         Self::BackupVocals,
         Self::Bass,
         Self::GuitarSolo,
+        Self::Drums,
     ];
 
     pub fn slug(self) -> &'static str {
@@ -235,6 +257,7 @@ impl LyrebirdInstrument {
             Self::BackupVocals => "backup-vocals",
             Self::Bass => "bass",
             Self::GuitarSolo => "guitar-solo",
+            Self::Drums => "drums",
         }
     }
 
@@ -245,16 +268,18 @@ impl LyrebirdInstrument {
             Self::BackupVocals => "Vocals (Group Harmony)",
             Self::Bass => "Bass",
             Self::GuitarSolo => "Electric Guitar (Solo)",
+            Self::Drums => "Drums",
         }
     }
 
-    pub fn score_spec(self) -> &'static str {
+    pub fn score_specs(self) -> &'static [&'static str] {
         match self {
-            Self::RhythmGuitar => GUITAR_INTRO_SCORE_SPEC,
-            Self::Vocals => VOCALS_SCORE_SPEC,
-            Self::BackupVocals => BACKUP_VOCALS_SCORE_SPEC,
-            Self::Bass => BASS_SCORE_SPEC,
-            Self::GuitarSolo => GUITAR_SOLO_SCORE_SPEC,
+            Self::RhythmGuitar => &RHYTHM_GUITAR_SCORE_SPECS,
+            Self::Vocals => &VOCALS_SCORE_SPECS,
+            Self::BackupVocals => &BACKUP_VOCALS_SCORE_SPECS,
+            Self::Bass => &BASS_SCORE_SPECS,
+            Self::GuitarSolo => &GUITAR_SOLO_SCORE_SPECS,
+            Self::Drums => &DRUMS_SCORE_SPECS,
         }
     }
 
@@ -265,6 +290,7 @@ impl LyrebirdInstrument {
             Self::BackupVocals => "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.wav",
             Self::Bass => "jungle-examples/examples/lyrebird/assets/bass_4s.wav",
             Self::GuitarSolo => "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.wav",
+            Self::Drums => "jungle-examples/examples/lyrebird/assets/drums_4s.wav",
         }
     }
 
@@ -283,6 +309,7 @@ impl LyrebirdInstrument {
             Self::GuitarSolo => {
                 "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar/lead.rs"
             }
+            Self::Drums => "jungle-examples/examples/welcome/audio/src/dsp/drums.rs",
         }
     }
 
@@ -293,6 +320,7 @@ impl LyrebirdInstrument {
             Self::BackupVocals => "backup_vocals_4s",
             Self::Bass => "bass_4s",
             Self::GuitarSolo => "guitar_solo_4s",
+            Self::Drums => "drums_4s",
         }
     }
 
@@ -303,6 +331,7 @@ impl LyrebirdInstrument {
             Self::BackupVocals => "replace_backup_vocals_dsp",
             Self::Bass => "replace_bass_dsp",
             Self::GuitarSolo => "replace_guitar_solo_dsp",
+            Self::Drums => "replace_drums_dsp",
         }
     }
 
@@ -313,6 +342,7 @@ impl LyrebirdInstrument {
             Self::BackupVocals => "vocals(group-harmony)",
             Self::Bass => "bass",
             Self::GuitarSolo => "electric-guitar(sustained)",
+            Self::Drums => "drum-kit",
         }
     }
 
@@ -337,8 +367,9 @@ impl LyrebirdInstrument {
             }
             "bass" => Ok(Self::Bass),
             "guitarsolo" | "sologuitar" | "solo" => Ok(Self::GuitarSolo),
+            "drums" | "drumkit" | "kit" => Ok(Self::Drums),
             _ => Err(format!(
-                "invalid instrument argument: {value}. Expected a comma-delimited list drawn from introguitar,vocals,backupvocals,bass,sologuitar"
+                "invalid instrument argument: {value}. Expected a comma-delimited list drawn from introguitar,vocals,backupvocals,bass,sologuitar,drums"
             )),
         }
     }
@@ -481,6 +512,7 @@ pub type VocalsPromptState = PromptInstrumentState<VocalsMarker>;
 pub type BackupVocalsPromptState = PromptInstrumentState<BackupVocalsMarker>;
 pub type BassPromptState = PromptInstrumentState<BassMarker>;
 pub type GuitarSoloPromptState = PromptInstrumentState<GuitarSoloMarker>;
+pub type DrumsPromptState = PromptInstrumentState<DrumsMarker>;
 
 #[derive(Optic, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdState {
@@ -496,6 +528,8 @@ pub struct LyrebirdState {
     pub bass: BassPromptState,
     #[jungle(focus)]
     pub guitar_solo: GuitarSoloPromptState,
+    #[jungle(focus)]
+    pub drums: DrumsPromptState,
     #[serde(default = "default_instrument_parallelism")]
     pub instrument_parallelism: usize,
     #[serde(default)]
@@ -524,6 +558,7 @@ impl LyrebirdState {
             && self.backup_vocals.state.instrument == LyrebirdInstrument::BackupVocals
             && self.bass.state.instrument == LyrebirdInstrument::Bass
             && self.guitar_solo.state.instrument == LyrebirdInstrument::GuitarSolo
+            && self.drums.state.instrument == LyrebirdInstrument::Drums
     }
 
     pub fn normalized_for_observation(&self) -> Self {
@@ -537,6 +572,7 @@ impl LyrebirdState {
             LyrebirdInstrument::BackupVocals => &self.backup_vocals.state,
             LyrebirdInstrument::Bass => &self.bass.state,
             LyrebirdInstrument::GuitarSolo => &self.guitar_solo.state,
+            LyrebirdInstrument::Drums => &self.drums.state,
         }
     }
 
@@ -550,6 +586,7 @@ impl LyrebirdState {
             LyrebirdInstrument::BackupVocals => &mut self.backup_vocals.state,
             LyrebirdInstrument::Bass => &mut self.bass.state,
             LyrebirdInstrument::GuitarSolo => &mut self.guitar_solo.state,
+            LyrebirdInstrument::Drums => &mut self.drums.state,
         }
     }
 
@@ -673,6 +710,14 @@ impl From<LyrebirdSeed> for LyrebirdState {
                         )
                     }),
             ),
+            drums: DrumsPromptState::new(
+                instrument_states
+                    .get(&LyrebirdInstrument::Drums)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        LyrebirdInstrumentState::observation_placeholder(LyrebirdInstrument::Drums)
+                    }),
+            ),
             instrument_parallelism,
             ..Self::default()
         }
@@ -707,6 +752,12 @@ impl LyrebirdInstrumentTag for BassMarker {
 pub struct GuitarSoloMarker;
 impl LyrebirdInstrumentTag for GuitarSoloMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::GuitarSolo;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DrumsMarker;
+impl LyrebirdInstrumentTag for DrumsMarker {
+    const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::Drums;
 }
 
 macro_rules! lyrebird_prompt_flow {
@@ -768,19 +819,29 @@ lyrebird_prompt_flow!(
     GuitarSoloMarker,
     GuitarSoloPromptState
 );
+lyrebird_prompt_flow!(
+    DrumsPromptEnabled,
+    DrumsPromptDisabled,
+    DrumsPrompt,
+    DrumsMarker,
+    DrumsPromptState
+);
 
 #[derive(Flow)]
 pub struct LyrebirdPromptLeft(Join<RhythmGuitarPrompt, VocalsPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptRightPair(Join<BackupVocalsPrompt, BassPrompt>);
+pub struct LyrebirdPromptMid(Join<BackupVocalsPrompt, BassPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptRight(Join<LyrebirdPromptRightPair, GuitarSoloPrompt>);
+pub struct LyrebirdPromptRight(Join<GuitarSoloPrompt, DrumsPrompt>);
+
+#[derive(Flow)]
+pub struct LyrebirdPromptPairs(Join<LyrebirdPromptLeft, LyrebirdPromptMid>);
 
 #[derive(Flow)]
 pub struct LyrebirdPromptPhase(
-    Join<LyrebirdPromptLeft, LyrebirdPromptRight>,
+    Join<LyrebirdPromptPairs, LyrebirdPromptRight>,
     Step<FlattenLyrebirdPromptPhase<LyrebirdState>>,
 );
 
@@ -817,6 +878,7 @@ pub struct LyrebirdIteration(
     LyrebirdInstrumentSubmit<BackupVocalsMarker>,
     LyrebirdInstrumentSubmit<BassMarker>,
     LyrebirdInstrumentSubmit<GuitarSoloMarker>,
+    LyrebirdInstrumentSubmit<DrumsMarker>,
 );
 
 #[derive(Flow)]
@@ -2022,7 +2084,10 @@ mod tests {
             struct $disabled(Step<$skip>);
 
             #[derive(Flow)]
-            struct $flow(Conditional<$pred, $enabled, $disabled>, Step<FlattenEither<(), i32>>);
+            struct $flow(
+                Conditional<$pred, $enabled, $disabled>,
+                Step<FlattenEither<(), i32>>,
+            );
         };
     }
 
@@ -2179,16 +2244,16 @@ mod tests {
     #[test]
     fn tokens_api_mapping_accepts_full_per_instrument_coverage_without_fallback() {
         TokensApiConfig::parse(
-            "introguitar:localhost:4561,vocals:localhost:4562,backupvocals:localhost:4563,bass:localhost:4564,sologuitar:localhost:4565",
+            "introguitar:localhost:4561,vocals:localhost:4562,backupvocals:localhost:4563,bass:localhost:4564,sologuitar:localhost:4565,drums:localhost:4566",
         )
         .unwrap();
     }
 
     #[test]
-    fn lyrebird_instrument_metadata_covers_all_five_target_samples() {
+    fn lyrebird_instrument_metadata_covers_all_target_samples() {
         let instruments = LyrebirdInstrument::ALL;
 
-        assert_eq!(instruments.len(), 5);
+        assert_eq!(instruments.len(), 6);
         assert_eq!(
             instruments
                 .iter()
@@ -2200,6 +2265,7 @@ mod tests {
                 "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.wav",
                 "jungle-examples/examples/lyrebird/assets/bass_4s.wav",
                 "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.wav",
+                "jungle-examples/examples/lyrebird/assets/drums_4s.wav",
             ]
         );
     }
@@ -2308,11 +2374,15 @@ mod tests {
             LyrebirdInstrument::parse_cli_selection("sologuitar").unwrap(),
             LyrebirdInstrument::GuitarSolo
         );
+        assert_eq!(
+            LyrebirdInstrument::parse_cli_selection("drums").unwrap(),
+            LyrebirdInstrument::Drums
+        );
     }
 
     #[test]
     fn parse_instrument_selection_rejects_unknown_values() {
-        let err = LyrebirdInstrument::parse_cli_selection("drums").unwrap_err();
+        let err = LyrebirdInstrument::parse_cli_selection("kazoo").unwrap_err();
 
         assert!(err.contains("invalid instrument argument"));
     }
@@ -2339,11 +2409,36 @@ mod tests {
             &[LyrebirdInstrument::Vocals, LyrebirdInstrument::GuitarSolo],
         );
 
-        assert!(!seed.instruments[1].disabled);
-        assert!(!seed.instruments[4].disabled);
-        assert!(seed.instruments[0].disabled);
-        assert!(seed.instruments[2].disabled);
-        assert!(seed.instruments[3].disabled);
+        let disabled_by_instrument = seed
+            .instruments
+            .iter()
+            .map(|instrument| (instrument.instrument, instrument.disabled))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        assert_eq!(
+            disabled_by_instrument.get(&LyrebirdInstrument::Vocals),
+            Some(&false)
+        );
+        assert_eq!(
+            disabled_by_instrument.get(&LyrebirdInstrument::GuitarSolo),
+            Some(&false)
+        );
+        assert_eq!(
+            disabled_by_instrument.get(&LyrebirdInstrument::RhythmGuitar),
+            Some(&true)
+        );
+        assert_eq!(
+            disabled_by_instrument.get(&LyrebirdInstrument::BackupVocals),
+            Some(&true)
+        );
+        assert_eq!(
+            disabled_by_instrument.get(&LyrebirdInstrument::Bass),
+            Some(&true)
+        );
+        assert_eq!(
+            disabled_by_instrument.get(&LyrebirdInstrument::Drums),
+            Some(&true)
+        );
     }
 
     #[test]
@@ -2356,6 +2451,7 @@ mod tests {
         state.rhythm_guitar.state.disabled = true;
         state.backup_vocals.state.disabled = true;
         state.guitar_solo.state.disabled = true;
+        state.drums.state.disabled = true;
 
         assert_eq!(state.enabled_instrument_count(), 2);
         assert_eq!(state.generation_count(), 20);
@@ -2511,10 +2607,8 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let worker = jungle_sdk::core::JungleWorker::new(
-            HiddenJoinConditionalNoopEcosystem,
-            client.clone(),
-        );
+        let worker =
+            jungle_sdk::core::JungleWorker::new(HiddenJoinConditionalNoopEcosystem, client.clone());
         let worker_handle = tokio::spawn(async move {
             let _ = worker.spawn().await;
         });
@@ -2604,15 +2698,33 @@ mod tests {
             .complete_serialized(completion)
             .expect("nested five-way prompt completion should still apply cleanly");
 
-        assert!(seen_labels.contains("Branch2SelectEffect"), "{seen_labels:?}");
-        assert!(seen_labels.contains("Branch2OptimizeEffect"), "{seen_labels:?}");
-        assert!(seen_labels.contains("Branch4SelectEffect"), "{seen_labels:?}");
-        assert!(seen_labels.contains("Branch4OptimizeEffect"), "{seen_labels:?}");
+        assert!(
+            seen_labels.contains("Branch2SelectEffect"),
+            "{seen_labels:?}"
+        );
+        assert!(
+            seen_labels.contains("Branch2OptimizeEffect"),
+            "{seen_labels:?}"
+        );
+        assert!(
+            seen_labels.contains("Branch4SelectEffect"),
+            "{seen_labels:?}"
+        );
+        assert!(
+            seen_labels.contains("Branch4OptimizeEffect"),
+            "{seen_labels:?}"
+        );
         assert!(seen_labels.contains("Branch1SkipEffect"), "{seen_labels:?}");
         assert!(seen_labels.contains("Branch3SkipEffect"), "{seen_labels:?}");
         assert!(seen_labels.contains("Branch5SkipEffect"), "{seen_labels:?}");
-        assert!(!seen_labels.contains("Branch3SelectEffect"), "{seen_labels:?}");
-        assert!(!seen_labels.contains("Branch3OptimizeEffect"), "{seen_labels:?}");
+        assert!(
+            !seen_labels.contains("Branch3SelectEffect"),
+            "{seen_labels:?}"
+        );
+        assert!(
+            !seen_labels.contains("Branch3OptimizeEffect"),
+            "{seen_labels:?}"
+        );
     }
 
     #[ignore = "diagnostic prompt-join trace"]
@@ -2656,8 +2768,7 @@ mod tests {
 
         let ecosystem = Arc::new(
             PulseCodePurgatory::new(
-                Url::parse("http://localhost:1/v1")
-                    .expect("lyrebird test tokens URL should parse"),
+                Url::parse("http://localhost:1/v1").expect("lyrebird test tokens URL should parse"),
                 None,
                 Some(root.join("mcts.redb")),
             )
@@ -2671,15 +2782,16 @@ mod tests {
             )
             .with_instrument_parallelism(0),
         );
-        let mut executor =
-            ContextExecutor::<PulseCodePurgatory, Lyrebird>::new(ecosystem, LyrebirdState::default());
+        let mut executor = ContextExecutor::<PulseCodePurgatory, Lyrebird>::new(
+            ecosystem,
+            LyrebirdState::default(),
+        );
         executor.set_journey_id(Uuid::new_v4());
-        let label_by_runtime = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
-            std::iter::empty(),
-        )
-        .into_iter()
-        .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
-        .collect::<std::collections::HashMap<_, _>>();
+        let label_by_runtime =
+            jungle_vision::debug_render_states_for_animal::<Lyrebird>(std::iter::empty())
+                .into_iter()
+                .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
+                .collect::<std::collections::HashMap<_, _>>();
 
         let mut prompt_labels = std::collections::BTreeSet::new();
         let mut inspected_prompt_join = false;
@@ -2714,16 +2826,19 @@ mod tests {
                         | RunnerOut::Appearance { .. } => {}
                     }
                 }
-                match run.await.expect("lyrebird prompt join runner task should join") {
+                match run
+                    .await
+                    .expect("lyrebird prompt join runner task should join")
+                {
                     Ok(completion) => Some(completion),
                     Err(_err) => None,
                 }
             } else {
                 Some(
                     request
-                    .run()
-                    .await
-                    .expect("lyrebird setup request should serialize completion"),
+                        .run()
+                        .await
+                        .expect("lyrebird setup request should serialize completion"),
                 )
             };
 
@@ -2736,14 +2851,29 @@ mod tests {
         }
 
         assert!(inspected_prompt_join, "did not reach lyrebird prompt join");
-        assert!(prompt_labels.contains("VocalsMarker>>"), "{prompt_labels:?}");
+        assert!(
+            prompt_labels.contains("VocalsMarker>>"),
+            "{prompt_labels:?}"
+        );
         assert!(prompt_labels.contains("VocalsMarker>"), "{prompt_labels:?}");
         assert!(prompt_labels.contains("BassMarker>>"), "{prompt_labels:?}");
         assert!(prompt_labels.contains("BassMarker>"), "{prompt_labels:?}");
-        assert!(!prompt_labels.contains("BackupVocalsMarker>"), "{prompt_labels:?}");
-        assert!(!prompt_labels.contains("BackupVocalsMarker>>"), "{prompt_labels:?}");
-        assert!(!prompt_labels.contains("RhythmGuitarMarker>"), "{prompt_labels:?}");
-        assert!(!prompt_labels.contains("GuitarSoloMarker>"), "{prompt_labels:?}");
+        assert!(
+            !prompt_labels.contains("BackupVocalsMarker>"),
+            "{prompt_labels:?}"
+        );
+        assert!(
+            !prompt_labels.contains("BackupVocalsMarker>>"),
+            "{prompt_labels:?}"
+        );
+        assert!(
+            !prompt_labels.contains("RhythmGuitarMarker>"),
+            "{prompt_labels:?}"
+        );
+        assert!(
+            !prompt_labels.contains("GuitarSoloMarker>"),
+            "{prompt_labels:?}"
+        );
     }
 
     #[ignore = "diagnostic renderer trace"]
@@ -2801,16 +2931,17 @@ mod tests {
             )
             .with_instrument_parallelism(0),
         );
-        let mut executor =
-            ContextExecutor::<PulseCodePurgatory, Lyrebird>::new(ecosystem, LyrebirdState::default());
+        let mut executor = ContextExecutor::<PulseCodePurgatory, Lyrebird>::new(
+            ecosystem,
+            LyrebirdState::default(),
+        );
         let journey_id = Uuid::new_v4();
         executor.set_journey_id(journey_id);
-        let label_by_runtime = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
-            std::iter::empty(),
-        )
-        .into_iter()
-        .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
-        .collect::<std::collections::HashMap<_, _>>();
+        let label_by_runtime =
+            jungle_vision::debug_render_states_for_animal::<Lyrebird>(std::iter::empty())
+                .into_iter()
+                .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
+                .collect::<std::collections::HashMap<_, _>>();
 
         let mut seen_begin_iteration_enters = 0_usize;
         let mut updates = Vec::new();
@@ -2829,8 +2960,7 @@ mod tests {
                     if label == "BeginIteration"
                         && matches!(lifecycle.phase, NodeLifecyclePhase::Entered)
                     {
-                        seen_begin_iteration_enters =
-                            seen_begin_iteration_enters.saturating_add(1);
+                        seen_begin_iteration_enters = seen_begin_iteration_enters.saturating_add(1);
                     }
                     let line = format!(
                         "seq={} node={} label={} lifecycle={:?} path={:?}",
@@ -2946,33 +3076,30 @@ mod tests {
                                 )
                             })
                         }
-                        RunnerUpdateOut::EffectInput { node_id, .. } => label_by_runtime
-                            .get(node_id)
-                            .cloned()
-                            .map(|label| {
+                        RunnerUpdateOut::EffectInput { node_id, .. } => {
+                            label_by_runtime.get(node_id).cloned().map(|label| {
                                 format!(
                                     "seq={} node={} label={} effect=input",
                                     update.sequence_id, node_id, label
                                 )
-                            }),
-                        RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => label_by_runtime
-                            .get(node_id)
-                            .cloned()
-                            .map(|label| {
+                            })
+                        }
+                        RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
+                            label_by_runtime.get(node_id).cloned().map(|label| {
                                 format!(
                                     "seq={} node={} label={} effect=success",
                                     update.sequence_id, node_id, label
                                 )
-                            }),
-                        RunnerUpdateOut::EffectFailureOutput { node_id, .. } => label_by_runtime
-                            .get(node_id)
-                            .cloned()
-                            .map(|label| {
+                            })
+                        }
+                        RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
+                            label_by_runtime.get(node_id).cloned().map(|label| {
                                 format!(
                                     "seq={} node={} label={} effect=failure",
                                     update.sequence_id, node_id, label
                                 )
-                            }),
+                            })
+                        }
                         RunnerUpdateOut::SleepScheduled { .. }
                         | RunnerUpdateOut::SleepFired { .. } => None,
                     }
@@ -3028,8 +3155,7 @@ mod tests {
                     if label == "BeginIteration"
                         && matches!(lifecycle.phase, NodeLifecyclePhase::Entered)
                     {
-                        seen_begin_iteration_enters =
-                            seen_begin_iteration_enters.saturating_add(1);
+                        seen_begin_iteration_enters = seen_begin_iteration_enters.saturating_add(1);
                     }
                     let line = format!(
                         "seq={} node={} label={} lifecycle={:?} path={:?}",
@@ -3117,7 +3243,9 @@ mod tests {
         }
         let debug_events = updates
             .iter()
-            .filter(|update| (28..=32).contains(&update.sequence_id) || (52..=56).contains(&update.sequence_id))
+            .filter(|update| {
+                (28..=32).contains(&update.sequence_id) || (52..=56).contains(&update.sequence_id)
+            })
             .map(|update| match &update.event {
                 RunnerUpdateOut::NodeLifecycle(node) => format!(
                     "seq={} lifecycle node={} label={} phase={:?} path={:?}",
@@ -3158,7 +3286,10 @@ mod tests {
                         .unwrap_or_else(|| format!("<{}>", node_id))
                 ),
                 RunnerUpdateOut::SleepScheduled { timer_id, .. } => {
-                    format!("seq={} sleep_scheduled timer={timer_id}", update.sequence_id)
+                    format!(
+                        "seq={} sleep_scheduled timer={timer_id}",
+                        update.sequence_id
+                    )
                 }
                 RunnerUpdateOut::SleepFired { timer_id, .. } => {
                     format!("seq={} sleep_fired timer={timer_id}", update.sequence_id)
@@ -3215,7 +3346,10 @@ mod tests {
         println!("cutoff-29-decisions:\n{}", cutoff_29_decisions.join("\n"));
         println!("cutoff-30-decisions:\n{}", cutoff_30_decisions.join("\n"));
         println!("transitions:\n{}", vocals_transitions.join("\n"));
-        println!("first-iteration-rendered:\n{}", first_iteration_rendered.join("\n"));
+        println!(
+            "first-iteration-rendered:\n{}",
+            first_iteration_rendered.join("\n")
+        );
         println!("rendered:\n{}", rendered.join("\n"));
     }
 

@@ -103,11 +103,11 @@ impl PulseCodePurgatory {
                 .ok_or(PulseCodePurgatoryError::MissingTokensMeta)?,
         };
 
-        self.tokens_clients
-            .get(server)
-            .ok_or_else(|| PulseCodePurgatoryError::MissingTokensClient {
+        self.tokens_clients.get(server).ok_or_else(|| {
+            PulseCodePurgatoryError::MissingTokensClient {
                 server: server.clone(),
-            })
+            }
+        })
     }
 
     pub(crate) fn chat_completions_endpoint(tokens_url: &reqwest::Url) -> String {

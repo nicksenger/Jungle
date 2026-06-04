@@ -26,8 +26,9 @@ struct Cli {
     /// Optional explicit output path for the rendered WAV.
     #[arg(long = "output-path")]
     output_path: Option<PathBuf>,
-    /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]` or
-    /// `vocals(formant):[0,60,192,"jungle"]`.
+    /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]`,
+    /// `vocals(formant):[0,60,192,"jungle"]`, or
+    /// `drums:cymbal:[150,57,192];hihat:[1878,46,192];kick-drum:[150,36,192];snare-drum:[1350,38,192]`.
     #[arg(required = true)]
     specs: Vec<String>,
 }
@@ -90,11 +91,10 @@ async fn main() {
 
 async fn run() -> Result<(), CliError> {
     let cli = Cli::parse();
-    let specs = cli
-        .specs
-        .iter()
-        .map(|spec| parse_spec(spec))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut specs = Vec::new();
+    for spec in &cli.specs {
+        specs.extend(parse_specs(spec)?);
+    }
 
     let total_frames = duration_to_frames(cli.duration_secs);
     let mut left = vec![0.0f32; total_frames];
@@ -347,6 +347,45 @@ fn parse_bpm(value: &str) -> Result<f64, String> {
         return Err("bpm must be a finite value > 0".to_string());
     }
     Ok(bpm)
+}
+
+fn parse_specs(spec: &str) -> Result<Vec<ParsedSpec>, CliError> {
+    let (head, tail) = spec.split_once(':').ok_or_else(|| CliError::InvalidSpec {
+        spec: spec.to_string(),
+        reason: "missing ':' separator".to_string(),
+    })?;
+
+    let instrument = head
+        .split_once('(')
+        .map(|(name, _)| name)
+        .unwrap_or(head)
+        .trim();
+    if normalized_token(instrument) != "drums" {
+        return Ok(vec![parse_spec(spec)?]);
+    }
+
+    if head.contains('(') {
+        return Err(CliError::InvalidSpec {
+            spec: spec.to_string(),
+            reason: "drums does not support a top-level articulation".to_string(),
+        });
+    }
+    let delimiter = if tail.contains(';') {
+        ';'
+    } else if tail.contains('|') {
+        '|'
+    } else {
+        return Err(CliError::InvalidSpec {
+            spec: spec.to_string(),
+            reason: "drums requires sub-specs delimited by `;` or `|`".to_string(),
+        });
+    };
+
+    tail.split(delimiter)
+        .map(str::trim)
+        .filter(|sub_spec| !sub_spec.is_empty())
+        .map(parse_spec)
+        .collect()
 }
 
 fn parse_spec(spec: &str) -> Result<ParsedSpec, CliError> {
@@ -789,6 +828,20 @@ mod tests {
             assert!(!parsed.instrument.is_empty());
             assert!(!parsed.events.is_empty());
         }
+    }
+
+    #[test]
+    fn parse_drums_composite_spec_expands_to_component_specs() {
+        let parsed = parse_specs(
+            "drums:cymbal:[150,57,192];hihat:[1878,46,192];kick-drum:[150,36,192];snare-drum:[1350,38,192]",
+        )
+        .unwrap();
+
+        assert_eq!(parsed.len(), 4);
+        assert_eq!(parsed[0].instrument, "cymbal");
+        assert_eq!(parsed[1].instrument, "hihat");
+        assert_eq!(parsed[2].instrument, "kick-drum");
+        assert_eq!(parsed[3].instrument, "snare-drum");
     }
 
     #[test]

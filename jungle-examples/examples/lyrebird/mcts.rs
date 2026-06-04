@@ -395,7 +395,9 @@ fn save_tree_state(
     trees
         .insert(key.as_slice(), encoded.as_slice())
         .map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!("write tree state for {tag} failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!(
+                "write tree state for {tag} failed: {err}"
+            ))
         })?;
     Ok(())
 }
@@ -573,8 +575,8 @@ fn backpropagate_mcts(
 mod tests {
     use super::*;
     use crate::{
-        BackupVocalsMarker, BassMarker, GuitarSoloMarker, LyrebirdPatch, RhythmGuitarMarker,
-        VocalsMarker,
+        BackupVocalsMarker, BassMarker, DrumsMarker, GuitarSoloMarker, LyrebirdPatch,
+        RhythmGuitarMarker, VocalsMarker,
     };
     use reqwest::Url;
     use uuid::Uuid;
@@ -650,6 +652,7 @@ mod tests {
             LyrebirdInstrument::GuitarSolo => {
                 ecosystem.select_lyrebird_branch_for_tag::<GuitarSoloMarker>()
             }
+            LyrebirdInstrument::Drums => ecosystem.select_lyrebird_branch_for_tag::<DrumsMarker>(),
         }
     }
 
@@ -674,6 +677,9 @@ mod tests {
             LyrebirdInstrument::GuitarSolo => {
                 ecosystem.submit_lyrebird_branch_for_tag::<GuitarSoloMarker>(submissions)
             }
+            LyrebirdInstrument::Drums => {
+                ecosystem.submit_lyrebird_branch_for_tag::<DrumsMarker>(submissions)
+            }
         }
     }
 
@@ -691,6 +697,7 @@ mod tests {
             }
             LyrebirdInstrument::Bass => ecosystem.load_tree_for_test::<BassMarker>(),
             LyrebirdInstrument::GuitarSolo => ecosystem.load_tree_for_test::<GuitarSoloMarker>(),
+            LyrebirdInstrument::Drums => ecosystem.load_tree_for_test::<DrumsMarker>(),
         }
     }
 
