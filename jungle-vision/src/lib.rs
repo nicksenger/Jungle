@@ -42,7 +42,6 @@ const VISION_APPLY_QUEUE_DELAY_WARN_MS: i64 = 100;
 const VISION_END_TO_END_AGE_WARN_MS: i64 = 2_000;
 const VISION_SLOW_APPLY_WARN_MS: u128 = 20;
 const VISION_SLOW_THEME_UPDATE_WARN_MS: u128 = 20;
-const RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP: usize = 2;
 const INITIAL_LIVE_BATCH_WINDOW: Duration = Duration::from_millis(20);
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
@@ -1585,6 +1584,9 @@ fn node_phase_for_display_with_runtime_floors(
         return Phase::Static;
     };
 
+    let direct_runtime_observed = runtime_id
+        .map(|id| runtime_observed_in_current_iteration(live, id, runtime_sequence_floors))
+        .unwrap_or(false);
     let state = match runtime_id {
         Some(id) => runtime_state_for_live_data(live, id, runtime_sequence_floors),
         None => condition_successor_runtime_ids
@@ -1605,20 +1607,22 @@ fn node_phase_for_display_with_runtime_floors(
             .copied()
             .map(|sequence| (sequence, state))
     });
-    for proxy_runtime_id in proxy_runtime_ids {
-        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-            continue;
-        };
-        let proxy_state =
-            runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
-        if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
-            continue;
-        }
-        if newest
-            .map(|(best_sequence, _)| sequence > best_sequence)
-            .unwrap_or(true)
-        {
-            newest = Some((sequence, proxy_state));
+    if !direct_runtime_observed {
+        for proxy_runtime_id in proxy_runtime_ids {
+            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+                continue;
+            };
+            let proxy_state =
+                runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
+            if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
+                continue;
+            }
+            if newest
+                .map(|(best_sequence, _)| sequence > best_sequence)
+                .unwrap_or(true)
+            {
+                newest = Some((sequence, proxy_state));
+            }
         }
     }
 
@@ -1711,23 +1715,32 @@ fn repaired_live_states_for_display(
     let mut states = HashMap::<u32, RuntimeState>::new();
     let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
     for node in &model.nodes {
+        let direct_runtime_observed = node
+            .runtime_node_id
+            .map(|runtime_id| {
+                runtime_observed_in_current_iteration(live, runtime_id, &runtime_sequence_floors)
+            })
+            .unwrap_or(false);
         let mut latest_sequence = node
             .runtime_node_id
             .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
-        for proxy_runtime_id in &node.proxy_runtime_ids {
-            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-                continue;
-            };
-            let proxy_state =
-                runtime_state_for_live_data(live, *proxy_runtime_id, &runtime_sequence_floors);
-            if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
-                continue;
-            }
-            if latest_sequence
-                .map(|current| sequence > current)
-                .unwrap_or(true)
-            {
-                latest_sequence = Some(sequence);
+        if !direct_runtime_observed {
+            for proxy_runtime_id in &node.proxy_runtime_ids {
+                let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied()
+                else {
+                    continue;
+                };
+                let proxy_state =
+                    runtime_state_for_live_data(live, *proxy_runtime_id, &runtime_sequence_floors);
+                if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
+                    continue;
+                }
+                if latest_sequence
+                    .map(|current| sequence > current)
+                    .unwrap_or(true)
+                {
+                    latest_sequence = Some(sequence);
+                }
             }
         }
         if let Some(sequence) = latest_sequence {
@@ -1798,21 +1811,6 @@ fn repaired_live_states_for_display(
                 RuntimeState::Pending | RuntimeState::Running
             ) {
                 continue;
-            }
-            if matches!(predecessor_state, RuntimeState::Running) {
-                let can_promote_running = match (
-                    latest_sequence_by_display_id.get(&node_id).copied(),
-                    latest_sequence_by_display_id.get(predecessor).copied(),
-                ) {
-                    (Some(trigger_sequence), Some(predecessor_sequence)) => {
-                        trigger_sequence.saturating_sub(predecessor_sequence)
-                            >= RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP
-                    }
-                    _ => true,
-                };
-                if !can_promote_running {
-                    continue;
-                }
             }
             states.insert(*predecessor, RuntimeState::Completed);
             if queued.insert(*predecessor) {
@@ -4364,6 +4362,46 @@ mod tests {
     }
 
     #[test]
+    fn repaired_live_states_complete_running_predecessor_when_successor_runs() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "A" },
+            JourneyAst::Step { label: "B" },
+        ]);
+        let model = GraphModel::from_ast(ast);
+        let a_id = node_by_label(&model, "A").id;
+        let b_id = node_by_label(&model, "B").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id_for(&model, "A"),
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: runtime_id_for(&model, "B"),
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
     fn repaired_live_states_promote_single_ready_successor_when_no_node_is_active() {
         let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
             JourneyAst::Step { label: "A" },
@@ -4608,6 +4646,83 @@ mod tests {
             repaired.get(&flatten2_id).copied(),
             Some(RuntimeState::Pending)
         );
+    }
+
+    #[test]
+    fn repaired_live_states_prefer_direct_completed_state_over_running_join_proxy() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "Left" }),
+                right: Box::new(JourneyAst::Step { label: "Right" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+        let left = node_by_label(&model, "Left");
+        let right = node_by_label(&model, "Right");
+        let tail_id = node_by_label(&model, "Tail").id;
+        let join_runtime_id = left
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("Left should carry hidden join runtime"));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Left"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Right"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: join_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectInput {
+                    node_id: runtime_id_for(&model, "Tail"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&left.id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&right.id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
     }
 
     #[test]
