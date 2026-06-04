@@ -1881,7 +1881,7 @@ fn active_conditional_branch_sides(
 
     for branch in &model.derived.conditional_branches {
         let branch_signal_for_side = |display_ids: &[u32]| {
-            let mut earliest_sequence = None::<usize>;
+            let mut latest_sequence = None::<usize>;
             let mut best_priority = 0_u8;
             for display_id in display_ids {
                 let Some(node) = model.node_map.get(display_id) else {
@@ -1913,13 +1913,13 @@ fn active_conditional_branch_sides(
                     RuntimeState::Pending => 0_u8,
                 };
                 best_priority = best_priority.max(priority);
-                earliest_sequence = Some(
-                    earliest_sequence
-                        .map(|current| current.min(sequence))
+                latest_sequence = Some(
+                    latest_sequence
+                        .map(|current| current.max(sequence))
                         .unwrap_or(sequence),
                 );
             }
-            earliest_sequence.map(|sequence| (best_priority, sequence))
+            latest_sequence.map(|sequence| (best_priority, sequence))
         };
 
         let left_signal = branch_signal_for_side(&branch.left_member_display_ids);
@@ -1934,11 +1934,11 @@ fn active_conditional_branch_sides(
             }
             (Some(left_signal), Some(right_signal)) => {
                 if left_signal.0 > right_signal.0
-                    || (left_signal.0 == right_signal.0 && left_signal.1 < right_signal.1)
+                    || (left_signal.0 == right_signal.0 && left_signal.1 > right_signal.1)
                 {
                     active.insert(branch.condition_display_id, ConditionalSide::Left);
                 } else if right_signal.0 > left_signal.0
-                    || (right_signal.0 == left_signal.0 && right_signal.1 < left_signal.1)
+                    || (right_signal.0 == left_signal.0 && right_signal.1 > left_signal.1)
                 {
                     active.insert(branch.condition_display_id, ConditionalSide::Right);
                 }
@@ -2176,6 +2176,10 @@ fn repaired_live_states_for_display(
         if ready_pending_nodes.len() == 1 {
             states.insert(ready_pending_nodes[0], RuntimeState::Running);
         }
+    }
+
+    for node_id in &skipped_conditional_branch_nodes {
+        states.insert(*node_id, RuntimeState::Pending);
     }
 
     states
@@ -4152,18 +4156,38 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     }
 
     fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
-        let phase_target = match cx.source_phase {
+        let source_phase = match cx.source_phase {
             Phase::Live(target) => target,
             Phase::Static => RuntimeState::Pending,
         };
-        let phase_target = if let Some(runtime_id) = cx.source_runtime_id {
+        let source_phase = if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                guard.apply_force_pending_override(runtime_id, phase_target)
+                guard.apply_force_pending_override(runtime_id, source_phase)
             } else {
-                phase_target
+                source_phase
             }
         } else {
-            phase_target
+            source_phase
+        };
+        let target_phase = match cx.target_phase {
+            Phase::Live(target) => target,
+            Phase::Static => RuntimeState::Pending,
+        };
+        let target_phase = if let Some(runtime_id) = cx.target_runtime_id {
+            if let Ok(mut guard) = state.try_lock() {
+                guard.apply_force_pending_override(runtime_id, target_phase)
+            } else {
+                target_phase
+            }
+        } else {
+            target_phase
+        };
+        let phase_target = match target_phase {
+            RuntimeState::Pending => match source_phase {
+                RuntimeState::Running | RuntimeState::Failed => source_phase,
+                RuntimeState::Completed | RuntimeState::Pending => RuntimeState::Pending,
+            },
+            RuntimeState::Running | RuntimeState::Completed | RuntimeState::Failed => target_phase,
         };
         let (from_color, to_color) = {
             let color = runtime_color(phase_target);
@@ -6269,6 +6293,58 @@ mod tests {
             RuntimeState::Pending
         );
         assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
+    }
+
+    #[test]
+    fn edge_style_keeps_completed_to_pending_branch_gray() {
+        let theme = DefaultTheme::default();
+        let state = theme.init();
+        let style = theme
+            .edge_style(
+                &state,
+                EdgeStyleCtx {
+                    edge_index: 0,
+                    source_display_id: 1,
+                    target_display_id: 2,
+                    source_runtime_id: None,
+                    target_runtime_id: None,
+                    source_has_proxy_runtime: false,
+                    target_has_proxy_runtime: false,
+                    source_phase: Phase::Live(RuntimeState::Completed),
+                    target_phase: Phase::Live(RuntimeState::Pending),
+                    extent: 1.0,
+                },
+            )
+            .expect("default theme should provide an edge style");
+
+        assert_eq!(style.start, runtime_color(RuntimeState::Pending));
+        assert_eq!(style.end, runtime_color(RuntimeState::Pending));
+    }
+
+    #[test]
+    fn edge_style_uses_active_target_state() {
+        let theme = DefaultTheme::default();
+        let state = theme.init();
+        let style = theme
+            .edge_style(
+                &state,
+                EdgeStyleCtx {
+                    edge_index: 0,
+                    source_display_id: 1,
+                    target_display_id: 2,
+                    source_runtime_id: None,
+                    target_runtime_id: None,
+                    source_has_proxy_runtime: false,
+                    target_has_proxy_runtime: false,
+                    source_phase: Phase::Live(RuntimeState::Pending),
+                    target_phase: Phase::Live(RuntimeState::Running),
+                    extent: 1.0,
+                },
+            )
+            .expect("default theme should provide an edge style");
+
+        assert_eq!(style.start, runtime_color(RuntimeState::Running));
+        assert_eq!(style.end, runtime_color(RuntimeState::Running));
     }
 
     #[test]
