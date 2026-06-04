@@ -1500,7 +1500,7 @@ fn node_phase_for_display_with_runtime_floors(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
-    _proxy_runtime_ids: &[u32],
+    proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
     runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> Phase<RuntimeState> {
@@ -1522,7 +1522,30 @@ fn node_phase_for_display_with_runtime_floors(
             .unwrap_or(RuntimeState::Pending),
     };
 
-    Phase::Live(state)
+    let mut newest = runtime_id.and_then(|id| {
+        live.runtime_update_sequence
+            .get(&id)
+            .copied()
+            .map(|sequence| (sequence, state))
+    });
+    for proxy_runtime_id in proxy_runtime_ids {
+        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+            continue;
+        };
+        let proxy_state =
+            runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
+        if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
+            continue;
+        }
+        if newest
+            .map(|(best_sequence, _)| sequence > best_sequence)
+            .unwrap_or(true)
+        {
+            newest = Some((sequence, proxy_state));
+        }
+    }
+
+    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
 
 fn repaired_live_states_for_display(
@@ -1538,9 +1561,25 @@ fn repaired_live_states_for_display(
     let mut states = HashMap::<u32, RuntimeState>::new();
     let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
     for node in &model.nodes {
-        let latest_sequence = node
+        let mut latest_sequence = node
             .runtime_node_id
             .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
+        for proxy_runtime_id in &node.proxy_runtime_ids {
+            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+                continue;
+            };
+            let proxy_state =
+                runtime_state_for_live_data(live, *proxy_runtime_id, &runtime_sequence_floors);
+            if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
+                continue;
+            }
+            if latest_sequence
+                .map(|current| sequence > current)
+                .unwrap_or(true)
+            {
+                latest_sequence = Some(sequence);
+            }
+        }
         if let Some(sequence) = latest_sequence {
             latest_sequence_by_display_id.insert(node.id, sequence);
         }
@@ -3664,7 +3703,7 @@ mod tests {
     }
 
     #[test]
-    fn join_proxy_runtime_does_not_color_child_nodes() {
+    fn join_proxy_runtime_colors_child_nodes_only_while_running() {
         let ast = JourneyAst::Join {
             label: "Join",
             metadata: "",
@@ -3699,7 +3738,7 @@ mod tests {
                 &join_l.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Pending)
+            Phase::Live(RuntimeState::Running)
         );
         assert_eq!(
             node_phase_for_display(
@@ -3709,7 +3748,7 @@ mod tests {
                 &join_r.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Pending)
+            Phase::Live(RuntimeState::Running)
         );
 
         assert!(live.apply_update(JourneyUpdateEvent {
@@ -3743,7 +3782,7 @@ mod tests {
     }
 
     #[test]
-    fn join_proxy_runtime_does_not_recolor_branch_exit_nodes() {
+    fn join_proxy_runtime_colors_branch_exit_nodes_while_running() {
         let ast = JourneyAst::Join {
             label: "Join",
             metadata: "",
@@ -3807,7 +3846,7 @@ mod tests {
                 &left_b.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Completed)
+            Phase::Live(RuntimeState::Running)
         );
         assert_eq!(
             node_phase_for_display(
@@ -3827,7 +3866,7 @@ mod tests {
                 &right_b.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Completed)
+            Phase::Live(RuntimeState::Running)
         );
     }
 
@@ -4194,6 +4233,102 @@ mod tests {
             states.get(&flatten_id).copied(),
             Some(RuntimeState::Pending)
         );
+    }
+
+    #[test]
+    fn while_loop_join_proxy_running_colors_exit_and_keeps_ancestors_completed() {
+        let prompt_branch = || {
+            JourneyAst::Sequence(vec![
+                JourneyAst::Conditional {
+                    label: "Branch",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: "Select" },
+                        JourneyAst::Step { label: "Optimize" },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: "Skip" }),
+                },
+                JourneyAst::Step { label: "Flatten" },
+            ])
+        };
+        let ast = JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(prompt_branch()),
+                right: Box::new(prompt_branch()),
+            }),
+        };
+        let model = GraphModel::from_ast(ast);
+        let all_ids_for = |label: &str| -> Vec<u32> {
+            model
+                .nodes
+                .iter()
+                .filter(|node| node.label == label || node.label.starts_with(&format!("{label} #")))
+                .map(|node| node.id)
+                .collect()
+        };
+        let select_ids = all_ids_for("Select");
+        let optimize_ids = all_ids_for("Optimize");
+        let flatten_ids = all_ids_for("Flatten");
+        let skip_ids = all_ids_for("Skip");
+        assert_eq!(select_ids.len(), 2);
+        assert_eq!(optimize_ids.len(), 2);
+        assert_eq!(flatten_ids.len(), 2);
+        assert_eq!(skip_ids.len(), 2);
+
+        let mut live = LiveData::default();
+        for (sequence_id, node_id) in [(1, 1_u32), (2, 2), (3, 4), (4, 5), (5, 6), (6, 8), (7, 0)] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::EffectSuccessOutput {
+                    node_id,
+                    uuid: Uuid::nil(),
+                },
+            }));
+        }
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 8,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+
+        for select_id in select_ids {
+            assert_eq!(
+                states.get(&select_id).copied(),
+                Some(RuntimeState::Completed)
+            );
+        }
+        for optimize_id in optimize_ids {
+            assert_eq!(
+                states.get(&optimize_id).copied(),
+                Some(RuntimeState::Completed)
+            );
+        }
+        for flatten_id in flatten_ids {
+            assert_eq!(
+                states.get(&flatten_id).copied(),
+                Some(RuntimeState::Running)
+            );
+        }
+        for skip_id in skip_ids {
+            assert!(
+                !matches!(states.get(&skip_id).copied(), Some(RuntimeState::Running)),
+                "inactive sibling branch should not appear running"
+            );
+        }
     }
 
     #[test]
