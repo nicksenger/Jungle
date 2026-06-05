@@ -71,7 +71,7 @@ impl Predicate<(BassistState, ())> for UseBassTurnaroundSection {
 pub struct DecrementBassRiffLoop;
 #[jungle::action]
 impl Action for DecrementBassRiffLoop {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -92,7 +92,7 @@ impl Action for DecrementBassRiffLoop {
 pub struct MergeBassTurnaroundChoice;
 #[jungle::action]
 impl Action for MergeBassTurnaroundChoice {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Either<(), ()>;
     type Output = ();
 

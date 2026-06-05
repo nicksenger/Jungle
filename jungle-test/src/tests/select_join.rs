@@ -859,7 +859,7 @@ impl Action for LocalJoinRightStubBSpec {
 pub struct FlattenJoinedUnitTupleSpec;
 #[jungle::action]
 impl Action for FlattenJoinedUnitTupleSpec {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ((), ());
     type Output = ();
 
@@ -989,7 +989,7 @@ impl Action for NestedJoinInnerRightSpec {
 pub struct NestedJoinInnerMergeSpec;
 #[jungle::action]
 impl Action for NestedJoinInnerMergeSpec {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ((), ());
     type Output = ();
 
@@ -1032,7 +1032,7 @@ impl Action for NestedJoinOuterRightSpec {
 pub struct NestedJoinOuterMergeSpec;
 #[jungle::action]
 impl Action for NestedJoinOuterMergeSpec {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ((), ());
     type Output = ();
 
@@ -1080,19 +1080,19 @@ pub struct NestedJoinInnerFlow(
 );
 
 #[derive(Flow)]
-pub struct NestedJoinWithInnerNoopFlow(
+pub struct NestedJoinWithInnerNoEffectFlow(
     Join<NestedJoinInnerFlow, Step<NestedJoinOuterRightSpec>>,
     Step<NestedJoinOuterMergeSpec>,
     Step<NestedJoinTailCaptureSpec>,
 );
 
-pub struct NestedJoinWithInnerNoopAnimal;
+pub struct NestedJoinWithInnerNoEffectAnimal;
 
 #[jungle::animal(id = 8, generation = 0)]
-impl Animal for NestedJoinWithInnerNoopAnimal {
+impl Animal for NestedJoinWithInnerNoEffectAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Flow = NestedJoinWithInnerNoopFlow;
+    type Flow = NestedJoinWithInnerNoEffectFlow;
 }
 
 #[derive(Animals)]
@@ -1344,8 +1344,8 @@ async fn conditional_join_tail_does_not_complete_early_before_tail_progress_fini
 }
 
 #[tokio::test]
-async fn nested_join_with_inner_join_ending_in_noop_does_not_hang() {
-    let mut executor = Executor::<NestedJoinWithInnerNoopAnimal>::new(SelectJoinState::default());
+async fn nested_join_with_inner_join_ending_in_no_effect_does_not_hang() {
+    let mut executor = Executor::<NestedJoinWithInnerNoEffectAnimal>::new(SelectJoinState::default());
 
     let run = tokio::time::timeout(Duration::from_secs(2), async {
         while !executor.is_complete() {

@@ -10,7 +10,7 @@ impl<Seed, State> Action for SeedState<Seed, State>
 where
     Seed: Into<State>,
 {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Seed;
     type Output = ();
 

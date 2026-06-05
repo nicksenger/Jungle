@@ -1873,10 +1873,10 @@ mod tests {
         }
     }
 
-    struct HiddenJoinUntakenNoop1;
+    struct HiddenJoinUntakenNoEffect1;
     #[jungle::action]
-    impl Action for HiddenJoinUntakenNoop1 {
-        type Effect = Noop;
+    impl Action for HiddenJoinUntakenNoEffect1 {
+        type Effect = NoEffect;
         type Input = ();
         type Output = ();
 
@@ -1890,10 +1890,10 @@ mod tests {
         }
     }
 
-    struct HiddenJoinUntakenNoop2;
+    struct HiddenJoinUntakenNoEffect2;
     #[jungle::action]
-    impl Action for HiddenJoinUntakenNoop2 {
-        type Effect = Noop;
+    impl Action for HiddenJoinUntakenNoEffect2 {
+        type Effect = NoEffect;
         type Input = ();
         type Output = ();
 
@@ -1907,10 +1907,10 @@ mod tests {
         }
     }
 
-    struct HiddenJoinTakenNoop;
+    struct HiddenJoinTakenNoEffect;
     #[jungle::action]
-    impl Action for HiddenJoinTakenNoop {
-        type Effect = Noop;
+    impl Action for HiddenJoinTakenNoEffect {
+        type Effect = NoEffect;
         type Input = ();
         type Output = ();
 
@@ -1954,37 +1954,37 @@ mod tests {
     }
 
     #[derive(Flow)]
-    struct HiddenJoinUntakenNoopFlow(Step<HiddenJoinUntakenNoop1>, Step<HiddenJoinUntakenNoop2>);
+    struct HiddenJoinUntakenNoEffectFlow(Step<HiddenJoinUntakenNoEffect1>, Step<HiddenJoinUntakenNoEffect2>);
 
     #[derive(Flow)]
-    struct HiddenJoinTakenNoopFlow(Step<HiddenJoinTakenNoop>);
+    struct HiddenJoinTakenNoEffectFlow(Step<HiddenJoinTakenNoEffect>);
 
     #[derive(Flow)]
-    struct HiddenJoinConditionalNoopFlow(
-        Conditional<HiddenJoinAlwaysFalse, HiddenJoinUntakenNoopFlow, HiddenJoinTakenNoopFlow>,
+    struct HiddenJoinConditionalNoEffectFlow(
+        Conditional<HiddenJoinAlwaysFalse, HiddenJoinUntakenNoEffectFlow, HiddenJoinTakenNoEffectFlow>,
         Step<FlattenEither<(), i32>>,
     );
 
     #[derive(Flow)]
-    struct HiddenJoinConditionalNoopJoin(
-        Join<HiddenJoinConditionalNoopFlow, Step<HiddenJoinDelayedPrompt>>,
+    struct HiddenJoinConditionalNoEffectJoin(
+        Join<HiddenJoinConditionalNoEffectFlow, Step<HiddenJoinDelayedPrompt>>,
     );
 
-    struct HiddenJoinConditionalNoopAnimal;
+    struct HiddenJoinConditionalNoEffectAnimal;
     #[jungle::animal(id = 91, generation = 0)]
-    impl Animal for HiddenJoinConditionalNoopAnimal {
+    impl Animal for HiddenJoinConditionalNoEffectAnimal {
         type State = i32;
         type Seed = ();
-        type Flow = HiddenJoinConditionalNoopJoin;
+        type Flow = HiddenJoinConditionalNoEffectJoin;
     }
 
     #[derive(Animals)]
-    struct HiddenJoinConditionalNoopZoo(HiddenJoinConditionalNoopAnimal);
+    struct HiddenJoinConditionalNoEffectZoo(HiddenJoinConditionalNoEffectAnimal);
 
-    struct HiddenJoinConditionalNoopEcosystem;
-    impl Ecosystem for HiddenJoinConditionalNoopEcosystem {
-        const NAME: &'static str = "lyrebird-hidden-join-noop-zoo";
-        type Animals = HiddenJoinConditionalNoopZoo;
+    struct HiddenJoinConditionalNoEffectEcosystem;
+    impl Ecosystem for HiddenJoinConditionalNoEffectEcosystem {
+        const NAME: &'static str = "lyrebird-hidden-join-no-effect-zoo";
+        type Animals = HiddenJoinConditionalNoEffectZoo;
     }
 
     macro_rules! nested_prompt_branch {
@@ -2596,8 +2596,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hidden_join_streams_taken_noop_conditional_branch_lifecycle_live() {
-        let mut executor = Executor::<HiddenJoinConditionalNoopAnimal>::new(7);
+    async fn hidden_join_streams_taken_no_effect_conditional_branch_lifecycle_live() {
+        let mut executor = Executor::<HiddenJoinConditionalNoEffectAnimal>::new(7);
         executor.set_journey_id(Uuid::new_v4());
         let mut request = executor
             .next_executable_request(())
@@ -2639,26 +2639,26 @@ mod tests {
             .expect("hidden join completion should still apply cleanly");
         assert!(
             seen_lifecycle_ids.len() >= 3,
-            "expected hidden join live history to include conditional/noop child lifecycles before completion, saw {seen_lifecycle_ids:?}"
+            "expected hidden join live history to include conditional/no-effect child lifecycles before completion, saw {seen_lifecycle_ids:?}"
         );
     }
 
     #[tokio::test]
-    async fn hidden_join_taken_noop_branch_lifecycle_reaches_step_update_subscription() {
+    async fn hidden_join_taken_no_effect_branch_lifecycle_reaches_step_update_subscription() {
         let client = jungle_sdk::FusedClient::builder()
-            .namespace("lyrebird-hidden-join-noop")
+            .namespace("lyrebird-hidden-join-no-effect")
             .build()
             .await
             .expect("local client should build");
 
         let worker =
-            jungle_sdk::core::JungleWorker::new(HiddenJoinConditionalNoopEcosystem, client.clone());
+            jungle_sdk::core::JungleWorker::new(HiddenJoinConditionalNoEffectEcosystem, client.clone());
         let worker_handle = tokio::spawn(async move {
             let _ = worker.spawn().await;
         });
 
         let journey_id = client
-            .spawn::<HiddenJoinConditionalNoopAnimal>(&())
+            .spawn::<HiddenJoinConditionalNoEffectAnimal>(&())
             .await
             .expect("journey should start")
             .journey_id;
@@ -2682,7 +2682,7 @@ mod tests {
 
         assert!(
             seen_lifecycle_ids.len() >= 4,
-            "expected subscription to include hidden-join conditional and taken Noop lifecycle nodes, saw {seen_lifecycle_ids:?}"
+            "expected subscription to include hidden-join conditional and taken NoEffect lifecycle nodes, saw {seen_lifecycle_ids:?}"
         );
 
         worker_handle.abort();

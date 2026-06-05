@@ -1,7 +1,7 @@
 use crate::{
     Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
     Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NodeLifecycle,
-    NodeLifecyclePhase, Noop, RunnerOut, Running, Scoped, Select, StateCarrier, Transparent, While,
+    NodeLifecyclePhase, NoEffect, RunnerOut, Running, Scoped, Select, StateCarrier, Transparent, While,
 };
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
@@ -596,7 +596,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -632,7 +632,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -846,7 +846,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -882,7 +882,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -4142,7 +4142,7 @@ where
                                 .expect("while child post-complete settle should succeed");
                             NodeAdvance::Completed(next_state, emitted)
                         } else {
-                            // Handles inline-completable children (e.g. Noop) inside While bodies.
+                            // Handles inline-completable children (e.g. NoEffect) inside While bodies.
                             let (next_state, emitted, completed) = node
                                 .try_complete_without_progress(next_state)
                                 .expect("while child inline completion should succeed");
@@ -5572,7 +5572,7 @@ where
                                 .expect("while child post-complete settle should succeed");
                             NodeAdvance::Completed(next_state, emitted)
                         } else {
-                            // Handles inline-completable children (e.g. Noop) inside While bodies.
+                            // Handles inline-completable children (e.g. NoEffect) inside While bodies.
                             let (next_state, emitted, completed) = node
                                 .try_complete_without_progress(next_state)
                                 .expect("while child inline completion should succeed");

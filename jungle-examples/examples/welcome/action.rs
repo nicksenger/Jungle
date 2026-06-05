@@ -6,7 +6,7 @@ use jungle_sdk::prelude::*;
 pub struct MergeUnit<S>(PhantomData<S>);
 #[jungle::action]
 impl<S> Action for MergeUnit<S> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ((), ());
     type Output = ();
 
@@ -23,7 +23,7 @@ impl<S> Action for MergeUnit<S> {
 pub struct MergeEither<T, S>(PhantomData<T>, PhantomData<S>);
 #[jungle::action(carry = T)]
 impl<T, S> Action for MergeEither<T, S> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Either<T, T>;
     type Output = T;
 

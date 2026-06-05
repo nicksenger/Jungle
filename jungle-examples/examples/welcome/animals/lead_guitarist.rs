@@ -149,7 +149,7 @@ impl Predicate<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
 pub struct DecrementLeadRiffLoop;
 #[jungle::action]
 impl Action for DecrementLeadRiffLoop {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -172,7 +172,7 @@ impl Action for DecrementLeadRiffLoop {
 pub struct MergeLeadTurnaroundChoice;
 #[jungle::action]
 impl Action for MergeLeadTurnaroundChoice {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Either<(), ()>;
     type Output = ();
 

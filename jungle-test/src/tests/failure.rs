@@ -16,7 +16,7 @@ pub struct FailureState {
 pub struct PassStep;
 #[jungle::action]
 impl Action for PassStep {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 

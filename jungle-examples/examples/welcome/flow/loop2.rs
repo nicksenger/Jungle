@@ -26,7 +26,7 @@ pub struct Loop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
 #[jungle::action]
 impl<St> Action for Loop2SetCounter<St> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -44,7 +44,7 @@ pub struct Loop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
 #[jungle::action]
 impl<St> Action for Loop2DecCounter<St> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -63,7 +63,7 @@ impl<St> Action for Loop2DecCounter<St> {
 pub struct FlattenEither<T, S>(PhantomData<T>, PhantomData<S>);
 #[jungle::action]
 impl<T, S> Action for FlattenEither<T, S> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Either<T, T>;
     type Output = T;
     type Carry = Either<T, T>;

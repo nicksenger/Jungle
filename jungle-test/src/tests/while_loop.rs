@@ -229,10 +229,10 @@ impl<J> Effect<J> for EchoBoolEffect {
     }
 }
 
-pub struct InlineNoopFalseSpec;
+pub struct InlineNoEffectFalseSpec;
 #[jungle::action]
-impl Action for InlineNoopFalseSpec {
-    type Effect = Noop;
+impl Action for InlineNoEffectFalseSpec {
+    type Effect = NoEffect;
     type Input = ();
     type Output = bool;
 
@@ -243,7 +243,7 @@ impl Action for InlineNoopFalseSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_5 = {
-            output.map_err(|_err| Failure::from("noop should succeed"))?;
+            output.map_err(|_err| Failure::from("no-effect should succeed"))?;
             false
         };
         Ok(__absorb_out_5)
@@ -267,7 +267,7 @@ impl Action for EchoBoolSpec {
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_6 = {
             let echoed = output.map_err(|_err| Failure::from("echo bool should succeed"))?;
-            assert!(!echoed, "expected inline noop output to feed false");
+            assert!(!echoed, "expected inline no-effect output to feed false");
             *state = state.saturating_add(1);
         };
         Ok(__absorb_out_6)
@@ -282,18 +282,18 @@ impl Predicate<(&u8, &())> for RunOnce {
 }
 
 #[derive(Flow)]
-pub struct WhileInlineNoopThenEffectFlow(While<RunOnce, WhileInlineNoopThenEffectBody>);
+pub struct WhileInlineNoEffectThenEffectFlow(While<RunOnce, WhileInlineNoEffectThenEffectBody>);
 
 #[derive(Flow)]
-pub struct WhileInlineNoopThenEffectBody(Step<InlineNoopFalseSpec>, Step<EchoBoolSpec>);
+pub struct WhileInlineNoEffectThenEffectBody(Step<InlineNoEffectFalseSpec>, Step<EchoBoolSpec>);
 
-pub struct WhileInlineNoopThenEffectAnimal;
+pub struct WhileInlineNoEffectThenEffectAnimal;
 
 #[jungle::animal(id = 91, generation = 0)]
-impl Animal for WhileInlineNoopThenEffectAnimal {
+impl Animal for WhileInlineNoEffectThenEffectAnimal {
     type State = u8;
     type Seed = u8;
-    type Flow = WhileInlineNoopThenEffectFlow;
+    type Flow = WhileInlineNoEffectThenEffectFlow;
 }
 
 pub struct InnerRunOnce;
@@ -311,18 +311,18 @@ impl Predicate<(&u8, &())> for OuterRunOnce {
 }
 
 #[derive(Flow)]
-pub struct NestedWhileInlineNoopThenEffectFlow(While<OuterRunOnce, NestedWhileOuterBody>);
+pub struct NestedWhileInlineNoEffectThenEffectFlow(While<OuterRunOnce, NestedWhileOuterBody>);
 
 #[derive(Flow)]
-pub struct NestedWhileOuterBody(While<InnerRunOnce, WhileInlineNoopThenEffectBody>);
+pub struct NestedWhileOuterBody(While<InnerRunOnce, WhileInlineNoEffectThenEffectBody>);
 
-pub struct NestedWhileInlineNoopThenEffectAnimal;
+pub struct NestedWhileInlineNoEffectThenEffectAnimal;
 
 #[jungle::animal(id = 92, generation = 0)]
-impl Animal for NestedWhileInlineNoopThenEffectAnimal {
+impl Animal for NestedWhileInlineNoEffectThenEffectAnimal {
     type State = u8;
     type Seed = u8;
-    type Flow = NestedWhileInlineNoopThenEffectFlow;
+    type Flow = NestedWhileInlineNoEffectThenEffectFlow;
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -345,10 +345,10 @@ impl Predicate<(&NestedInlineCarryState, &())> for NestedInlineOuterRunOnce {
     }
 }
 
-pub struct NestedInlineInnerNoopFalseSpec;
+pub struct NestedInlineInnerNoEffectFalseSpec;
 #[jungle::action]
-impl Action for NestedInlineInnerNoopFalseSpec {
-    type Effect = Noop;
+impl Action for NestedInlineInnerNoEffectFalseSpec {
+    type Effect = NoEffect;
     type Input = ();
     type Output = bool;
 
@@ -359,7 +359,7 @@ impl Action for NestedInlineInnerNoopFalseSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_7 = {
-            output.map_err(|_err| Failure::from("nested inner noop should succeed"))?;
+            output.map_err(|_err| Failure::from("nested inner no-effect should succeed"))?;
             state.inner_done = true;
             false
         };
@@ -467,7 +467,7 @@ impl Action for RhythmLikeJoinRightSpec {
 pub struct RhythmLikeMergeUnitSpec;
 #[jungle::action]
 impl Action for RhythmLikeMergeUnitSpec {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ((), ());
     type Output = ();
 
@@ -509,7 +509,7 @@ impl Action for RhythmLikePostMergeRestSpec {
 pub struct RhythmLikeDecrementLoopSpec;
 #[jungle::action]
 impl Action for RhythmLikeDecrementLoopSpec {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -530,7 +530,7 @@ impl Action for RhythmLikeDecrementLoopSpec {
 pub struct RhythmLikeMergeChoiceSpec;
 #[jungle::action]
 impl Action for RhythmLikeMergeChoiceSpec {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Either<(), ()>;
     type Output = ();
 
@@ -585,7 +585,7 @@ impl Animal for RhythmLikeConditionalLoopAnimal {
 }
 
 #[derive(Flow)]
-pub struct NestedInlineInnerOnlyBody(Step<NestedInlineInnerNoopFalseSpec>);
+pub struct NestedInlineInnerOnlyBody(Step<NestedInlineInnerNoEffectFalseSpec>);
 
 #[derive(Flow)]
 pub struct NestedInlineOuterBody(
@@ -804,11 +804,11 @@ fn nested_while_with_trailing_step_repeats_outer_iterations() {
 }
 
 #[test]
-fn while_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
-    let mut executor = Executor::<WhileInlineNoopThenEffectAnimal>::new(0);
+fn while_executable_inline_no_effect_then_effect_keeps_request_completion_handshake() {
+    let mut executor = Executor::<WhileInlineNoEffectThenEffectAnimal>::new(0);
     let request = executor
         .next_executable_request(())
-        .expect("while body should advance from inline noop to effect request");
+        .expect("while body should advance from inline no-effect to effect request");
     assert_eq!(
         request.effect_type(),
         core::any::type_name::<EchoBoolEffect>()
@@ -825,11 +825,11 @@ fn while_executable_inline_noop_then_effect_keeps_request_completion_handshake()
 }
 
 #[test]
-fn while_context_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
-    let mut executor = ContextExecutor::<(), WhileInlineNoopThenEffectAnimal>::new(Arc::new(()), 0);
+fn while_context_executable_inline_no_effect_then_effect_keeps_request_completion_handshake() {
+    let mut executor = ContextExecutor::<(), WhileInlineNoEffectThenEffectAnimal>::new(Arc::new(()), 0);
     let request = executor
         .next_executable_request(())
-        .expect("context while body should advance from inline noop to effect request");
+        .expect("context while body should advance from inline no-effect to effect request");
     assert_eq!(
         request.effect_type(),
         core::any::type_name::<EchoBoolEffect>()
@@ -846,11 +846,11 @@ fn while_context_executable_inline_noop_then_effect_keeps_request_completion_han
 }
 
 #[test]
-fn nested_while_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
-    let mut executor = Executor::<NestedWhileInlineNoopThenEffectAnimal>::new(0);
+fn nested_while_executable_inline_no_effect_then_effect_keeps_request_completion_handshake() {
+    let mut executor = Executor::<NestedWhileInlineNoEffectThenEffectAnimal>::new(0);
     let request = executor
         .next_executable_request(())
-        .expect("nested while body should advance from inline noop to effect request");
+        .expect("nested while body should advance from inline no-effect to effect request");
     assert_eq!(
         request.effect_type(),
         core::any::type_name::<EchoBoolEffect>()
@@ -867,12 +867,12 @@ fn nested_while_executable_inline_noop_then_effect_keeps_request_completion_hand
 }
 
 #[test]
-fn nested_while_context_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
+fn nested_while_context_executable_inline_no_effect_then_effect_keeps_request_completion_handshake() {
     let mut executor =
-        ContextExecutor::<(), NestedWhileInlineNoopThenEffectAnimal>::new(Arc::new(()), 0);
+        ContextExecutor::<(), NestedWhileInlineNoEffectThenEffectAnimal>::new(Arc::new(()), 0);
     let request = executor
         .next_executable_request(())
-        .expect("nested context while body should advance from inline noop to effect request");
+        .expect("nested context while body should advance from inline no-effect to effect request");
     assert_eq!(
         request.effect_type(),
         core::any::type_name::<EchoBoolEffect>()

@@ -88,7 +88,7 @@ impl Predicate<(RhythmGuitaristState, ())> for UseRhythmTurnaroundSection {
 pub struct DecrementRhythmRiffLoop;
 #[jungle::action]
 impl Action for DecrementRhythmRiffLoop {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 

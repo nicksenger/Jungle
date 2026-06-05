@@ -5702,7 +5702,7 @@ mod tests {
     }
 
     #[test]
-    fn repaired_live_states_keep_untaken_conditional_path_pending_when_taken_side_is_noop() {
+    fn repaired_live_states_keep_untaken_conditional_path_pending_when_taken_side_is_no_effect() {
         let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
             JourneyAst::Join {
                 label: "Join",

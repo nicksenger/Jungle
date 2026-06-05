@@ -20,7 +20,7 @@ mod tests {
     mod integration;
     mod migration;
     mod multi_worker;
-    mod noop;
+    mod no_effect;
     mod optic;
     mod progression;
     mod replay;

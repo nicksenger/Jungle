@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NoopState {
+pub struct NoEffectState {
     count: i32,
     seen: i32,
 }
@@ -22,21 +22,21 @@ impl<J> Effect<J> for EchoI32Effect {
     }
 }
 
-pub struct NoopIncrementSpec;
+pub struct NoEffectIncrementSpec;
 #[jungle::action]
-impl Action for NoopIncrementSpec {
-    type Effect = Noop;
+impl Action for NoEffectIncrementSpec {
+    type Effect = NoEffect;
     type Input = ();
     type Output = i32;
 
-    fn emit(_state: &NoopState, _input: Self::Input) -> () {}
+    fn emit(_state: &NoEffectState, _input: Self::Input) -> () {}
 
     fn absorb(
-        state: &mut NoopState,
+        state: &mut NoEffectState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
-            output.map_err(|_err| Failure::from("noop effect should succeed"))?;
+            output.map_err(|_err| Failure::from("no-effect should succeed"))?;
             state.count += 1;
             state.count
         };
@@ -51,12 +51,12 @@ impl Action for CaptureValueSpec {
     type Input = i32;
     type Output = ();
 
-    fn emit(_state: &NoopState, input: Self::Input) -> i32 {
+    fn emit(_state: &NoEffectState, input: Self::Input) -> i32 {
         input
     }
 
     fn absorb(
-        state: &mut NoopState,
+        state: &mut NoEffectState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_2 = {
@@ -67,24 +67,24 @@ impl Action for CaptureValueSpec {
 }
 
 #[derive(Flow)]
-pub struct NoopFlowTemplate(Step<NoopIncrementSpec>, Step<CaptureValueSpec>);
+pub struct NoEffectFlowTemplate(Step<NoEffectIncrementSpec>, Step<CaptureValueSpec>);
 
-pub struct NoopAnimal;
+pub struct NoEffectAnimal;
 
 #[jungle::animal(id = 5, generation = 0)]
-impl Animal for NoopAnimal {
-    type State = NoopState;
-    type Seed = NoopState;
-    type Flow = NoopFlowTemplate;
+impl Animal for NoEffectAnimal {
+    type State = NoEffectState;
+    type Seed = NoEffectState;
+    type Flow = NoEffectFlowTemplate;
 }
 
 #[tokio::test]
-async fn noop_step_is_completed_inline_before_next_effect_request() {
-    let mut executor = Executor::<NoopAnimal>::new(NoopState::default());
+async fn no_effect_step_is_completed_inline_before_next_effect_request() {
+    let mut executor = Executor::<NoEffectAnimal>::new(NoEffectState::default());
 
     let request = executor
         .next_executable_request(())
-        .expect("request after noop should be available");
+        .expect("request after no-effect should be available");
 
     assert_eq!(
         request.effect_type(),

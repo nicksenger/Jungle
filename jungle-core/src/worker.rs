@@ -9,7 +9,7 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure,
-    JourneyStatus, Noop, Observable, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
+    JourneyStatus, NoEffect, Observable, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
     SupportedAnimal, Work,
 };
 use serde::Serialize;
@@ -871,7 +871,7 @@ where
     Initial: Serialize + Clone,
 {
     let mut index = 0usize;
-    let noop_effect_type = core::any::type_name::<Noop>();
+    let no_effect_type = core::any::type_name::<NoEffect>();
     let sleep_effect_type = core::any::type_name::<Sleep>();
     while !executor.is_complete() {
         if index >= history.len() {
@@ -936,7 +936,7 @@ where
                         Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
                     ));
 
-            if effect_type == noop_effect_type || has_recoverable_cursor_event {
+            if effect_type == no_effect_type || has_recoverable_cursor_event {
                 send_recovered_effect_input(tx, journey_id, request_node_id, expected_input)
                     .await?;
             } else {

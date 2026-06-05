@@ -22,7 +22,7 @@ impl<Seed, State> Action for SeedState<Seed, State>
 where
     Seed: Into<State>,
 {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Seed;
     type Output = ();
 
@@ -62,7 +62,7 @@ pub type LyrebirdPromptPhaseJoinOutput = ((((), ()), ((), ())), ((), ()));
 pub struct FlattenLyrebirdPromptPhase<S>(PhantomData<S>);
 #[jungle::action]
 impl<S> Action for FlattenLyrebirdPromptPhase<S> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = LyrebirdPromptPhaseJoinOutput;
     type Output = ();
 
@@ -79,7 +79,7 @@ impl<S> Action for FlattenLyrebirdPromptPhase<S> {
 pub struct FlattenEither<T, S>(PhantomData<T>, PhantomData<S>);
 #[jungle::action]
 impl<T, S> Action for FlattenEither<T, S> {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = Either<T, T>;
     type Output = T;
     type Carry = Either<T, T>;
@@ -105,7 +105,7 @@ impl<Marker> Action for SetCurrentInstrument<Marker>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
 {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -171,7 +171,7 @@ impl Action for LogIterationTiming {
 pub struct BeginIteration;
 #[jungle::action]
 impl Action for BeginIteration {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -213,7 +213,7 @@ where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
     Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
 {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -600,7 +600,7 @@ impl<Marker> Action for SkipInstrumentSubmit<Marker>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
 {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
