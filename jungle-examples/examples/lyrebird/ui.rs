@@ -27,6 +27,8 @@ const HEADER_LABEL_TEXT_SIZE: f32 = 13.0;
 const HEADER_LABEL_VERTICAL_PADDING: u16 = 4;
 const HEADER_LABEL_HORIZONTAL_PADDING: u16 = 8;
 const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
+const SPECTROGRAM_HOVER_BORDER_COLOR: iced::Color = iced::Color::BLACK;
+const SPECTROGRAM_PRESSED_BORDER_COLOR: iced::Color = iced::Color::from_rgb8(28, 89, 55);
 
 #[derive(Debug, Clone)]
 pub struct ImageDumpConfig {
@@ -870,11 +872,24 @@ fn image_placeholder_style(_theme: &iced::Theme) -> iced::widget::container::Sty
 
 fn image_button_style(
     _theme: &iced::Theme,
-    _status: button::Status,
+    status: button::Status,
 ) -> iced::widget::button::Style {
+    let border = match status {
+        button::Status::Hovered => iced::border::rounded(0)
+            .color(SPECTROGRAM_HOVER_BORDER_COLOR)
+            .width(1.0),
+        button::Status::Pressed => iced::border::rounded(0)
+            .color(SPECTROGRAM_PRESSED_BORDER_COLOR)
+            .width(1.0),
+        _ => iced::border::rounded(0)
+            .color(iced::Color::TRANSPARENT)
+            .width(0.0),
+    };
+
     iced::widget::button::Style {
         background: None,
         text_color: iced::Color::WHITE,
+        border,
         ..Default::default()
     }
 }
