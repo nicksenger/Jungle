@@ -266,8 +266,8 @@ impl LyrebirdInstrument {
     pub fn display_name(self) -> &'static str {
         match self {
             Self::RhythmGuitar => "Electric Guitar (Intro)",
-            Self::Vocals => "Vocals (Formant)",
-            Self::BackupVocals => "Vocals (Group Harmony)",
+            Self::Vocals => "Vocals (Lead)",
+            Self::BackupVocals => "Vocals (Backup)",
             Self::Bass => "Bass",
             Self::GuitarSolo => "Electric Guitar (Solo)",
             Self::Drums => "Drums",
