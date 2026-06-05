@@ -1093,6 +1093,11 @@ impl PulseCodePurgatory {
         self.instrument_parallelism = instrument_parallelism;
         self
     }
+
+    pub fn with_tokens_model(mut self, tokens_model: impl Into<String>) -> Self {
+        self.tokens_model = tokens_model.into();
+        self
+    }
 }
 
 impl Ecosystem for PulseCodePurgatory {
@@ -1178,6 +1183,11 @@ struct Cli {
     tokens_api: TokensApiConfig,
     #[arg(long = "tokens-token")]
     tokens_token: Option<String>,
+    #[arg(
+        long = "tokens-model",
+        help = "OpenAI-compatible model string for chat completions requests; defaults to LYREBIRD_TOKENS_MODEL or codemonkey-d-luffy"
+    )]
+    tokens_model: Option<String>,
     #[arg(long = "db-path")]
     db_path: Option<PathBuf>,
     #[arg(long = "jungle-redb-path")]
@@ -1237,6 +1247,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
     let ecosystem = PulseCodePurgatory::new(cli.tokens_api, cli.tokens_token, cli.db_path)?
+        .with_tokens_model(
+            cli.tokens_model
+                .unwrap_or_else(PulseCodePurgatory::tokens_model_from_env),
+        )
         .with_tools(
             LyrebirdInstrument::ALL
                 .into_iter()
@@ -1255,6 +1269,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workers = cli.workers,
         tree_depth = cli.tree_depth,
         instrument_parallelism = cli.instrument_parallelism,
+        tokens_model = %ecosystem.tokens_model,
         instruments = %selected_instruments
             .iter()
             .map(|instrument| instrument.slug())
@@ -3436,5 +3451,19 @@ mod tests {
         let decoded = postcard::from_bytes::<LyrebirdBranchNode>(&bytes).unwrap();
 
         assert_eq!(decoded, node);
+    }
+
+    #[test]
+    fn cli_accepts_tokens_model_override() {
+        let cli = Cli::try_parse_from([
+            "lyrebird",
+            "--tokens-url",
+            "https://api.openai.com/v1",
+            "--tokens-model",
+            "gpt-5.4-mini",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.tokens_model.as_deref(), Some("gpt-5.4-mini"));
     }
 }
