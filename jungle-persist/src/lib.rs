@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyRecord, JourneyReplayPage, JourneyStatus, JourneyUpdateEvent,
+    OwnerWake, RunnerOut, SupportedAnimal, Work,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -166,6 +166,13 @@ pub trait JungleStore: DynClone + Send + Sync {
         seed: Vec<u8>,
     ) -> Result<Uuid>;
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>>;
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage>;
     async fn journey_update_events_since(
         &self,
         journey_id: Uuid,

@@ -4,8 +4,8 @@ use chrono::Utc;
 use futures::Stream;
 use jungle_types::{
     Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedPerturbable, Ecosystem,
-    ExecutorError, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    StripAnimalHeaders, SupportedAnimal, WireIn, WireOut, Work,
+    ExecutorError, JourneyRecord, JourneyReplayPage, JourneyStatus, JourneyUpdateEvent, OwnerWake,
+    RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -480,6 +480,7 @@ impl<J> Client<J> {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -533,6 +534,7 @@ impl<J> Client<J> {
         match response {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
             WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -586,6 +588,7 @@ where
         match response {
             WireOut::JourneyHistory(history) => Ok(history),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -600,6 +603,41 @@ where
         }
     }
 
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::JourneyReplayPage {
+                journey_id,
+                after_sequence_id,
+                snapshot_end_sequence_id,
+                limit,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::JourneyReplayPage(page) => Ok(page),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedPerturbable(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
+            | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected non-journey-replay-page response for journey_replay_page".to_string(),
+            )),
+        }
+    }
+
     async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::ListJourneys { namespace })
@@ -610,6 +648,7 @@ where
             WireOut::Journeys(journeys) => Ok(journeys),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -641,6 +680,7 @@ where
             WireOut::JourneyStatus(status) => Ok(status),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
@@ -664,6 +704,7 @@ where
             WireOut::AnimalAppearance(appearance) => Ok(appearance),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
@@ -691,6 +732,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -720,6 +762,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -749,6 +792,7 @@ where
             WireOut::ClaimedPerturbable(claimed) => Ok(claimed),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::NoAvailableSteps
@@ -779,6 +823,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -851,6 +896,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -877,6 +923,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -903,6 +950,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -929,6 +977,7 @@ where
             WireOut::Ack => Ok(Some(())),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -962,6 +1011,7 @@ where
             WireOut::PendingStep(work) => Ok(Some(work)),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)
@@ -995,6 +1045,7 @@ where
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
+            | WireOut::JourneyReplayPage(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedPerturbable(_)

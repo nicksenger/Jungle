@@ -9,8 +9,8 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure,
-    JourneyStatus, NoEffect, Observable, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
-    SupportedAnimal, Work,
+    JourneyEvent, JourneyStatus, NoEffect, Observable, Perturbable, RunnerOut, Sleep,
+    StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -35,6 +35,7 @@ const WORKER_SLOW_POLL_WARN_THRESHOLD: Duration = Duration::from_millis(100);
 const WORKER_SLOW_HISTORY_WARN_THRESHOLD: Duration = Duration::from_millis(200);
 const WORKER_SLOW_WAKE_WAIT_WARN_THRESHOLD: Duration = Duration::from_millis(120);
 const WORKER_SLOW_HISTORY_SUBMIT_WARN_THRESHOLD: Duration = Duration::from_millis(80);
+const DEFAULT_REPLAY_PAGE_SIZE: u32 = 256;
 
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
@@ -47,6 +48,7 @@ pub struct JungleWorker<T> {
     runner: JungleRunner<T>,
     owner_lease_ttl_ms: i64,
     max_in_flight_journeys: usize,
+    replay_page_size: u32,
 }
 
 impl<T> JungleWorker<T>
@@ -66,6 +68,7 @@ where
             runner: JungleRunner::new(jungle),
             owner_lease_ttl_ms: OWNER_LEASE_TTL_MS,
             max_in_flight_journeys: MAX_IN_FLIGHT_JOURNEYS,
+            replay_page_size: DEFAULT_REPLAY_PAGE_SIZE,
         }
     }
 
@@ -76,6 +79,11 @@ where
 
     pub fn with_max_in_flight_journeys(mut self, max_in_flight_journeys: usize) -> Self {
         self.max_in_flight_journeys = max_in_flight_journeys.max(1);
+        self
+    }
+
+    pub fn with_replay_page_size(mut self, replay_page_size: u32) -> Self {
+        self.replay_page_size = replay_page_size.max(1);
         self
     }
 
@@ -256,29 +264,16 @@ where
                     }
 
                     claimed_work_total = claimed_work_total.saturating_add(1);
-                    let history_started_at = Instant::now();
-                    let history = self.client.journey_history(journey_id).await?;
-                    let history_elapsed = history_started_at.elapsed();
-                    if history_elapsed > WORKER_SLOW_HISTORY_WARN_THRESHOLD {
-                        warn!(
-                            owner_id = %owner_id,
-                            journey_id = %journey_id,
-                            claimed_work_total,
-                            history_len = history.len(),
-                            history_elapsed_ms = history_elapsed.as_millis(),
-                            "slow journey_history fetch"
-                        );
-                    } else if claimed_work_total % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
+                    if claimed_work_total % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
                         debug!(
                             owner_id = %owner_id,
                             journey_id = %journey_id,
                             claimed_work_total,
-                            history_len = history.len(),
-                            history_elapsed_ms = history_elapsed.as_millis(),
+                            replay_page_size = self.replay_page_size,
                             suspended_count = suspended.len(),
                             active_count = active_journeys.len(),
                             in_flight_count = in_flight.len(),
-                            "worker claim/rehydrate heartbeat"
+                            "worker claim heartbeat"
                         );
                     }
                     active_journeys.insert(journey_id);
@@ -287,7 +282,8 @@ where
                         animal_id,
                         generation,
                         seed,
-                        history,
+                        self.client.clone(),
+                        self.replay_page_size,
                         &self.runner,
                         tx.clone(),
                     ));
@@ -516,7 +512,8 @@ fn run_claimed_work<'a, T>(
     animal_id: u32,
     generation: u32,
     seed: Vec<u8>,
-    history: Vec<RunnerOut>,
+    client: Box<dyn JungleClient>,
+    replay_page_size: u32,
     runner: &'a JungleRunner<T>,
     tx: RunnerChannelTx,
 ) -> InFlightFuture<'a, T>
@@ -529,7 +526,14 @@ where
 {
     Box::pin(async move {
         let outcome = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
-            animal_id, generation, seed, journey_id, history, runner, tx,
+            animal_id,
+            generation,
+            seed,
+            journey_id,
+            client,
+            replay_page_size,
+            runner,
+            tx,
         )
         .await?;
         Ok(InFlightJourneyResult::ClaimedWork {
@@ -659,7 +663,8 @@ pub trait SupportedAnimalGenerations<T> {
         generation: u32,
         seed: Vec<u8>,
         journey_id: Uuid,
-        history: Vec<RunnerOut>,
+        client: Box<dyn JungleClient>,
+        replay_page_size: u32,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>;
@@ -687,7 +692,8 @@ impl<T> SupportedAnimalGenerations<T> for list::Empty {
         _generation: u32,
         _seed: Vec<u8>,
         _journey_id: Uuid,
-        _history: Vec<RunnerOut>,
+        _client: Box<dyn JungleClient>,
+        _replay_page_size: u32,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
@@ -784,7 +790,8 @@ where
         generation: u32,
         seed: Vec<u8>,
         journey_id: Uuid,
-        history: Vec<RunnerOut>,
+        client: Box<dyn JungleClient>,
+        replay_page_size: u32,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
@@ -799,11 +806,12 @@ where
                     seed.into();
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
+                let mut replay = ReplayCursor::new(client, journey_id, replay_page_size);
                 if let Err(err) = replay_history::<T, Head, _>(
                     &mut executor,
                     initial_input.clone(),
                     journey_id,
-                    &history,
+                    &mut replay,
                     &mut tx,
                 )
                 .await
@@ -849,10 +857,172 @@ where
                     }
                 }
             } else {
-                Tail::resume_by_animal(animal_id, generation, seed, journey_id, history, runner, tx)
-                    .await
+                Tail::resume_by_animal(
+                    animal_id,
+                    generation,
+                    seed,
+                    journey_id,
+                    client,
+                    replay_page_size,
+                    runner,
+                    tx,
+                )
+                .await
             }
         })
+    }
+}
+
+struct ReplayCursor {
+    client: Box<dyn JungleClient>,
+    journey_id: Uuid,
+    after_sequence_id: Option<u64>,
+    snapshot_end_sequence_id: Option<u64>,
+    page_size: u32,
+    buffer: VecDeque<JourneyEvent>,
+    fetched_pages: u64,
+    fetched_events: u64,
+    exhausted: bool,
+}
+
+impl ReplayCursor {
+    fn new(client: Box<dyn JungleClient>, journey_id: Uuid, page_size: u32) -> Self {
+        Self {
+            client,
+            journey_id,
+            after_sequence_id: None,
+            snapshot_end_sequence_id: None,
+            page_size: page_size.max(1),
+            buffer: VecDeque::new(),
+            fetched_pages: 0,
+            fetched_events: 0,
+            exhausted: false,
+        }
+    }
+
+    async fn peek(&mut self) -> Result<Option<RunnerOut>, ExecutorError> {
+        self.fill_buffer_if_needed().await?;
+        Ok(self.buffer.front().map(|event| event.event.clone()))
+    }
+
+    async fn discard_front(&mut self) -> Result<bool, ExecutorError> {
+        self.fill_buffer_if_needed().await?;
+        let Some(event) = self.buffer.pop_front() else {
+            return Ok(false);
+        };
+        self.after_sequence_id = Some(event.sequence_id);
+        if self.snapshot_end_sequence_id == Some(event.sequence_id) {
+            self.exhausted = true;
+        }
+        Ok(true)
+    }
+
+    async fn fill_buffer_if_needed(&mut self) -> Result<(), ExecutorError> {
+        if !self.buffer.is_empty() || self.exhausted {
+            return Ok(());
+        }
+
+        if self
+            .snapshot_end_sequence_id
+            .is_some_and(|snapshot_end| self.after_sequence_id >= Some(snapshot_end))
+        {
+            self.exhausted = true;
+            return Ok(());
+        }
+
+        let fetch_started_at = Instant::now();
+        let page = self
+            .client
+            .journey_replay_page(
+                self.journey_id,
+                self.after_sequence_id,
+                self.snapshot_end_sequence_id,
+                self.page_size,
+            )
+            .await?;
+        let fetch_elapsed = fetch_started_at.elapsed();
+        self.fetched_pages = self.fetched_pages.saturating_add(1);
+        self.fetched_events = self
+            .fetched_events
+            .saturating_add(u64::try_from(page.events.len()).unwrap_or(u64::MAX));
+
+        if let Some(expected) = self.snapshot_end_sequence_id {
+            if page.snapshot_end_sequence_id != Some(expected) {
+                return Err(ExecutorError::ClientTransport(format!(
+                    "journey replay snapshot changed during cursor fetch (journey={}, expected_snapshot_end={}, actual_snapshot_end={:?})",
+                    self.journey_id, expected, page.snapshot_end_sequence_id
+                )));
+            }
+        } else {
+            self.snapshot_end_sequence_id = page.snapshot_end_sequence_id;
+        }
+
+        if fetch_elapsed > WORKER_SLOW_HISTORY_WARN_THRESHOLD {
+            warn!(
+                journey_id = %self.journey_id,
+                after_sequence_id = self.after_sequence_id.unwrap_or(0),
+                snapshot_end_sequence_id = self.snapshot_end_sequence_id.unwrap_or(0),
+                page_size = self.page_size,
+                page_len = page.events.len(),
+                fetched_pages = self.fetched_pages,
+                fetched_events = self.fetched_events,
+                fetch_elapsed_ms = fetch_elapsed.as_millis(),
+                "slow journey replay page fetch"
+            );
+        } else if self.fetched_pages % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
+            debug!(
+                journey_id = %self.journey_id,
+                after_sequence_id = self.after_sequence_id.unwrap_or(0),
+                snapshot_end_sequence_id = self.snapshot_end_sequence_id.unwrap_or(0),
+                page_size = self.page_size,
+                page_len = page.events.len(),
+                fetched_pages = self.fetched_pages,
+                fetched_events = self.fetched_events,
+                fetch_elapsed_ms = fetch_elapsed.as_millis(),
+                "journey replay page fetch heartbeat"
+            );
+        }
+
+        let snapshot_end_sequence_id = self.snapshot_end_sequence_id;
+        for event in page.events {
+            if self.after_sequence_id.is_some_and(|after| event.sequence_id <= after) {
+                return Err(ExecutorError::ClientTransport(format!(
+                    "journey replay cursor received stale event (journey={}, after_sequence_id={}, event_sequence_id={})",
+                    self.journey_id,
+                    self.after_sequence_id.unwrap_or(0),
+                    event.sequence_id
+                )));
+            }
+            if snapshot_end_sequence_id.is_some_and(|snapshot_end| event.sequence_id > snapshot_end) {
+                return Err(ExecutorError::ClientTransport(format!(
+                    "journey replay cursor received event beyond snapshot end (journey={}, snapshot_end_sequence_id={}, event_sequence_id={})",
+                    self.journey_id,
+                    snapshot_end_sequence_id.unwrap_or(0),
+                    event.sequence_id
+                )));
+            }
+            self.buffer.push_back(event);
+        }
+
+        if self.buffer.is_empty() {
+            if self.snapshot_end_sequence_id.is_none()
+                || self
+                    .snapshot_end_sequence_id
+                    .is_some_and(|snapshot_end| self.after_sequence_id >= Some(snapshot_end))
+            {
+                self.exhausted = true;
+                return Ok(());
+            }
+
+            return Err(ExecutorError::ClientTransport(format!(
+                "journey replay cursor hit empty page before reaching snapshot end (journey={}, after_sequence_id={}, snapshot_end_sequence_id={})",
+                self.journey_id,
+                self.after_sequence_id.unwrap_or(0),
+                self.snapshot_end_sequence_id.unwrap_or(0)
+            )));
+        }
+
+        Ok(())
     }
 }
 
@@ -860,7 +1030,7 @@ async fn replay_history<T, A, Initial>(
     executor: &mut ContextExecutor<T, A>,
     initial_input: Initial,
     journey_id: Uuid,
-    history: &[RunnerOut],
+    replay: &mut ReplayCursor,
     tx: &mut RunnerChannelTx,
 ) -> Result<(), ExecutorError>
 where
@@ -870,11 +1040,10 @@ where
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     Initial: Serialize + Clone,
 {
-    let mut index = 0usize;
     let no_effect_type = core::any::type_name::<NoEffect>();
     let sleep_effect_type = core::any::type_name::<Sleep>();
     while !executor.is_complete() {
-        if index >= history.len() {
+        if replay.peek().await?.is_none() {
             break;
         }
 
@@ -888,25 +1057,26 @@ where
         let effect_type = request.effect_type();
 
         // Appearance snapshots are informational and can interleave with step history.
-        while is_informational_history_event(history.get(index), journey_id) {
-            index = index.saturating_add(1);
+        while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
+            let _ = replay.discard_front().await?;
         }
         // Non-sleep requests should ignore stale sleep bookkeeping records that may remain
         // after restart recovery.
         while effect_type != sleep_effect_type
             && (matches!(
-                history.get(index),
-                Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+                replay.peek().await?,
+                Some(RunnerOut::SleepScheduled { uuid, .. }) if uuid == journey_id
             ) || matches!(
-                history.get(index),
-                Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
+                replay.peek().await?,
+                Some(RunnerOut::SleepFired { uuid, .. }) if uuid == journey_id
             ))
         {
-            index = index.saturating_add(1);
+            let _ = replay.discard_front().await?;
         }
 
+        let current_event = replay.peek().await?;
         let matched_effect_input = matches!(
-            history.get(index),
+            current_event.as_ref(),
             Some(RunnerOut::EffectInput {
                 node_id,
                 data,
@@ -914,25 +1084,25 @@ where
             }) if *uuid == journey_id && *node_id == request_node_id && data.as_slice() == expected_input
         );
         if matched_effect_input {
-            index = index.saturating_add(1);
+            let _ = replay.discard_front().await?;
         } else {
             // Recovery path: tolerate history records where EffectInput is missing but completion/sleep bookkeeping exists.
             let has_recoverable_cursor_event = matches!(
-                history.get(index),
+                current_event.as_ref(),
                 Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
                     if *uuid == journey_id && *node_id == request_node_id
             ) || matches!(
-                history.get(index),
+                current_event.as_ref(),
                 Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
                     if *uuid == journey_id && *node_id == request_node_id
             ) || (effect_type == sleep_effect_type
                 && matches!(
-                    history.get(index),
+                    current_event.as_ref(),
                     Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
                 ))
                 || (effect_type == sleep_effect_type
                     && matches!(
-                        history.get(index),
+                        current_event.as_ref(),
                         Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
                     ));
 
@@ -942,45 +1112,45 @@ where
             } else {
                 return Err(ExecutorError::ClientTransport(
                     format!(
-                        "history replay expected EffectInput event (journey={journey_id}, node_id={request_node_id}, effect_type={effect_type}, history_index={index}, history_event={:?})",
-                        history.get(index)
+                        "history replay expected EffectInput event (journey={journey_id}, node_id={request_node_id}, effect_type={effect_type}, after_sequence_id={:?}, history_event={current_event:?})",
+                        replay.after_sequence_id
                     ),
                 ));
             }
         }
 
         // Appearance snapshots can also be emitted after completion events.
-        while is_informational_history_event(history.get(index), journey_id) {
-            index = index.saturating_add(1);
+        while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
+            let _ = replay.discard_front().await?;
         }
 
         let completion = if effect_type == sleep_effect_type {
             while matches!(
-                history.get(index),
-                Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+                replay.peek().await?,
+                Some(RunnerOut::SleepScheduled { uuid, .. }) if uuid == journey_id
             ) || matches!(
-                history.get(index),
+                replay.peek().await?,
                 Some(RunnerOut::NodeLifecycle(node)) if node.uuid == journey_id
             ) || matches!(
-                history.get(index),
-                Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
+                replay.peek().await?,
+                Some(RunnerOut::Appearance { uuid, .. }) if uuid == journey_id
             ) {
-                index = index.saturating_add(1);
+                let _ = replay.discard_front().await?;
             }
 
-            match history.get(index) {
-                Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id => {
-                    index = index.saturating_add(1);
+            match replay.peek().await? {
+                Some(RunnerOut::SleepFired { uuid, .. }) if uuid == journey_id => {
+                    let _ = replay.discard_front().await?;
                     while matches!(
-                        history.get(index),
+                        replay.peek().await?,
                         Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
-                            if *uuid == journey_id && *node_id == request_node_id
+                            if uuid == journey_id && node_id == request_node_id
                     ) || matches!(
-                        history.get(index),
+                        replay.peek().await?,
                         Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
-                            if *uuid == journey_id && *node_id == request_node_id
+                            if uuid == journey_id && node_id == request_node_id
                     ) {
-                        index = index.saturating_add(1);
+                        let _ = replay.discard_front().await?;
                     }
                     let sleep_out = postcard::to_allocvec(&())
                         .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -990,17 +1160,17 @@ where
                     node_id,
                     data,
                     uuid,
-                }) if *uuid == journey_id && *node_id == request_node_id => {
-                    index = index.saturating_add(1);
-                    Ok(data.clone())
+                }) if uuid == journey_id && node_id == request_node_id => {
+                    let _ = replay.discard_front().await?;
+                    Ok(data)
                 }
                 Some(RunnerOut::EffectFailureOutput {
                     node_id,
                     data,
                     uuid,
-                }) if *uuid == journey_id && *node_id == request_node_id => {
-                    index = index.saturating_add(1);
-                    Err(data.clone())
+                }) if uuid == journey_id && node_id == request_node_id => {
+                    let _ = replay.discard_front().await?;
+                    Err(data)
                 }
                 _ => {
                     let completion = request.run().await?;
@@ -1009,22 +1179,22 @@ where
                 }
             }
         } else {
-            match history.get(index) {
+            match replay.peek().await? {
                 Some(RunnerOut::EffectSuccessOutput {
                     node_id,
                     data,
                     uuid,
-                }) if *uuid == journey_id && *node_id == request_node_id => {
-                    index = index.saturating_add(1);
-                    Ok(data.clone())
+                }) if uuid == journey_id && node_id == request_node_id => {
+                    let _ = replay.discard_front().await?;
+                    Ok(data)
                 }
                 Some(RunnerOut::EffectFailureOutput {
                     node_id,
                     data,
                     uuid,
-                }) if *uuid == journey_id && *node_id == request_node_id => {
-                    index = index.saturating_add(1);
-                    Err(data.clone())
+                }) if uuid == journey_id && node_id == request_node_id => {
+                    let _ = replay.discard_front().await?;
+                    Err(data)
                 }
                 _ => {
                     let completion = request.run().await?;

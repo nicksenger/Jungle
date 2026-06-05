@@ -173,6 +173,42 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::JourneyReplayPage {
+                journey_id,
+                after_sequence_id,
+                snapshot_end_sequence_id,
+                limit,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let page = self
+                        .store
+                        .journey_replay_page(
+                            journey_id,
+                            after_sequence_id,
+                            snapshot_end_sequence_id,
+                            limit,
+                        )
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::JourneyReplayPage(page)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (
+                        journey_id,
+                        after_sequence_id,
+                        snapshot_end_sequence_id,
+                        limit,
+                    );
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "journey_replay_page is unavailable without a persistence backend"
+                            .to_string(),
+                    )));
+                }
+            }
             Some(WireIn::JourneyStatus(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
@@ -846,6 +882,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
     match input {
         WireIn::CreateJourney { .. } => "CreateJourney",
         WireIn::JourneyHistory(..) => "JourneyHistory",
+        WireIn::JourneyReplayPage { .. } => "JourneyReplayPage",
         WireIn::JourneyStatus(..) => "JourneyStatus",
         WireIn::ListJourneys { .. } => "ListJourneys",
         WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",

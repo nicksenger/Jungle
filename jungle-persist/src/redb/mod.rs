@@ -3,8 +3,9 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, NodeLifecycle, OwnerWake,
-    RunnerOut, RunnerUpdateOut, SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyEvent, JourneyRecord, JourneyReplayPage, JourneyStatus,
+    JourneyUpdateEvent, NodeLifecycle, OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal,
+    Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -317,6 +318,106 @@ impl JungleStore for RedbStore {
             history.push(decode_runner_out(journey_id, kind, data)?);
         }
         Ok(history)
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage> {
+        let fetch_started_at = Instant::now();
+        let limit = limit.max(1) as usize;
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_replay_page begin read failed: {err}"
+            ))
+        })?;
+        let snapshot_end_sequence_id = match snapshot_end_sequence_id {
+            Some(sequence_id) => Some(sequence_id),
+            None => {
+                let sequences = read_tx.open_table(JOURNEY_EVENT_SEQUENCE_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb journey_replay_page open sequence table failed: {err}"
+                    ))
+                })?;
+                let key = &journey_id.as_bytes()[..];
+                sequences
+                    .get(key)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb journey_replay_page read sequence failed: {err}"
+                        ))
+                    })?
+                    .map(|value| value.value())
+                    .and_then(|next_sequence| next_sequence.checked_sub(1))
+            }
+        };
+
+        let events = if let Some(snapshot_end_sequence_id) = snapshot_end_sequence_id {
+            if after_sequence_id.is_some_and(|after| after >= snapshot_end_sequence_id) {
+                Vec::new()
+            } else {
+                let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb journey_replay_page open events table failed: {err}"
+                    ))
+                })?;
+                let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
+                let start_key = encode_event_key(journey_id, start_sequence_id);
+                let end_key = encode_event_key(journey_id, snapshot_end_sequence_id);
+                let iter = events
+                    .range(start_key.as_slice()..=end_key.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb journey_replay_page range events failed: {err}"
+                        ))
+                    })?;
+
+                let mut out = Vec::with_capacity(limit);
+                for entry in iter.take(limit) {
+                    let (key, value) = entry.map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb journey_replay_page read events entry failed: {err}"
+                        ))
+                    })?;
+                    let (_, sequence_id) = decode_event_key(
+                        key.value(),
+                        "redb journey_replay_page decode event key",
+                    )?;
+                    let (kind, data) = decode_event_value(
+                        value.value(),
+                        "redb journey_replay_page decode event value",
+                    )?;
+                    out.push(JourneyEvent {
+                        sequence_id,
+                        event: decode_runner_out(journey_id, kind, data)?,
+                    });
+                }
+                out
+            }
+        } else {
+            Vec::new()
+        };
+
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        if fetch_elapsed_ms > REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                snapshot_end_sequence_id = snapshot_end_sequence_id.unwrap_or(0),
+                limit,
+                events_len = events.len(),
+                fetch_elapsed_ms,
+                "slow redb journey_replay_page query"
+            );
+        }
+
+        Ok(JourneyReplayPage {
+            snapshot_end_sequence_id,
+            events,
+        })
     }
 
     async fn journey_update_events_since(

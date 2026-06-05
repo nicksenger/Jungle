@@ -42,8 +42,9 @@ use serde::{Deserialize, Serialize};
 pub use sleep::{Sleep, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{
-    BackendError, JourneyEvent, JourneyRecord, JourneyStatus, JourneyUpdateEvent, NodeLifecycle,
-    NodeLifecyclePhase, RunnerOut, RunnerUpdateOut, WireIn, WireOut, Work,
+    BackendError, JourneyEvent, JourneyRecord, JourneyReplayPage, JourneyStatus,
+    JourneyUpdateEvent, NodeLifecycle, NodeLifecyclePhase, RunnerOut, RunnerUpdateOut, WireIn,
+    WireOut, Work,
 };
 pub use transport::{ClaimedPerturbable, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};

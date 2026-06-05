@@ -63,6 +63,12 @@ pub struct JourneyEvent {
     pub event: RunnerOut,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyReplayPage {
+    pub snapshot_end_sequence_id: Option<u64>,
+    pub events: Vec<JourneyEvent>,
+}
+
 /// Lightweight event payload for journey update subscriptions.
 ///
 /// Effect variants intentionally omit effect payload bytes to keep subscription
@@ -168,6 +174,12 @@ pub enum WireIn {
         seed: Vec<u8>,
     },
     JourneyHistory(Uuid),
+    JourneyReplayPage {
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    },
     JourneyStatus(Uuid),
     ListJourneys {
         namespace: String,
@@ -223,6 +235,7 @@ pub enum WireIn {
 pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyHistory(Vec<RunnerOut>),
+    JourneyReplayPage(JourneyReplayPage),
     JourneyStatus(JourneyStatus),
     Journeys(Vec<JourneyRecord>),
     JourneyUpdate(JourneyUpdateEvent),

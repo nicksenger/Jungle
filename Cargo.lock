@@ -3292,6 +3292,7 @@ dependencies = [
 name = "jungle-test"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "futures",
  "jungle-persist",
