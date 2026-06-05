@@ -1,7 +1,9 @@
 use crate::effect::{
-    FinalizeIterationSamples, FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome,
-    LogIterationTimingEffect, LogIterationTimingInput, LogIterationTimingOutput,
-    OptimizeInstrument, OptimizeInstrumentInput, OptimizeInstrumentOutcome, SearchTreeSelect,
+    BuildOptimizationPrompt, BuildOptimizationPromptInput, FinalizeIterationSamples,
+    FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome, LogIterationTimingEffect,
+    LogIterationTimingInput, LogIterationTimingOutput, PreparePromptCandidates,
+    PreparePromptCandidatesInput, PreparePromptCandidatesOutcome, RequestPromptCandidates,
+    RequestPromptCandidatesInput, RequestPromptCandidatesOutcome, SearchTreeSelect,
     SearchTreeSubmit,
 };
 use crate::mcts::Submission;
@@ -269,20 +271,20 @@ where
     }
 }
 
-pub struct OptimizeSelectedInstrumentFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
+pub struct BuildOptimizationPromptFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
 #[jungle::action]
-impl<Marker, Focus> Action for OptimizeSelectedInstrumentFocused<Marker, Focus>
+impl<Marker, Focus> Action for BuildOptimizationPromptFocused<Marker, Focus>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
     Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
 {
-    type Effect = OptimizeInstrument;
+    type Effect = BuildOptimizationPrompt;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &Focus, _input: Self::Input) -> OptimizeInstrumentInput {
+    fn emit(state: &Focus, _input: Self::Input) -> BuildOptimizationPromptInput {
         let instrument_state = state.instrument_state();
-        OptimizeInstrumentInput {
+        BuildOptimizationPromptInput {
             iteration_id: instrument_state.iteration_id.clone(),
             instrument: Marker::INSTRUMENT,
             target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
@@ -290,8 +292,42 @@ where
             code_branch: instrument_state.selected_branch.clone(),
             prompt_attempt: instrument_state.prompt_attempt,
             retry_reason: instrument_state.last_retry_reason.clone(),
-            sample_path: instrument_state.sample_path.clone(),
-            spectrogram_path: instrument_state.spectrogram_path.clone(),
+        }
+    }
+
+    fn absorb(
+        state: &mut Focus,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let prompt = output.map_err(Failure::from)?;
+        let instrument_state = state.instrument_state_mut();
+        instrument_state.pending_prompt = Some(prompt);
+        instrument_state.pending_prompt_candidates.clear();
+        Ok(())
+    }
+}
+
+pub struct RequestPromptCandidatesFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
+#[jungle::action]
+impl<Marker, Focus> Action for RequestPromptCandidatesFocused<Marker, Focus>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
+{
+    type Effect = RequestPromptCandidates;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &Focus, _input: Self::Input) -> RequestPromptCandidatesInput {
+        let instrument_state = state.instrument_state();
+        RequestPromptCandidatesInput {
+            prompt: instrument_state
+                .pending_prompt
+                .clone()
+                .expect("lyrebird prompt request step requires a prepared prompt"),
+            iteration_id: instrument_state.iteration_id.clone(),
+            instrument: Marker::INSTRUMENT,
+            prompt_attempt: instrument_state.prompt_attempt.saturating_add(1),
             instrument_parallelism: instrument_state.instrument_parallelism,
         }
     }
@@ -300,12 +336,57 @@ where
         state: &mut Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let OptimizeInstrumentOutcome {
+        let RequestPromptCandidatesOutcome { responses } = output.map_err(Failure::from)?;
+        let instrument_state = state.instrument_state_mut();
+        instrument_state.pending_prompt = None;
+        instrument_state.pending_prompt_candidates = responses;
+        Ok(())
+    }
+}
+
+pub struct PreparePromptCandidatesFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
+#[jungle::action]
+impl<Marker, Focus> Action for PreparePromptCandidatesFocused<Marker, Focus>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
+{
+    type Effect = PreparePromptCandidates;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &Focus, _input: Self::Input) -> PreparePromptCandidatesInput {
+        let instrument_state = state.instrument_state();
+        let current_source = instrument_state
+            .selected_branch
+            .last()
+            .map(|node| node.code.source.clone())
+            .unwrap_or_default();
+        PreparePromptCandidatesInput {
+            iteration_id: instrument_state.iteration_id.clone(),
+            instrument: Marker::INSTRUMENT,
+            prompt_attempt: instrument_state.prompt_attempt.saturating_add(1),
+            tool_name: Marker::INSTRUMENT.tool_name().to_owned(),
+            current_source,
+            sample_path: instrument_state.sample_path.clone(),
+            spectrogram_path: instrument_state.spectrogram_path.clone(),
+            instrument_parallelism: instrument_state.instrument_parallelism,
+            responses: instrument_state.pending_prompt_candidates.clone(),
+        }
+    }
+
+    fn absorb(
+        state: &mut Focus,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let PreparePromptCandidatesOutcome {
             candidates,
             retry_reason,
         } = output.map_err(Failure::from)?;
         let instrument_state = state.instrument_state_mut();
         instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
+        instrument_state.pending_prompt = None;
+        instrument_state.pending_prompt_candidates.clear();
         instrument_state.compile_ready = false;
         instrument_state.pending_generated_patch = None;
         instrument_state.pending_generated_source = None;

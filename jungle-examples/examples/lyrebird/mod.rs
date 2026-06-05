@@ -23,12 +23,13 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, FinalizeIterationRender, FlattenEither, FlattenLyrebirdPromptPhase,
-    InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
-    OptimizeSelectedInstrumentFocused, SeedLyrebirdState, SelectDspBranchFocused,
-    SetCurrentInstrument, SkipInstrumentPromptFocused, SkipInstrumentSubmit, SubmitDspBranch,
+    BeginIteration, BuildOptimizationPromptFocused, FinalizeIterationRender, FlattenEither,
+    FlattenLyrebirdPromptPhase, InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming,
+    LyrebirdLoopForever, PreparePromptCandidatesFocused, RequestPromptCandidatesFocused,
+    SeedLyrebirdState, SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
+    SkipInstrumentSubmit, SubmitDspBranch,
 };
-use crate::tokens::Tool;
+use crate::tokens::{Prompt, Tool};
 
 const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 64;
@@ -401,6 +402,10 @@ pub struct LyrebirdInstrumentState {
     pub prompt_attempt: u32,
     #[serde(default)]
     pub iteration_id: String,
+    #[serde(default)]
+    pub pending_prompt: Option<Prompt>,
+    #[serde(default)]
+    pub pending_prompt_candidates: Vec<crate::effect::PromptCandidateResponse>,
     pub skipped_this_iteration: bool,
     pub last_retry_reason: Option<String>,
     pub pending_generated_patch: Option<LyrebirdPatch>,
@@ -469,6 +474,8 @@ impl LyrebirdInstrumentState {
         self.instrument_parallelism = instrument_parallelism;
         self.prompt_attempt = 0;
         self.iteration_id = iteration_id.to_owned();
+        self.pending_prompt = None;
+        self.pending_prompt_candidates.clear();
         self.skipped_this_iteration = false;
         self.last_retry_reason = None;
         self.pending_generated_patch = None;
@@ -765,7 +772,9 @@ macro_rules! lyrebird_prompt_flow {
         #[derive(Flow)]
         pub struct $enabled(
             Step<SelectDspBranchFocused<$marker, $focus>>,
-            Step<OptimizeSelectedInstrumentFocused<$marker, $focus>>,
+            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
+            Step<RequestPromptCandidatesFocused<$marker, $focus>>,
+            Step<PreparePromptCandidatesFocused<$marker, $focus>>,
         );
 
         #[derive(Flow)]
@@ -2314,6 +2323,18 @@ mod tests {
             latest_generated_similarity: Some(0.8),
             compile_ready: true,
             prompt_attempt: 3,
+            pending_prompt: Some(Prompt {
+                messages: vec![crate::tokens::Message {
+                    role: "system".to_owned(),
+                    contents: vec![crate::tokens::Content::Text("pending".to_owned())],
+                }],
+                tools: Vec::new(),
+            }),
+            pending_prompt_candidates: vec![crate::effect::PromptCandidateResponse {
+                candidate_index: 0,
+                tool_calls: None,
+                retry_reason: Some("retry".to_owned()),
+            }],
             skipped_this_iteration: true,
             last_retry_reason: Some("oops".to_owned()),
             last_similarity: 0.8,
@@ -2347,6 +2368,8 @@ mod tests {
         );
         assert!(!state.compile_ready);
         assert_eq!(state.prompt_attempt, 0);
+        assert_eq!(state.pending_prompt, None);
+        assert!(state.pending_prompt_candidates.is_empty());
         assert!(!state.skipped_this_iteration);
         assert_eq!(state.last_retry_reason, None);
         assert_eq!(state.last_similarity, 0.0);

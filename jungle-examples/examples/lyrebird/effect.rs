@@ -112,72 +112,6 @@ pub struct PromptModelInput {
     pub candidate_index: usize,
 }
 
-pub struct PromptModel;
-#[effect(id = 5)]
-impl Effect<()> for PromptModel {
-    type In = PromptModelInput;
-    type Out = Vec<ToolCall>;
-    type Err = String;
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("PromptModel requires PulseCodePurgatory runtime context".to_owned()) }
-    }
-}
-
-#[effect(id = 5)]
-impl Effect<PulseCodePurgatory> for PromptModel {
-    type In = PromptModelInput;
-    type Out = Vec<ToolCall>;
-    type Err = String;
-
-    fn effect(
-        jungle: &PulseCodePurgatory,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move {
-            if input.candidate_index == 0 {
-                debug!(
-                    iteration_id = %input.iteration_id,
-                    instrument = input.instrument.slug(),
-                    prompt_attempt = input.prompt_attempt,
-                    prompt = %render_prompt_for_log(&input.prompt),
-                    "sending lyrebird prompt model request"
-                );
-            }
-            let prompt_started_at = Instant::now();
-            let response = jungle
-                .predict(input.prompt, Some(input.instrument))
-                .await
-                .map_err(|err| err.to_string());
-            let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();
-            match &response {
-                Ok(tool_calls) => info!(
-                    iteration_id = %input.iteration_id,
-                    instrument = input.instrument.slug(),
-                    prompt_attempt = input.prompt_attempt,
-                    candidate_index = input.candidate_index,
-                    prompt_elapsed_ms,
-                    tool_call_count = tool_calls.len(),
-                    "received prompt model response"
-                ),
-                Err(error) => info!(
-                    iteration_id = %input.iteration_id,
-                    instrument = input.instrument.slug(),
-                    prompt_attempt = input.prompt_attempt,
-                    candidate_index = input.candidate_index,
-                    prompt_elapsed_ms,
-                    error,
-                    "prompt model request failed"
-                ),
-            }
-            response
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
@@ -227,6 +161,89 @@ impl<J> Effect<J> for PrepareToolCalls {
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move { prepare_tool_calls(input).await }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PromptCandidateResponse {
+    pub candidate_index: usize,
+    pub tool_calls: Option<Vec<ToolCall>>,
+    pub retry_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestPromptCandidatesInput {
+    pub prompt: Prompt,
+    pub iteration_id: String,
+    pub instrument: LyrebirdInstrument,
+    pub prompt_attempt: u32,
+    pub instrument_parallelism: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestPromptCandidatesOutcome {
+    pub responses: Vec<PromptCandidateResponse>,
+}
+
+pub struct RequestPromptCandidates;
+#[effect(id = 16)]
+impl Effect<()> for RequestPromptCandidates {
+    type In = RequestPromptCandidatesInput;
+    type Out = RequestPromptCandidatesOutcome;
+    type Err = String;
+
+    fn effect(
+        _jungle: &(),
+        _input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async {
+            Err("RequestPromptCandidates requires PulseCodePurgatory runtime context".to_owned())
+        }
+    }
+}
+
+#[effect(id = 16)]
+impl Effect<PulseCodePurgatory> for RequestPromptCandidates {
+    type In = RequestPromptCandidatesInput;
+    type Out = RequestPromptCandidatesOutcome;
+    type Err = String;
+
+    fn effect(
+        jungle: &PulseCodePurgatory,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { request_prompt_candidates(jungle, input).await }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PreparePromptCandidatesInput {
+    pub iteration_id: String,
+    pub instrument: LyrebirdInstrument,
+    pub prompt_attempt: u32,
+    pub tool_name: String,
+    pub current_source: String,
+    pub sample_path: String,
+    pub spectrogram_path: String,
+    pub instrument_parallelism: usize,
+    pub responses: Vec<PromptCandidateResponse>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PreparePromptCandidatesOutcome {
+    pub candidates: Vec<LyrebirdPreparedCandidate>,
+    pub retry_reason: Option<String>,
+}
+
+pub struct PreparePromptCandidates;
+#[effect(id = 18)]
+impl<J> Effect<J> for PreparePromptCandidates {
+    type In = PreparePromptCandidatesInput;
+    type Out = PreparePromptCandidatesOutcome;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { prepare_prompt_candidates(input).await }
     }
 }
 
@@ -329,55 +346,6 @@ where
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move { <PulseCodePurgatory as SearchTree<Marker>>::submit(jungle, input).await }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OptimizeInstrumentInput {
-    pub iteration_id: String,
-    pub instrument: LyrebirdInstrument,
-    pub target_spectrogram_path: String,
-    pub target_audio_metrics: LyrebirdAudioMetrics,
-    pub code_branch: Vec<LyrebirdBranchNode>,
-    pub prompt_attempt: u32,
-    pub retry_reason: Option<String>,
-    pub sample_path: String,
-    pub spectrogram_path: String,
-    pub instrument_parallelism: usize,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OptimizeInstrumentOutcome {
-    pub candidates: Vec<LyrebirdPreparedCandidate>,
-    pub retry_reason: Option<String>,
-}
-
-pub struct OptimizeInstrument;
-#[effect(id = 16)]
-impl Effect<()> for OptimizeInstrument {
-    type In = OptimizeInstrumentInput;
-    type Out = OptimizeInstrumentOutcome;
-    type Err = String;
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("OptimizeInstrument requires PulseCodePurgatory runtime context".to_owned()) }
-    }
-}
-
-#[effect(id = 16)]
-impl Effect<PulseCodePurgatory> for OptimizeInstrument {
-    type In = OptimizeInstrumentInput;
-    type Out = OptimizeInstrumentOutcome;
-    type Err = String;
-
-    fn effect(
-        jungle: &PulseCodePurgatory,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { optimize_instrument(jungle, input).await }
     }
 }
 
@@ -855,55 +823,106 @@ async fn finalize_iteration_samples(
     Ok(FinalizeIterationSamplesOutcome { rendered })
 }
 
-async fn optimize_instrument(
+async fn request_prompt_candidates(
     jungle: &PulseCodePurgatory,
-    input: OptimizeInstrumentInput,
-) -> Result<OptimizeInstrumentOutcome, String> {
-    let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
-        iteration_id: input.iteration_id.clone(),
-        instrument: input.instrument,
-        target_spectrogram_path: input.target_spectrogram_path.clone(),
-        target_audio_metrics: input.target_audio_metrics,
-        code_branch: input.code_branch.clone(),
-        prompt_attempt: input.prompt_attempt,
-        retry_reason: input.retry_reason.clone(),
-    })?;
-    let prompt_attempt = input.prompt_attempt.saturating_add(1);
-    let current_source = input
-        .code_branch
-        .last()
-        .map(|node| node.code.source.clone())
-        .unwrap_or_default();
-
+    input: RequestPromptCandidatesInput,
+) -> Result<RequestPromptCandidatesOutcome, String> {
     let prompt_results = join_all((0..input.instrument_parallelism).map(|candidate_index| {
-        request_prompt_candidate(
+        request_prompt_model_candidate(
             jungle,
-            prompt.clone(),
-            input.iteration_id.clone(),
-            input.instrument,
-            prompt_attempt,
-            candidate_index,
+            PromptModelInput {
+                prompt: input.prompt.clone(),
+                iteration_id: input.iteration_id.clone(),
+                instrument: input.instrument,
+                prompt_attempt: input.prompt_attempt,
+                candidate_index,
+            },
         )
     }))
     .await;
 
+    Ok(RequestPromptCandidatesOutcome {
+        responses: prompt_results
+            .into_iter()
+            .enumerate()
+            .map(|(candidate_index, result)| match result {
+                Ok(tool_calls) => PromptCandidateResponse {
+                    candidate_index,
+                    tool_calls: Some(tool_calls),
+                    retry_reason: None,
+                },
+                Err(err) => PromptCandidateResponse {
+                    candidate_index,
+                    tool_calls: None,
+                    retry_reason: Some(err),
+                },
+            })
+            .collect(),
+    })
+}
+
+async fn request_prompt_model_candidate(
+    jungle: &PulseCodePurgatory,
+    input: PromptModelInput,
+) -> Result<Vec<ToolCall>, String> {
+    if input.candidate_index == 0 {
+        debug!(
+            iteration_id = %input.iteration_id,
+            instrument = input.instrument.slug(),
+            prompt_attempt = input.prompt_attempt,
+            prompt = %render_prompt_for_log(&input.prompt),
+            "sending lyrebird prompt model request"
+        );
+    }
+    let prompt_started_at = Instant::now();
+    let response = jungle
+        .predict(input.prompt, Some(input.instrument))
+        .await
+        .map_err(|err| err.to_string());
+    let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();
+    match &response {
+        Ok(tool_calls) => info!(
+            iteration_id = %input.iteration_id,
+            instrument = input.instrument.slug(),
+            prompt_attempt = input.prompt_attempt,
+            candidate_index = input.candidate_index,
+            prompt_elapsed_ms,
+            tool_call_count = tool_calls.len(),
+            "received prompt model response"
+        ),
+        Err(error) => info!(
+            iteration_id = %input.iteration_id,
+            instrument = input.instrument.slug(),
+            prompt_attempt = input.prompt_attempt,
+            candidate_index = input.candidate_index,
+            prompt_elapsed_ms,
+            error,
+            "prompt model request failed"
+        ),
+    }
+    response
+}
+
+async fn prepare_prompt_candidates(
+    input: PreparePromptCandidatesInput,
+) -> Result<PreparePromptCandidatesOutcome, String> {
     let mut candidates = Vec::new();
     let mut retry_reasons = Vec::new();
-    for (candidate_index, result) in prompt_results.into_iter().enumerate() {
-        let tool_calls = match result {
-            Ok(tool_calls) => tool_calls,
-            Err(err) => {
-                retry_reasons.push(err);
-                continue;
+
+    for response in input.responses {
+        let Some(tool_calls) = response.tool_calls else {
+            if let Some(retry_reason) = response.retry_reason {
+                retry_reasons.push(retry_reason);
             }
+            continue;
         };
 
         let prepared = prepare_tool_calls(PrepareToolCallsInput {
             iteration_id: input.iteration_id.clone(),
             instrument: input.instrument,
-            prompt_attempt,
-            tool_name: input.instrument.tool_name().to_owned(),
-            current_source: current_source.clone(),
+            prompt_attempt: input.prompt_attempt,
+            tool_name: input.tool_name.clone(),
+            current_source: input.current_source.clone(),
             tool_calls,
         })
         .await?;
@@ -925,7 +944,7 @@ async fn optimize_instrument(
             &input.sample_path,
             &input.spectrogram_path,
             input.instrument_parallelism,
-            candidate_index,
+            response.candidate_index,
         );
         candidates.push(LyrebirdPreparedCandidate {
             patch: generated_patch,
@@ -935,7 +954,7 @@ async fn optimize_instrument(
         });
     }
 
-    Ok(OptimizeInstrumentOutcome {
+    Ok(PreparePromptCandidatesOutcome {
         retry_reason: if candidates.is_empty() {
             summarize_retry_reasons(&retry_reasons)
         } else {
@@ -943,27 +962,6 @@ async fn optimize_instrument(
         },
         candidates,
     })
-}
-
-async fn request_prompt_candidate(
-    jungle: &PulseCodePurgatory,
-    prompt: Prompt,
-    iteration_id: String,
-    instrument: LyrebirdInstrument,
-    prompt_attempt: u32,
-    candidate_index: usize,
-) -> Result<Vec<ToolCall>, String> {
-    <PromptModel as jungle_sdk::Effect<PulseCodePurgatory>>::effect(
-        jungle,
-        PromptModelInput {
-            prompt,
-            iteration_id,
-            instrument,
-            prompt_attempt,
-            candidate_index,
-        },
-    )
-    .await
 }
 
 fn log_iteration_timing(
