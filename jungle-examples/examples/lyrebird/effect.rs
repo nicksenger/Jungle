@@ -1266,7 +1266,8 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
     let target_score_specs = format_score_specs(input.instrument);
     let mut contents = Vec::new();
     let mut system_text = format!(
-        "Produce the next small iterative patch for `{}` so the generated {} audio moves closer to the target.\n\
+        "You are an experienced software engineer and an expert in digital signal processing.\n\
+Produce the next iterative patch for `{}` so the generated {} audio moves closer to the target.\n\
 The patch must be valid Rust, must still compile inside `lyrebird-sample`, and must be a localized search/replace edit rather than a full-module rewrite.\n\
 Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
 Target score spec(s):\n{}.\nUse `{}` exactly once with `search`, `replacement`, and `note`.\n\
