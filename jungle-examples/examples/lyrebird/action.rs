@@ -292,6 +292,7 @@ where
             code_branch: instrument_state.selected_branch.clone(),
             prompt_attempt: instrument_state.prompt_attempt,
             retry_reason: instrument_state.last_retry_reason.clone(),
+            system_prompt_override: instrument_state.system_prompt_override.clone(),
         }
     }
 

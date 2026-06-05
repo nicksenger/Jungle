@@ -36,6 +36,8 @@ const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 64;
 const DEFAULT_INSTRUMENT_PARALLELISM: usize = 1;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
+pub(crate) const DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE: &str =
+    "You are an experienced software engineer and an expert in digital signal processing.";
 pub(crate) const LYREBIRD_DURATION_SECS: f64 = 4.0;
 pub(crate) const GUITAR_INTRO_SCORE_SPEC: &str =
     "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
@@ -66,6 +68,10 @@ const DRUMS_SCORE_SPECS: [&str; 5] = [
     DRUMS_SNARE_DRUM_SCORE_SPEC,
     DRUMS_TOMS_SCORE_SPEC,
 ];
+
+pub(crate) fn lyrebird_system_prompt_override_text(override_text: Option<&str>) -> &str {
+    override_text.unwrap_or(DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE)
+}
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DspCode {
@@ -403,6 +409,8 @@ pub struct LyrebirdInstrumentState {
     pub compile_ready: bool,
     #[serde(default)]
     pub instrument_parallelism: usize,
+    #[serde(default)]
+    pub system_prompt_override: Option<String>,
     pub prompt_attempt: u32,
     #[serde(default)]
     pub iteration_id: String,
@@ -431,7 +439,7 @@ pub struct LyrebirdInstrumentState {
 }
 
 impl LyrebirdInstrumentState {
-    fn from_seed(seed: LyrebirdInstrumentSeed) -> Self {
+    fn from_seed(seed: LyrebirdInstrumentSeed, system_prompt_override: Option<&str>) -> Self {
         Self {
             instrument: seed.instrument,
             disabled: seed.disabled,
@@ -441,6 +449,7 @@ impl LyrebirdInstrumentState {
             dsp_source_path: seed.dsp_source_path,
             initial_dsp_code: seed.initial_dsp_code.clone(),
             selected_branch: vec![seed.initial_dsp_code.into()],
+            system_prompt_override: system_prompt_override.map(str::to_owned),
             ..Self::default()
         }
     }
@@ -610,17 +619,26 @@ impl LyrebirdState {
     }
 
     pub fn matches_seed_instrument_selection(&self, seed: &LyrebirdSeed) -> bool {
-        LyrebirdInstrument::ALL.into_iter().all(|instrument| {
-            let state = self.instrument_state(instrument);
-            seed.instruments
-                .iter()
-                .find(|seed| seed.instrument == instrument)
-                .map(|seed_state| {
-                    state.disabled == seed_state.disabled
-                        && state.target_audio_metrics == seed_state.target_audio_metrics
-                })
-                .unwrap_or(false)
-        })
+        let prompt_override_matches = LyrebirdInstrument::ALL.into_iter().all(|instrument| {
+            lyrebird_system_prompt_override_text(
+                self.instrument_state(instrument)
+                    .system_prompt_override
+                    .as_deref(),
+            ) == lyrebird_system_prompt_override_text(seed.system_prompt_override.as_deref())
+        });
+
+        prompt_override_matches
+            && LyrebirdInstrument::ALL.into_iter().all(|instrument| {
+                let state = self.instrument_state(instrument);
+                seed.instruments
+                    .iter()
+                    .find(|seed| seed.instrument == instrument)
+                    .map(|seed_state| {
+                        state.disabled == seed_state.disabled
+                            && state.target_audio_metrics == seed_state.target_audio_metrics
+                    })
+                    .unwrap_or(false)
+            })
     }
 }
 
@@ -648,6 +666,8 @@ pub struct LyrebirdSeed {
     pub instruments: Vec<LyrebirdInstrumentSeed>,
     #[serde(default = "default_instrument_parallelism")]
     pub instrument_parallelism: usize,
+    #[serde(default)]
+    pub system_prompt_override: Option<String>,
 }
 
 impl From<LyrebirdSeed> for LyrebirdState {
@@ -656,7 +676,9 @@ impl From<LyrebirdSeed> for LyrebirdState {
             output_root,
             instruments,
             instrument_parallelism,
+            system_prompt_override,
         } = seed;
+        let system_prompt_override = system_prompt_override.as_deref();
         let current_instrument = instruments
             .first()
             .map(|instrument| instrument.instrument)
@@ -666,7 +688,7 @@ impl From<LyrebirdSeed> for LyrebirdState {
             .into_iter()
             .map(|seed| {
                 let instrument = seed.instrument;
-                let mut state = LyrebirdInstrumentState::from_seed(seed);
+                let mut state = LyrebirdInstrumentState::from_seed(seed, system_prompt_override);
                 state.instrument_parallelism = instrument_parallelism;
                 (instrument, state)
             })
@@ -1203,6 +1225,11 @@ struct Cli {
         help = "OpenAI-compatible model string for chat completions requests; defaults to LYREBIRD_TOKENS_MODEL or codemonkey-d-luffy"
     )]
     tokens_model: Option<String>,
+    #[arg(
+        long = "system-prompt-override",
+        help = "Override the first line of the lyrebird system prompt; defaults to the built-in DSP engineer prompt"
+    )]
+    system_prompt_override: Option<String>,
     #[arg(long = "db-path")]
     db_path: Option<PathBuf>,
     #[arg(long = "jungle-redb-path")]
@@ -1323,6 +1350,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &instrument_seeds,
         cli.instrument_parallelism,
         &selected_instruments,
+        cli.system_prompt_override,
     );
     let journey_id = ensure_lyrebird_running(&client, &seed).await?;
 
@@ -1424,6 +1452,7 @@ fn build_seed(
     instruments: &[LyrebirdInstrumentSeed],
     instrument_parallelism: usize,
     selected_instruments: &[LyrebirdInstrument],
+    system_prompt_override: Option<String>,
 ) -> LyrebirdSeed {
     let selected_lookup = selected_instruments
         .iter()
@@ -1441,6 +1470,7 @@ fn build_seed(
             })
             .collect(),
         instrument_parallelism,
+        system_prompt_override,
     }
 }
 
@@ -2451,6 +2481,7 @@ mod tests {
             &seeds,
             DEFAULT_INSTRUMENT_PARALLELISM,
             &[LyrebirdInstrument::Vocals, LyrebirdInstrument::GuitarSolo],
+            Some("You are a mastering engineer.".to_owned()),
         );
 
         let disabled_by_instrument = seed
@@ -2483,6 +2514,43 @@ mod tests {
             disabled_by_instrument.get(&LyrebirdInstrument::Drums),
             Some(&true)
         );
+        assert_eq!(
+            seed.system_prompt_override.as_deref(),
+            Some("You are a mastering engineer.")
+        );
+    }
+
+    #[test]
+    fn matches_seed_instrument_selection_requires_matching_system_prompt_override() {
+        let seeds = LyrebirdInstrument::ALL
+            .into_iter()
+            .map(|instrument| LyrebirdInstrumentSeed {
+                instrument,
+                disabled: false,
+                target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()),
+                target_audio_metrics: LyrebirdAudioMetrics::default(),
+                target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()),
+                dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()),
+                initial_dsp_code: DspCode::placeholder_initial(),
+            })
+            .collect::<Vec<_>>();
+
+        let seed = build_seed(
+            Path::new("/tmp/lyrebird"),
+            &seeds,
+            DEFAULT_INSTRUMENT_PARALLELISM,
+            &LyrebirdInstrument::ALL,
+            Some("You are a mastering engineer.".to_owned()),
+        );
+        let state = LyrebirdState::from(seed.clone());
+
+        assert!(state.matches_seed_instrument_selection(&seed));
+
+        let mismatched_seed = LyrebirdSeed {
+            system_prompt_override: Some("You are a DSP scientist.".to_owned()),
+            ..seed
+        };
+        assert!(!state.matches_seed_instrument_selection(&mismatched_seed));
     }
 
     #[test]
@@ -2808,6 +2876,7 @@ mod tests {
                 })
                 .collect(),
             instrument_parallelism: 0,
+            system_prompt_override: None,
         };
 
         let ecosystem = Arc::new(
@@ -2957,6 +3026,7 @@ mod tests {
                 })
                 .collect(),
             instrument_parallelism: 0,
+            system_prompt_override: None,
         };
 
         let ecosystem = Arc::new(
@@ -3494,5 +3564,22 @@ mod tests {
         .unwrap();
 
         assert_eq!(cli.tokens_model.as_deref(), Some("gpt-5.4-mini"));
+    }
+
+    #[test]
+    fn cli_accepts_system_prompt_override() {
+        let cli = Cli::try_parse_from([
+            "lyrebird",
+            "--tokens-url",
+            "https://api.openai.com/v1",
+            "--system-prompt-override",
+            "You are a mastering engineer.",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            cli.system_prompt_override.as_deref(),
+            Some("You are a mastering engineer.")
+        );
     }
 }

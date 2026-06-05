@@ -120,6 +120,7 @@ pub struct BuildOptimizationPromptInput {
     pub code_branch: Vec<LyrebirdBranchNode>,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
+    pub system_prompt_override: Option<String>,
 }
 
 pub struct BuildOptimizationPrompt;
@@ -1266,12 +1267,13 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
     let target_score_specs = format_score_specs(input.instrument);
     let mut contents = Vec::new();
     let mut system_text = format!(
-        "You are an experienced software engineer and an expert in digital signal processing.\n\
+        "{}\n\
 Produce the next iterative patch for `{}` so the generated {} audio moves closer to the target.\n\
 The patch must be valid Rust, must still compile inside `lyrebird-sample`, and must be a localized search/replace edit rather than a full-module rewrite.\n\
 Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
 Target score spec(s):\n{}.\nUse `{}` exactly once with `search`, `replacement`, and `note`.\n\
 The `note` must briefly explain the purpose of the change and stay within 100 characters.",
+        crate::lyrebird_system_prompt_override_text(input.system_prompt_override.as_deref()),
         input.instrument.relative_dsp_path(),
         input.instrument.render_subject(),
         input.iteration_id,
@@ -2015,6 +2017,7 @@ mod tests {
             .into()],
             prompt_attempt: 0,
             retry_reason: None,
+            system_prompt_override: None,
         })
         .unwrap();
 
@@ -2063,10 +2066,16 @@ mod tests {
             ],
             prompt_attempt: 1,
             retry_reason: None,
+            system_prompt_override: None,
         })
         .unwrap();
 
         let system_contents = &prompt.messages[0].contents;
+        if let crate::tokens::Content::Text(system_text) = &system_contents[0] {
+            assert!(system_text.starts_with(crate::DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE));
+        } else {
+            panic!("expected system prompt text");
+        }
         assert_eq!(
             system_contents[1],
             crate::tokens::Content::Text(
@@ -2148,10 +2157,39 @@ mod tests {
             ],
             prompt_attempt: 1,
             retry_reason: None,
+            system_prompt_override: None,
         })
         .unwrap_err();
 
         assert!(err.contains("missing required patch metadata"));
+    }
+
+    #[test]
+    fn optimization_prompt_uses_system_prompt_override_when_present() {
+        let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+            iteration_id: "00000001".to_owned(),
+            instrument: LyrebirdInstrument::Bass,
+            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_audio_metrics: target_metrics(),
+            code_branch: vec![score_code(
+                "initial",
+                "fn bass() {}",
+                "/tmp/bass.wav",
+                "/tmp/bass.png",
+                0.5,
+                0.55,
+            )
+            .into()],
+            prompt_attempt: 0,
+            retry_reason: None,
+            system_prompt_override: Some("You are a mastering engineer.".to_owned()),
+        })
+        .unwrap();
+
+        let crate::tokens::Content::Text(system_text) = &prompt.messages[0].contents[0] else {
+            panic!("expected system prompt text");
+        };
+        assert!(system_text.starts_with("You are a mastering engineer."));
     }
 
     #[test]
