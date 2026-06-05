@@ -591,8 +591,8 @@ mod tests {
         DspCode {
             iteration_id: iteration_id.to_owned(),
             source: format!("// {iteration_id}"),
-            sample_path: format!("/tmp/{iteration_id}.wav"),
-            spectrogram_path: format!("/tmp/{iteration_id}.png"),
+            sample_path: format!("/tmp/{iteration_id}.wav").into(),
+            spectrogram_path: format!("/tmp/{iteration_id}.png").into(),
             mel_similarity: similarity,
             score: similarity,
             audio_metrics: None,
@@ -830,9 +830,11 @@ mod tests {
             vec![submission("00000001", 0.3)],
         )
         .unwrap_err();
-        assert!(submit_err
-            .to_string()
-            .contains("select must precede submit"));
+        assert!(
+            submit_err
+                .to_string()
+                .contains("select must precede submit")
+        );
 
         let _ = select_for_instrument(&ecosystem, LyrebirdInstrument::GuitarSolo).unwrap();
         let select_err =
@@ -902,9 +904,10 @@ mod tests {
 
         let err = choose_expandable_node(&nodes, 8, LyrebirdInstrument::Vocals).unwrap_err();
 
-        assert!(err
-            .to_string()
-            .contains("node 999 missing while computing vocals tree depth"));
+        assert!(
+            err.to_string()
+                .contains("node 999 missing while computing vocals tree depth")
+        );
     }
 
     #[test]

@@ -3,27 +3,27 @@
 use crate::mcts::{SearchTree, Submission};
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    aggregate_sample_score, DspCode, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
+    DspCode, LYREBIRD_DURATION_SECS, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
     LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag,
-    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodePurgatory, LYREBIRD_DURATION_SECS,
+    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodePurgatory, aggregate_sample_score,
 };
 use futures::future::join_all;
 use image::ImageReader;
 use jungle_sdk::effect;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use serde::{Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
-use spectrs::io::image::{save_spectrogram_image, Colormap};
-use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
-use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
+use spectrs::io::image::{Colormap, save_spectrogram_image};
+use spectrs::spectrogram::mel::{MelScale, par_convert_to_mel};
+use spectrs::spectrogram::stft::{SpectrogramType, par_compute_spectrogram};
 use std::f32::consts::PI;
 use std::fs;
-use std::future::{ready, Future};
+use std::future::{Future, ready};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
-use tokio::time::{timeout, Duration, Instant};
+use tokio::time::{Duration, Instant, timeout};
 use tracing::{debug, info, warn};
 use zensim::{RgbSlice, Zensim, ZensimProfile};
 
@@ -73,7 +73,7 @@ impl<J> Effect<J> for CompareSpectrograms {
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             let (left_path, right_path) = input;
-            compare_spectrograms(&left_path, &right_path)
+            compare_spectrograms(Path::new(&left_path), Path::new(&right_path))
         }
     }
 }
@@ -115,7 +115,7 @@ pub struct PromptModelInput {
 pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
-    pub target_spectrogram_path: String,
+    pub target_spectrogram_path: PathBuf,
     pub target_audio_metrics: LyrebirdAudioMetrics,
     pub code_branch: Vec<LyrebirdBranchNode>,
     pub prompt_attempt: u32,
@@ -223,8 +223,8 @@ pub struct PreparePromptCandidatesInput {
     pub prompt_attempt: u32,
     pub tool_name: String,
     pub current_source: String,
-    pub sample_path: String,
-    pub spectrogram_path: String,
+    pub sample_path: PathBuf,
+    pub spectrogram_path: PathBuf,
     pub instrument_parallelism: usize,
     pub responses: Vec<PromptCandidateResponse>,
 }
@@ -252,7 +252,7 @@ pub struct CompilePreparedPatchInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
     pub prompt_attempt: u32,
-    pub dsp_source_path: String,
+    pub dsp_source_path: PathBuf,
     pub original_source: String,
     pub generated_source: Option<String>,
 }
@@ -353,15 +353,15 @@ where
 pub struct IterationCandidateInput {
     pub patch: LyrebirdPatch,
     pub generated_source: String,
-    pub sample_path: String,
-    pub spectrogram_path: String,
+    pub sample_path: PathBuf,
+    pub spectrogram_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GenerateIterationAudioInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
-    pub dsp_source_path: String,
+    pub dsp_source_path: PathBuf,
     pub original_source: String,
     pub candidates: Vec<IterationCandidateInput>,
 }
@@ -383,7 +383,7 @@ pub struct GenerateIterationMelsInput {
 pub struct CompareIterationMelsInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
-    pub target_spectrogram_path: String,
+    pub target_spectrogram_path: PathBuf,
     pub target_audio_metrics: LyrebirdAudioMetrics,
     pub candidates: Vec<LyrebirdGeneratedCandidate>,
 }
@@ -444,18 +444,15 @@ pub async fn capture_current_dsp_code_snapshot(
 
     run_sampler(
         LYREBIRD_DURATION_SECS,
-        &sample_path.display().to_string(),
+        &sample_path,
         &instrument_score_specs(instrument),
     )
     .await?;
-    generate_mel_spectrogram(
-        &sample_path.display().to_string(),
-        &spectrogram_path.display().to_string(),
-    )?;
+    generate_mel_spectrogram(&sample_path, &spectrogram_path)?;
     let scored_sample = score_rendered_sample(
-        &sample_path.display().to_string(),
-        &spectrogram_path.display().to_string(),
-        &target_spectrogram_path.display().to_string(),
+        &sample_path,
+        &spectrogram_path,
+        target_spectrogram_path,
         *target_audio_metrics,
     )?;
     info!(
@@ -471,8 +468,8 @@ pub async fn capture_current_dsp_code_snapshot(
     Ok(DspCode {
         iteration_id: iteration_id.to_owned(),
         source,
-        sample_path: sample_path.display().to_string(),
-        spectrogram_path: spectrogram_path.display().to_string(),
+        sample_path,
+        spectrogram_path,
         mel_similarity: Some(scored_sample.mel_similarity),
         score: Some(scored_sample.score),
         audio_metrics: Some(scored_sample.audio_metrics),
@@ -480,13 +477,11 @@ pub async fn capture_current_dsp_code_snapshot(
     })
 }
 
-pub(crate) fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
-    let input = Path::new(wav_path);
-    let output = Path::new(output_path);
-    ensure_parent_dir(output)?;
+pub(crate) fn generate_mel_spectrogram(wav_path: &Path, output_path: &Path) -> Result<(), String> {
+    ensure_parent_dir(output_path)?;
 
     let (audio, sample_rate) =
-        read_audio_file_mono(input).map_err(|err| format!("failed to read wav file: {err}"))?;
+        read_audio_file_mono(wav_path).map_err(|err| format!("failed to read wav file: {err}"))?;
 
     let spectrogram = par_compute_spectrogram(
         &audio,
@@ -506,15 +501,15 @@ pub(crate) fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Res
         MelScale::Slaney,
     );
 
-    save_spectrogram_image(&mel, output.to_path_buf(), Colormap::Viridis)
+    save_spectrogram_image(&mel, output_path.to_path_buf(), Colormap::Viridis)
         .map_err(|err| format!("failed to write mel spectrogram: {err}"))?;
 
     Ok(())
 }
 
-pub(crate) fn analyze_audio_file(path: &str) -> Result<LyrebirdAudioMetrics, String> {
-    let (audio, sample_rate) = read_audio_file_mono(Path::new(path))
-        .map_err(|err| format!("failed to read wav file: {err}"))?;
+pub(crate) fn analyze_audio_file(path: &Path) -> Result<LyrebirdAudioMetrics, String> {
+    let (audio, sample_rate) =
+        read_audio_file_mono(path).map_err(|err| format!("failed to read wav file: {err}"))?;
     Ok(analyze_audio_signal(&audio, sample_rate))
 }
 
@@ -633,11 +628,7 @@ fn crest_factor(frame: &[f32]) -> f32 {
 
     let peak = frame.iter().map(|sample| sample.abs()).fold(0.0, f32::max);
     let rms = (frame.iter().map(|sample| sample * sample).sum::<f32>() / frame.len() as f32).sqrt();
-    if rms <= f32::EPSILON {
-        0.0
-    } else {
-        peak / rms
-    }
+    if rms <= f32::EPSILON { 0.0 } else { peak / rms }
 }
 
 fn spectral_bins(spectrum: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
@@ -700,9 +691,9 @@ fn spectral_rolloff_hz(powers: &[f32], bin_hz: f32, nyquist_hz: f32) -> f32 {
 }
 
 fn score_rendered_sample(
-    sample_path: &str,
-    spectrogram_path: &str,
-    target_spectrogram_path: &str,
+    sample_path: &Path,
+    spectrogram_path: &Path,
+    target_spectrogram_path: &Path,
     target_audio_metrics: LyrebirdAudioMetrics,
 ) -> Result<ScoredAudioSample, String> {
     let mel_similarity = compare_spectrograms(spectrogram_path, target_spectrogram_path)?;
@@ -718,16 +709,36 @@ fn score_rendered_sample(
     })
 }
 
-fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String> {
+fn compare_spectrograms(left_path: &Path, right_path: &Path) -> Result<f32, String> {
     let left = ImageReader::open(left_path)
-        .map_err(|err| format!("failed to open spectrogram image {}: {err}", left_path))?
+        .map_err(|err| {
+            format!(
+                "failed to open spectrogram image {}: {err}",
+                left_path.display()
+            )
+        })?
         .decode()
-        .map_err(|err| format!("failed to decode spectrogram image {}: {err}", left_path))?
+        .map_err(|err| {
+            format!(
+                "failed to decode spectrogram image {}: {err}",
+                left_path.display()
+            )
+        })?
         .into_rgb8();
     let right = ImageReader::open(right_path)
-        .map_err(|err| format!("failed to open spectrogram image {}: {err}", right_path))?
+        .map_err(|err| {
+            format!(
+                "failed to open spectrogram image {}: {err}",
+                right_path.display()
+            )
+        })?
         .decode()
-        .map_err(|err| format!("failed to decode spectrogram image {}: {err}", right_path))?
+        .map_err(|err| {
+            format!(
+                "failed to decode spectrogram image {}: {err}",
+                right_path.display()
+            )
+        })?
         .into_rgb8();
     let (left, right) = if left.dimensions() == right.dimensions() {
         (left, right)
@@ -735,8 +746,8 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         let width = left.width().min(right.width());
         let height = left.height().min(right.height());
         debug!(
-            left_path,
-            right_path,
+            left_path = %left_path.display(),
+            right_path = %right_path.display(),
             left_width = left.width(),
             left_height = left.height(),
             right_width = right.width(),
@@ -1085,10 +1096,10 @@ fn render_prompt_for_log(prompt: &Prompt) -> String {
 async fn generate_candidate_audio(
     iteration_id: &str,
     instrument: LyrebirdInstrument,
-    dsp_source_path: &str,
+    dsp_source_path: &Path,
     original_source: &str,
     generated_source: &str,
-    sample_path: &str,
+    sample_path: &Path,
 ) -> Result<(), String> {
     with_temporary_dsp_source(
         dsp_source_path,
@@ -1117,7 +1128,7 @@ async fn generate_candidate_audio(
     info!(
         iteration_id = %iteration_id,
         instrument = instrument.slug(),
-        sample_path,
+        sample_path = %sample_path.display(),
         "generated lyrebird candidate audio"
     );
     Ok(())
@@ -1126,8 +1137,8 @@ async fn generate_candidate_audio(
 fn generate_candidate_mel(
     iteration_id: &str,
     instrument: LyrebirdInstrument,
-    sample_path: &str,
-    spectrogram_path: &str,
+    sample_path: &Path,
+    spectrogram_path: &Path,
 ) -> Result<(), String> {
     generate_mel_spectrogram(sample_path, spectrogram_path).map_err(|err| {
         warn!(
@@ -1142,8 +1153,8 @@ fn generate_candidate_mel(
     info!(
         iteration_id = %iteration_id,
         instrument = instrument.slug(),
-        sample_path,
-        spectrogram_path,
+        sample_path = %sample_path.display(),
+        spectrogram_path = %spectrogram_path.display(),
         "generated lyrebird candidate mel"
     );
     Ok(())
@@ -1152,9 +1163,9 @@ fn generate_candidate_mel(
 fn compare_candidate_mel(
     iteration_id: &str,
     instrument: LyrebirdInstrument,
-    sample_path: &str,
-    spectrogram_path: &str,
-    target_spectrogram_path: &str,
+    sample_path: &Path,
+    spectrogram_path: &Path,
+    target_spectrogram_path: &Path,
     target_audio_metrics: LyrebirdAudioMetrics,
 ) -> Result<ScoredAudioSample, String> {
     let scored_sample = score_rendered_sample(
@@ -1168,23 +1179,23 @@ fn compare_candidate_mel(
         instrument = instrument.slug(),
         score = scored_sample.score,
         mel_similarity = scored_sample.mel_similarity,
-        sample_path,
-        spectrogram_path,
+        sample_path = %sample_path.display(),
+        spectrogram_path = %spectrogram_path.display(),
         "rendered and scored lyrebird candidate"
     );
     Ok(scored_sample)
 }
 
 fn candidate_output_paths(
-    base_sample_path: &str,
-    base_spectrogram_path: &str,
+    base_sample_path: &Path,
+    base_spectrogram_path: &Path,
     instrument_parallelism: usize,
     candidate_index: usize,
-) -> (String, String) {
+) -> (PathBuf, PathBuf) {
     if instrument_parallelism <= 1 {
         return (
-            base_sample_path.to_owned(),
-            base_spectrogram_path.to_owned(),
+            base_sample_path.to_path_buf(),
+            base_spectrogram_path.to_path_buf(),
         );
     }
 
@@ -1194,9 +1205,8 @@ fn candidate_output_paths(
     )
 }
 
-fn append_candidate_suffix(path: &str, candidate_index: usize) -> String {
+fn append_candidate_suffix(path: &Path, candidate_index: usize) -> PathBuf {
     let candidate_number = candidate_index.saturating_add(1);
-    let path = Path::new(path);
     let stem = path
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -1206,7 +1216,7 @@ fn append_candidate_suffix(path: &str, candidate_index: usize) -> String {
         Some(extension) => format!("{suffix}.{extension}"),
         None => suffix,
     };
-    path.with_file_name(file_name).display().to_string()
+    path.with_file_name(file_name)
 }
 
 fn instrument_score_specs(instrument: LyrebirdInstrument) -> Vec<String> {
@@ -1250,7 +1260,7 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         .last()
         .cloned()
         .ok_or_else(|| "lyrebird prompt requires a selected code branch".to_owned())?;
-    if selected_code.mel_spectrogram_path.is_empty() {
+    if selected_code.mel_spectrogram_path.as_os_str().is_empty() {
         return Err("selected lyrebird branch is missing a spectrogram path".to_owned());
     }
 
@@ -1335,9 +1345,9 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
     contents.push(crate::tokens::Content::Text(
         "Current mel spectrogram:".to_owned(),
     ));
-    contents.push(crate::tokens::Content::Image(PathBuf::from(
-        &selected_code.mel_spectrogram_path,
-    )));
+    contents.push(crate::tokens::Content::Image(
+        selected_code.mel_spectrogram_path.clone(),
+    ));
     contents.push(crate::tokens::Content::Text(format!(
         "Return exactly one `{}` tool call.",
         input.instrument.tool_name(),
@@ -1356,9 +1366,7 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
                         "This {} still sounds way different from the target! Produce the next patch to close the gap. Here's the mel spectrogram of the target for reference:",
                         input.instrument.display_name()
                     )),
-                    crate::tokens::Content::Image(PathBuf::from(
-                        &input.target_spectrogram_path,
-                    )),
+                    crate::tokens::Content::Image(input.target_spectrogram_path.clone()),
                 ],
             },
         ],
@@ -1558,8 +1566,9 @@ fn apply_search_replace_patch(
         1 => {
             let (start, matched) = matches[0];
             let end = start + matched.len();
-            let mut updated =
-                String::with_capacity(current_source.len() - matched.len() + patch.replacement.len());
+            let mut updated = String::with_capacity(
+                current_source.len() - matched.len() + patch.replacement.len(),
+            );
             updated.push_str(&current_source[..start]);
             updated.push_str(&patch.replacement);
             updated.push_str(&current_source[end..]);
@@ -1702,7 +1711,7 @@ async fn check_sampler_compilation() -> Result<(), String> {
 }
 
 async fn with_temporary_dsp_source<T, F, Fut>(
-    dsp_source_path: &str,
+    dsp_source_path: &Path,
     generated_source: &str,
     original_source: &str,
     operation: F,
@@ -1714,7 +1723,7 @@ where
     fs::write(dsp_source_path, generated_source).map_err(|err| {
         format!(
             "failed to write replacement dsp source {}: {err}",
-            dsp_source_path
+            dsp_source_path.display()
         )
     })?;
 
@@ -1722,7 +1731,7 @@ where
     let restore_result = fs::write(dsp_source_path, original_source).map_err(|err| {
         format!(
             "failed to restore original dsp source {}: {err}",
-            dsp_source_path
+            dsp_source_path.display()
         )
     });
 
@@ -1738,7 +1747,7 @@ where
 
 async fn run_sampler(
     duration_secs: f64,
-    output_path: &str,
+    output_path: &Path,
     score_specs: &[String],
 ) -> Result<(), String> {
     if !duration_secs.is_finite() || duration_secs <= 0.0 {
@@ -1748,9 +1757,9 @@ async fn run_sampler(
         return Err("run sampler requires at least one score spec".to_string());
     }
 
-    ensure_parent_dir(Path::new(output_path))?;
+    ensure_parent_dir(output_path)?;
     debug!(
-        output_path,
+        output_path = %output_path.display(),
         duration_secs,
         score_spec_count = score_specs.len(),
         "running lyrebird sampler"
@@ -1780,7 +1789,7 @@ async fn run_sampler(
             let status = wait_result
                 .map_err(|err| format!("failed to wait for cargo sampler run: {err}"))?;
             if status.success() {
-                debug!(output_path, "lyrebird sampler run finished successfully");
+                debug!(output_path = %output_path.display(), "lyrebird sampler run finished successfully");
                 Ok(())
             } else {
                 Err(format!("cargo sampler run exited unsuccessfully: {status}"))
@@ -1860,8 +1869,8 @@ mod tests {
         DspCode {
             iteration_id: iteration_id.to_owned(),
             source: source.to_owned(),
-            sample_path: sample_path.to_owned(),
-            spectrogram_path: spectrogram_path.to_owned(),
+            sample_path: sample_path.into(),
+            spectrogram_path: spectrogram_path.into(),
             mel_similarity: Some(mel_similarity),
             score: Some(score),
             audio_metrics: Some(LyrebirdAudioMetrics {
@@ -1898,11 +1907,7 @@ mod tests {
         left.save(&left_path).unwrap();
         write_rgb_image(&right_path, 8, 8, [0, 0, 0]);
 
-        let similarity = compare_spectrograms(
-            &left_path.display().to_string(),
-            &right_path.display().to_string(),
-        )
-        .unwrap();
+        let similarity = compare_spectrograms(&left_path, &right_path).unwrap();
 
         assert!(similarity > 0.99);
     }
@@ -1924,11 +1929,7 @@ mod tests {
         });
         right.save(&right_path).unwrap();
 
-        let similarity = compare_spectrograms(
-            &left_path.display().to_string(),
-            &right_path.display().to_string(),
-        )
-        .unwrap();
+        let similarity = compare_spectrograms(&left_path, &right_path).unwrap();
 
         assert!(similarity > 0.99);
     }
@@ -2004,17 +2005,19 @@ mod tests {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000001".to_owned(),
             instrument: LyrebirdInstrument::Bass,
-            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_spectrogram_path: "/tmp/target.png".into(),
             target_audio_metrics: target_metrics(),
-            code_branch: vec![score_code(
-                "initial",
-                "fn bass() {}",
-                "/tmp/bass.wav",
-                "/tmp/bass.png",
-                0.5,
-                0.55,
-            )
-            .into()],
+            code_branch: vec![
+                score_code(
+                    "initial",
+                    "fn bass() {}",
+                    "/tmp/bass.wav",
+                    "/tmp/bass.png",
+                    0.5,
+                    0.55,
+                )
+                .into(),
+            ],
             prompt_attempt: 0,
             retry_reason: None,
             system_prompt_override: None,
@@ -2036,7 +2039,7 @@ mod tests {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
-            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_spectrogram_path: "/tmp/target.png".into(),
             target_audio_metrics: target_metrics(),
             code_branch: vec![
                 score_code(
@@ -2133,7 +2136,7 @@ mod tests {
         let err = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
-            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_spectrogram_path: "/tmp/target.png".into(),
             target_audio_metrics: target_metrics(),
             code_branch: vec![
                 score_code(
@@ -2169,17 +2172,19 @@ mod tests {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000001".to_owned(),
             instrument: LyrebirdInstrument::Bass,
-            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_spectrogram_path: "/tmp/target.png".into(),
             target_audio_metrics: target_metrics(),
-            code_branch: vec![score_code(
-                "initial",
-                "fn bass() {}",
-                "/tmp/bass.wav",
-                "/tmp/bass.png",
-                0.5,
-                0.55,
-            )
-            .into()],
+            code_branch: vec![
+                score_code(
+                    "initial",
+                    "fn bass() {}",
+                    "/tmp/bass.wav",
+                    "/tmp/bass.png",
+                    0.5,
+                    0.55,
+                )
+                .into(),
+            ],
             prompt_attempt: 0,
             retry_reason: None,
             system_prompt_override: Some("You are a mastering engineer.".to_owned()),
@@ -2204,12 +2209,16 @@ mod tests {
             apply_search_replace_patch("fn foo() {}", &patch).unwrap(),
             "fn bar() {}"
         );
-        assert!(apply_search_replace_patch("fn baz() {}", &patch)
-            .unwrap_err()
-            .contains("did not match"));
-        assert!(apply_search_replace_patch("foo foo", &patch)
-            .unwrap_err()
-            .contains("matched 2 locations"));
+        assert!(
+            apply_search_replace_patch("fn baz() {}", &patch)
+                .unwrap_err()
+                .contains("did not match")
+        );
+        assert!(
+            apply_search_replace_patch("foo foo", &patch)
+                .unwrap_err()
+                .contains("matched 2 locations")
+        );
     }
 
     #[tokio::test]
@@ -2219,9 +2228,7 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(&path, "original").unwrap();
-        let path_string = path.display().to_string();
-
-        let result = with_temporary_dsp_source(&path_string, "generated", "original", || async {
+        let result = with_temporary_dsp_source(&path, "generated", "original", || async {
             assert_eq!(std::fs::read_to_string(&path).unwrap(), "generated");
             Ok::<_, String>("ok")
         })
@@ -2239,9 +2246,7 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(&path, "original").unwrap();
-        let path_string = path.display().to_string();
-
-        let err = with_temporary_dsp_source(&path_string, "generated", "original", || async {
+        let err = with_temporary_dsp_source(&path, "generated", "original", || async {
             assert_eq!(std::fs::read_to_string(&path).unwrap(), "generated");
             Err::<(), _>("boom".to_owned())
         })
