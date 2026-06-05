@@ -28,7 +28,7 @@ struct Cli {
     output_path: Option<PathBuf>,
     /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]`,
     /// `vocals(formant):[0,60,192,"jungle"]`, or
-    /// `drums:cymbal:[150,57,192];hihat:[1878,46,192];kick-drum:[150,36,192];snare-drum:[1350,38,192];toms:[150,36,192]`.
+    /// `drums:cymbal:[150,57,192];hihat:[1878,46,192];kick-drum:[150,36,192];snare-drum:[1350,38,192]`.
     #[arg(required = true)]
     specs: Vec<String>,
 }
@@ -747,8 +747,6 @@ mod tests {
     const LYREBIRD_BACKUP_VOCALS_SCORE_SPEC: &str = "vocals(group-harmony):[150,71,384],[534,70,384],[918,68,384],[1302,66,384],[1686,73,384],[2070,72,384],[2454,70,384],[2838,68,384]";
     const LYREBIRD_GUITAR_SOLO_SCORE_SPEC: &str = "electric-guitar(sustained):[240,60,192],[432,72,128],[560,75,129],[689,82,896],[1585,82,128],[1713,81,129],[1842,80,704],[2546,78,96],[2642,79,96],[2738,73,672],[3410,73,224]";
     const LYREBIRD_BASS_SCORE_SPEC: &str = "bass:[150,32,192],[342,32,192],[534,30,192],[726,27,96],[822,32,192],[1014,27,96],[1110,30,192],[1302,29,192],[1494,27,192],[1686,32,192],[1878,32,192],[2070,30,192],[2262,27,96],[2358,32,192],[2550,27,96],[2646,42,96],[2838,42,96],[3030,42,96]";
-    const LYREBIRD_DRUMS_KICK_DRUM_SCORE_SPEC: &str = "kick-drum:[150,36,192],[438,36,192],[726,36,192],[1110,36,192],[1686,36,48],[1686,36,192],[2454,36,192],[3030,36,192],[3222,36,192]";
-    const LYREBIRD_DRUMS_TOMS_SCORE_SPEC: &str = "toms:[150,36,192],[438,36,192],[726,36,192],[1110,36,192],[1686,36,48],[1686,36,192],[2454,36,192],[3030,36,192],[3222,36,192]";
 
     #[test]
     fn parse_formant_vocals_spec_requires_synthesis_word() {
@@ -825,8 +823,6 @@ mod tests {
             LYREBIRD_BACKUP_VOCALS_SCORE_SPEC,
             LYREBIRD_GUITAR_SOLO_SCORE_SPEC,
             LYREBIRD_BASS_SCORE_SPEC,
-            LYREBIRD_DRUMS_KICK_DRUM_SCORE_SPEC,
-            LYREBIRD_DRUMS_TOMS_SCORE_SPEC,
         ] {
             let parsed = parse_spec(spec).unwrap();
             assert!(!parsed.instrument.is_empty());
@@ -837,16 +833,15 @@ mod tests {
     #[test]
     fn parse_drums_composite_spec_expands_to_component_specs() {
         let parsed = parse_specs(
-            "drums:cymbal:[150,57,192];hihat:[1878,46,192];kick-drum:[150,36,192];snare-drum:[1350,38,192];toms:[150,36,192]",
+            "drums:cymbal:[150,57,192];hihat:[1878,46,192];kick-drum:[150,36,192];snare-drum:[1350,38,192]",
         )
         .unwrap();
 
-        assert_eq!(parsed.len(), 5);
+        assert_eq!(parsed.len(), 4);
         assert_eq!(parsed[0].instrument, "cymbal");
         assert_eq!(parsed[1].instrument, "hihat");
         assert_eq!(parsed[2].instrument, "kick-drum");
         assert_eq!(parsed[3].instrument, "snare-drum");
-        assert_eq!(parsed[4].instrument, "toms");
     }
 
     #[test]
