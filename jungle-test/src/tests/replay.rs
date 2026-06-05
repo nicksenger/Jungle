@@ -5,8 +5,8 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, Semaphore};
 
@@ -15,25 +15,36 @@ const POST_STEPS: usize = 2;
 const TEST_OWNER_LEASE_TTL_MS: i64 = 1_500;
 
 #[derive(Clone)]
-struct DropInitialEffectInputClient {
+struct DropHistoryEventsClient {
     inner: jungle_sdk::Client,
     remaining_effect_inputs_to_drop: Arc<AtomicUsize>,
+    remaining_effect_success_outputs_to_drop: Arc<AtomicUsize>,
+    remaining_effect_failure_outputs_to_drop: Arc<AtomicUsize>,
 }
 
-impl DropInitialEffectInputClient {
-    fn new(inner: jungle_sdk::Client, count: usize) -> Self {
+impl DropHistoryEventsClient {
+    fn new(
+        inner: jungle_sdk::Client,
+        effect_inputs_to_drop: usize,
+        effect_success_outputs_to_drop: usize,
+        effect_failure_outputs_to_drop: usize,
+    ) -> Self {
         Self {
             inner,
-            remaining_effect_inputs_to_drop: Arc::new(AtomicUsize::new(count)),
+            remaining_effect_inputs_to_drop: Arc::new(AtomicUsize::new(effect_inputs_to_drop)),
+            remaining_effect_success_outputs_to_drop: Arc::new(AtomicUsize::new(
+                effect_success_outputs_to_drop,
+            )),
+            remaining_effect_failure_outputs_to_drop: Arc::new(AtomicUsize::new(
+                effect_failure_outputs_to_drop,
+            )),
         }
     }
 
-    fn try_drop_effect_input(&self) -> bool {
-        let mut current = self
-            .remaining_effect_inputs_to_drop
-            .load(Ordering::SeqCst);
+    fn try_drop(counter: &AtomicUsize) -> bool {
+        let mut current = counter.load(Ordering::SeqCst);
         while current > 0 {
-            match self.remaining_effect_inputs_to_drop.compare_exchange(
+            match counter.compare_exchange(
                 current,
                 current - 1,
                 Ordering::SeqCst,
@@ -48,7 +59,7 @@ impl DropInitialEffectInputClient {
 }
 
 #[async_trait]
-impl JungleClient for DropInitialEffectInputClient {
+impl JungleClient for DropHistoryEventsClient {
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<jungle_sdk::JourneyHandle, ExecutorError>
     where
         Self: Sized,
@@ -225,9 +236,258 @@ impl JungleClient for DropInitialEffectInputClient {
     }
 
     async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError> {
-        if matches!(&event, RunnerOut::EffectInput { .. }) && self.try_drop_effect_input() {
+        let should_drop = match &event {
+            RunnerOut::EffectInput { .. } => {
+                Self::try_drop(&self.remaining_effect_inputs_to_drop)
+            }
+            RunnerOut::EffectSuccessOutput { .. } => {
+                Self::try_drop(&self.remaining_effect_success_outputs_to_drop)
+            }
+            RunnerOut::EffectFailureOutput { .. } => {
+                Self::try_drop(&self.remaining_effect_failure_outputs_to_drop)
+            }
+            _ => false,
+        };
+        if should_drop {
             return Ok(());
         }
+        self.inner.submit_history_event(event).await
+    }
+}
+
+#[derive(Clone)]
+struct SnapshotProbeClient {
+    inner: jungle_sdk::Client,
+    replay_snapshot_args: Arc<Mutex<Vec<Option<u64>>>>,
+    frozen_snapshot_end_sequence_id: Arc<Mutex<Option<u64>>>,
+    injected_snapshot_growth: Arc<AtomicBool>,
+}
+
+impl SnapshotProbeClient {
+    fn new(inner: jungle_sdk::Client) -> Self {
+        Self {
+            inner,
+            replay_snapshot_args: Arc::new(Mutex::new(Vec::new())),
+            frozen_snapshot_end_sequence_id: Arc::new(Mutex::new(None)),
+            injected_snapshot_growth: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn replay_snapshot_args(&self) -> Vec<Option<u64>> {
+        self.replay_snapshot_args
+            .lock()
+            .expect("snapshot args mutex should lock")
+            .clone()
+    }
+
+    fn frozen_snapshot_end_sequence_id(&self) -> Option<u64> {
+        *self
+            .frozen_snapshot_end_sequence_id
+            .lock()
+            .expect("snapshot end mutex should lock")
+    }
+}
+
+#[async_trait]
+impl JungleClient for SnapshotProbeClient {
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<jungle_sdk::JourneyHandle, ExecutorError>
+    where
+        Self: Sized,
+        A: jungle_sdk::Animal,
+        A::Id: jungle_sdk::AnimalIdValue,
+        A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+        A::Seed: Sync,
+    {
+        self.inner.spawn::<A>(seed).await
+    }
+
+    async fn journey_history(&self, id: uuid::Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
+        self.inner.journey_history(id).await
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: uuid::Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<jungle_sdk::JourneyReplayPage, ExecutorError> {
+        self.replay_snapshot_args
+            .lock()
+            .expect("snapshot args mutex should lock")
+            .push(snapshot_end_sequence_id);
+        let page = self
+            .inner
+            .journey_replay_page(
+                journey_id,
+                after_sequence_id,
+                snapshot_end_sequence_id,
+                limit,
+            )
+            .await?;
+        if after_sequence_id.is_none()
+            && !page.events.is_empty()
+            && !self.injected_snapshot_growth.swap(true, Ordering::SeqCst)
+        {
+            *self
+                .frozen_snapshot_end_sequence_id
+                .lock()
+                .expect("snapshot end mutex should lock") = page.snapshot_end_sequence_id;
+            self.inner
+                .submit_history_event(RunnerOut::EffectInput {
+                    node_id: u32::MAX,
+                    uuid: journey_id,
+                    data: vec![0x42],
+                })
+                .await?;
+        }
+        Ok(page)
+    }
+
+    async fn list_journeys(
+        &self,
+        namespace: String,
+    ) -> Result<Vec<jungle_sdk::JourneyRecord>, ExecutorError> {
+        self.inner.list_journeys(namespace).await
+    }
+
+    async fn subscribe_step_updates(
+        &self,
+        journey_id: uuid::Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<jungle_sdk::client::JourneyUpdateSubscription, ExecutorError> {
+        self.inner
+            .subscribe_step_updates(journey_id, after_sequence_id)
+            .await
+    }
+
+    async fn journey_details(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<jungle_sdk::JourneyStatus, ExecutorError> {
+        self.inner.journey_details(id).await
+    }
+
+    async fn animal_appearance(&self, id: uuid::Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
+        self.inner.animal_appearance(id).await
+    }
+
+    async fn animal_appearance_update(
+        &self,
+        id: uuid::Uuid,
+        data: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.animal_appearance_update(id, data).await
+    }
+
+    async fn perturb_animal(&self, id: uuid::Uuid, payload: Vec<u8>) -> Result<(), ExecutorError> {
+        self.inner.perturb_animal(id, payload).await
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<Option<jungle_sdk::ClaimedPerturbable>, ExecutorError> {
+        self.inner.claim_animal_perturbation(id).await
+    }
+
+    async fn ack_animal_perturbation(
+        &self,
+        id: uuid::Uuid,
+        perturbation_id: u64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .ack_animal_perturbation(id, perturbation_id)
+            .await
+    }
+
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .heartbeat_journey_lease(journey_id, owner_id, lease_ttl_ms)
+            .await
+    }
+
+    async fn poll_owner_wake(
+        &self,
+        owner_id: uuid::Uuid,
+    ) -> Result<Option<jungle_sdk::OwnerWake>, ExecutorError> {
+        self.inner.poll_owner_wake(owner_id).await
+    }
+
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: uuid::Uuid,
+        timer_id: uuid::Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
+            .await
+    }
+
+    async fn complete_journey(&self, id: uuid::Uuid) -> Result<(), ExecutorError> {
+        self.inner.complete_journey(id).await
+    }
+
+    async fn dead_journey(&self, id: uuid::Uuid) -> Result<(), ExecutorError> {
+        self.inner.dead_journey(id).await
+    }
+
+    async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
+        self.inner.poll_timers().await
+    }
+
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<jungle_sdk::SupportedAnimal>,
+    ) -> Result<Option<jungle_sdk::Work>, ExecutorError> {
+        self.inner.poll_work(supported_animals).await
+    }
+
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: uuid::Uuid,
+        supported_animals: Vec<jungle_sdk::SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .wait_for_worker_wake(owner_id, supported_animals, timeout)
+            .await
+    }
+
+    async fn effect_input(
+        &self,
+        id: uuid::Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_input(id, node_id, input).await
+    }
+
+    async fn effect_success_output(
+        &self,
+        id: uuid::Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_success_output(id, node_id, output).await
+    }
+
+    async fn effect_failure_output(
+        &self,
+        id: uuid::Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_failure_output(id, node_id, err).await
+    }
+
+    async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError> {
         self.inner.submit_history_event(event).await
     }
 }
@@ -523,7 +783,9 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
             gate: Arc::clone(&gate),
         };
         async move {
-            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let worker = JungleWorker::new(zoo, client)
+                .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
+                .with_replay_page_size(1);
             let _ = worker.spawn().await;
         }
     });
@@ -617,10 +879,8 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
     });
 
     let control_client = connect_client_with_retry(listen_addr).await;
-    let worker_one_client = DropInitialEffectInputClient::new(
-        connect_client_with_retry(listen_addr).await,
-        PRE_STEPS,
-    );
+    let worker_one_client =
+        DropHistoryEventsClient::new(connect_client_with_retry(listen_addr).await, PRE_STEPS, 0, 0);
     let worker_two_client = connect_client_with_retry(listen_addr).await;
 
     let pre_counter = Arc::new(AtomicUsize::new(0));
@@ -711,6 +971,257 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
         effect_input_count,
         PRE_STEPS + POST_STEPS + 1,
         "replay should synthesize the dropped pre-gate effect inputs exactly once"
+    );
+
+    worker_two.abort();
+    let _ = worker_two.await;
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn replay_recovery_synthesizes_missing_effect_success_outputs_once() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client =
+        DropHistoryEventsClient::new(connect_client_with_retry(listen_addr).await, 0, PRE_STEPS, 0);
+    let worker_two_client = connect_client_with_retry(listen_addr).await;
+
+    let pre_counter = Arc::new(AtomicUsize::new(0));
+    let post_counter = Arc::new(AtomicUsize::new(0));
+    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+    let gate = Arc::new(Semaphore::new(0));
+
+    let worker_one = tokio::spawn({
+        let client = worker_one_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    let journey_id = control_client
+        .spawn::<ReplayGateAnimal>(&ReplayGateState { phase: 0 })
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+        .await
+        .expect("first gate notification should arrive")
+        .expect("first gate notification channel should remain open");
+
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "original pre-gate side effects should run before reclaim"
+    );
+
+    worker_one.abort();
+    let _ = worker_one.await;
+
+    let worker_two = tokio::spawn({
+        let client = worker_two_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx,
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if reached_rx.try_recv().is_ok() {
+                break;
+            }
+            let _ = control_client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed while waiting for replay gate");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("replay gate notification should arrive after reclaim");
+
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS * 2,
+        "missing pre-gate success outputs should rerun exactly once during recovery"
+    );
+    assert_eq!(post_counter.load(Ordering::SeqCst), 0);
+
+    gate.add_permits(1);
+    wait_for_completed(listen_addr, journey_id, Duration::from_secs(20)).await;
+
+    assert_eq!(post_counter.load(Ordering::SeqCst), POST_STEPS);
+
+    let history = control_client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed after completion");
+    let effect_success_output_count = history
+        .iter()
+        .filter(|event| matches!(event, RunnerOut::EffectSuccessOutput { .. }))
+        .count();
+    assert_eq!(
+        effect_success_output_count,
+        PRE_STEPS + POST_STEPS + 1,
+        "history should contain one success output per completed effect after recovery"
+    );
+
+    worker_two.abort();
+    let _ = worker_two.await;
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn replay_cursor_freezes_snapshot_end_sequence_id_while_history_grows() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client =
+        DropHistoryEventsClient::new(connect_client_with_retry(listen_addr).await, PRE_STEPS, 0, 0);
+    let worker_two_client = SnapshotProbeClient::new(connect_client_with_retry(listen_addr).await);
+
+    let pre_counter = Arc::new(AtomicUsize::new(0));
+    let post_counter = Arc::new(AtomicUsize::new(0));
+    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+    let gate = Arc::new(Semaphore::new(0));
+
+    let worker_one = tokio::spawn({
+        let client = worker_one_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    let journey_id = control_client
+        .spawn::<ReplayGateAnimal>(&ReplayGateState { phase: 0 })
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+        .await
+        .expect("first gate notification should arrive")
+        .expect("first gate notification channel should remain open");
+
+    worker_one.abort();
+    let _ = worker_one.await;
+
+    let worker_two = tokio::spawn({
+        let client = worker_two_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx,
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if reached_rx.try_recv().is_ok() {
+                break;
+            }
+            let _ = control_client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed while waiting for replay gate");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("replay gate notification should arrive after reclaim");
+
+    let frozen_snapshot_end = worker_two_client
+        .frozen_snapshot_end_sequence_id()
+        .expect("replay should freeze a snapshot end sequence id");
+    let snapshot_args = worker_two_client.replay_snapshot_args();
+    assert!(
+        snapshot_args.len() > 1,
+        "replay should fetch multiple pages with page size 1"
+    );
+    assert_eq!(snapshot_args[0], None);
+    assert!(
+        snapshot_args
+            .iter()
+            .skip(1)
+            .all(|arg| *arg == Some(frozen_snapshot_end)),
+        "replay should keep sending the initial snapshot end on later page fetches"
+    );
+
+    gate.add_permits(1);
+    wait_for_completed(listen_addr, journey_id, Duration::from_secs(20)).await;
+
+    let tail = control_client
+        .journey_replay_page(journey_id, Some(frozen_snapshot_end), None, 100)
+        .await
+        .expect("tail replay page should succeed after completion");
+    assert!(
+        !tail.events.is_empty(),
+        "history should grow beyond the frozen replay snapshot"
+    );
+    assert!(
+        tail.events.iter().any(
+            |event| matches!(
+                &event.event,
+                RunnerOut::EffectInput { node_id, data, .. }
+                    if *node_id == u32::MAX && data.as_slice() == [0x42]
+            )
+        ),
+        "tail history should include the injected post-snapshot effect input"
     );
 
     worker_two.abort();
