@@ -3,27 +3,27 @@
 use crate::mcts::{SearchTree, Submission};
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    DspCode, LYREBIRD_DURATION_SECS, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
+    aggregate_sample_score, DspCode, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
     LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag,
-    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodePurgatory, aggregate_sample_score,
+    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodePurgatory, LYREBIRD_DURATION_SECS,
 };
 use futures::future::join_all;
 use image::ImageReader;
 use jungle_sdk::effect;
-use rustfft::{FftPlanner, num_complex::Complex};
+use rustfft::{num_complex::Complex, FftPlanner};
 use serde::{Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
-use spectrs::io::image::{Colormap, save_spectrogram_image};
-use spectrs::spectrogram::mel::{MelScale, par_convert_to_mel};
-use spectrs::spectrogram::stft::{SpectrogramType, par_compute_spectrogram};
+use spectrs::io::image::{save_spectrogram_image, Colormap};
+use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
+use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
 use std::f32::consts::PI;
 use std::fs;
-use std::future::{Future, ready};
+use std::future::{ready, Future};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
-use tokio::time::{Duration, Instant, timeout};
+use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, info, warn};
 use zensim::{RgbSlice, Zensim, ZensimProfile};
 
@@ -628,7 +628,11 @@ fn crest_factor(frame: &[f32]) -> f32 {
 
     let peak = frame.iter().map(|sample| sample.abs()).fold(0.0, f32::max);
     let rms = (frame.iter().map(|sample| sample * sample).sum::<f32>() / frame.len() as f32).sqrt();
-    if rms <= f32::EPSILON { 0.0 } else { peak / rms }
+    if rms <= f32::EPSILON {
+        0.0
+    } else {
+        peak / rms
+    }
 }
 
 fn spectral_bins(spectrum: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
@@ -2007,17 +2011,15 @@ mod tests {
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".into(),
             target_audio_metrics: target_metrics(),
-            code_branch: vec![
-                score_code(
-                    "initial",
-                    "fn bass() {}",
-                    "/tmp/bass.wav",
-                    "/tmp/bass.png",
-                    0.5,
-                    0.55,
-                )
-                .into(),
-            ],
+            code_branch: vec![score_code(
+                "initial",
+                "fn bass() {}",
+                "/tmp/bass.wav",
+                "/tmp/bass.png",
+                0.5,
+                0.55,
+            )
+            .into()],
             prompt_attempt: 0,
             retry_reason: None,
             system_prompt_override: None,
@@ -2174,17 +2176,15 @@ mod tests {
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".into(),
             target_audio_metrics: target_metrics(),
-            code_branch: vec![
-                score_code(
-                    "initial",
-                    "fn bass() {}",
-                    "/tmp/bass.wav",
-                    "/tmp/bass.png",
-                    0.5,
-                    0.55,
-                )
-                .into(),
-            ],
+            code_branch: vec![score_code(
+                "initial",
+                "fn bass() {}",
+                "/tmp/bass.wav",
+                "/tmp/bass.png",
+                0.5,
+                0.55,
+            )
+            .into()],
             prompt_attempt: 0,
             retry_reason: None,
             system_prompt_override: Some("You are a mastering engineer.".to_owned()),
@@ -2209,16 +2209,12 @@ mod tests {
             apply_search_replace_patch("fn foo() {}", &patch).unwrap(),
             "fn bar() {}"
         );
-        assert!(
-            apply_search_replace_patch("fn baz() {}", &patch)
-                .unwrap_err()
-                .contains("did not match")
-        );
-        assert!(
-            apply_search_replace_patch("foo foo", &patch)
-                .unwrap_err()
-                .contains("matched 2 locations")
-        );
+        assert!(apply_search_replace_patch("fn baz() {}", &patch)
+            .unwrap_err()
+            .contains("did not match"));
+        assert!(apply_search_replace_patch("foo foo", &patch)
+            .unwrap_err()
+            .contains("matched 2 locations"));
     }
 
     #[tokio::test]

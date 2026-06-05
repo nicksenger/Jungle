@@ -5,8 +5,7 @@ use jungle_client::{JourneyHandle, JourneyUpdateSubscription, JungleClient};
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
 use jungle_types::{
     Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyRecord,
-    JourneyReplayPage, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut,
-    Work,
+    JourneyReplayPage, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

@@ -1,8 +1,8 @@
 use super::{LyrebirdInstrument, PulseCodePurgatory, PulseCodePurgatoryError};
-use base64::prelude::{BASE64_STANDARD, Engine as _};
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use base64::prelude::{Engine as _, BASE64_STANDARD};
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;

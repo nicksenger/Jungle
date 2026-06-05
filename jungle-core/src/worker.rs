@@ -394,6 +394,63 @@ fn is_informational_history_event(history: Option<&RunnerOut>, journey_id: Uuid)
     )
 }
 
+fn is_journey_history_event(history: Option<&RunnerOut>, journey_id: Uuid) -> bool {
+    matches!(
+        history,
+        Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::NodeLifecycle(node)) if node.uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::EffectInput { uuid, .. }) if *uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::EffectSuccessOutput { uuid, .. }) if *uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::EffectFailureOutput { uuid, .. }) if *uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
+    )
+}
+
+async fn drain_live_history_until_parent_completion(
+    replay: &mut ReplayCursor,
+    journey_id: Uuid,
+    request_node_id: u32,
+) -> Result<Option<Result<Vec<u8>, Vec<u8>>>, ExecutorError> {
+    loop {
+        match replay.peek().await? {
+            Some(RunnerOut::EffectSuccessOutput {
+                node_id,
+                data,
+                uuid,
+            }) if uuid == journey_id && node_id == request_node_id => {
+                let _ = replay.discard_front().await?;
+                return Ok(Some(Ok(data)));
+            }
+            Some(RunnerOut::EffectFailureOutput {
+                node_id,
+                data,
+                uuid,
+            }) if uuid == journey_id && node_id == request_node_id => {
+                let _ = replay.discard_front().await?;
+                return Ok(Some(Err(data)));
+            }
+            history if is_journey_history_event(history.as_ref(), journey_id) => {
+                let _ = replay.discard_front().await?;
+            }
+            None => return Ok(None),
+            _ => return Ok(None),
+        }
+    }
+}
+
 fn is_terminal_journey_status(status: JourneyStatus) -> bool {
     matches!(
         status,
@@ -806,6 +863,7 @@ where
                     seed.into();
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
+                executor.set_journey_id(journey_id);
                 let mut replay = ReplayCursor::new(client, journey_id, replay_page_size);
                 if let Err(err) = replay_history::<T, Head, _>(
                     &mut executor,
@@ -823,7 +881,6 @@ where
                         other => return Err(other),
                     }
                 }
-                executor.set_journey_id(journey_id);
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
@@ -985,7 +1042,10 @@ impl ReplayCursor {
 
         let snapshot_end_sequence_id = self.snapshot_end_sequence_id;
         for event in page.events {
-            if self.after_sequence_id.is_some_and(|after| event.sequence_id <= after) {
+            if self
+                .after_sequence_id
+                .is_some_and(|after| event.sequence_id <= after)
+            {
                 return Err(ExecutorError::ClientTransport(format!(
                     "journey replay cursor received stale event (journey={}, after_sequence_id={}, event_sequence_id={})",
                     self.journey_id,
@@ -993,7 +1053,8 @@ impl ReplayCursor {
                     event.sequence_id
                 )));
             }
-            if snapshot_end_sequence_id.is_some_and(|snapshot_end| event.sequence_id > snapshot_end) {
+            if snapshot_end_sequence_id.is_some_and(|snapshot_end| event.sequence_id > snapshot_end)
+            {
                 return Err(ExecutorError::ClientTransport(format!(
                     "journey replay cursor received event beyond snapshot end (journey={}, snapshot_end_sequence_id={}, event_sequence_id={})",
                     self.journey_id,
@@ -1055,6 +1116,7 @@ where
         let request_node_id = request.node_id();
         let expected_input = request.request_bytes();
         let effect_type = request.effect_type();
+        let request_has_live_history = request.has_live_history();
 
         // Appearance snapshots are informational and can interleave with step history.
         while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
@@ -1103,10 +1165,14 @@ where
                 || (effect_type == sleep_effect_type
                     && matches!(
                         current_event.as_ref(),
-                        Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
+                    Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
                     ));
 
-            if effect_type == no_effect_type || has_recoverable_cursor_event {
+            if effect_type == no_effect_type
+                || has_recoverable_cursor_event
+                || (request_has_live_history
+                    && is_journey_history_event(current_event.as_ref(), journey_id))
+            {
                 send_recovered_effect_input(tx, journey_id, request_node_id, expected_input)
                     .await?;
             } else {
@@ -1179,27 +1245,41 @@ where
                 }
             }
         } else {
-            match replay.peek().await? {
-                Some(RunnerOut::EffectSuccessOutput {
-                    node_id,
-                    data,
-                    uuid,
-                }) if uuid == journey_id && node_id == request_node_id => {
-                    let _ = replay.discard_front().await?;
-                    Ok(data)
-                }
-                Some(RunnerOut::EffectFailureOutput {
-                    node_id,
-                    data,
-                    uuid,
-                }) if uuid == journey_id && node_id == request_node_id => {
-                    let _ = replay.discard_front().await?;
-                    Err(data)
-                }
-                _ => {
+            if request_has_live_history {
+                if let Some(completion) =
+                    drain_live_history_until_parent_completion(replay, journey_id, request_node_id)
+                        .await?
+                {
+                    completion
+                } else {
                     let completion = request.run().await?;
                     send_recovered_completion(tx, journey_id, request_node_id, &completion).await?;
                     completion
+                }
+            } else {
+                match replay.peek().await? {
+                    Some(RunnerOut::EffectSuccessOutput {
+                        node_id,
+                        data,
+                        uuid,
+                    }) if uuid == journey_id && node_id == request_node_id => {
+                        let _ = replay.discard_front().await?;
+                        Ok(data)
+                    }
+                    Some(RunnerOut::EffectFailureOutput {
+                        node_id,
+                        data,
+                        uuid,
+                    }) if uuid == journey_id && node_id == request_node_id => {
+                        let _ = replay.discard_front().await?;
+                        Err(data)
+                    }
+                    _ => {
+                        let completion = request.run().await?;
+                        send_recovered_completion(tx, journey_id, request_node_id, &completion)
+                            .await?;
+                        completion
+                    }
                 }
             }
         };

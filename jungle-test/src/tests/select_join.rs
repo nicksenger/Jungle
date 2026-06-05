@@ -1345,7 +1345,8 @@ async fn conditional_join_tail_does_not_complete_early_before_tail_progress_fini
 
 #[tokio::test]
 async fn nested_join_with_inner_join_ending_in_no_effect_does_not_hang() {
-    let mut executor = Executor::<NestedJoinWithInnerNoEffectAnimal>::new(SelectJoinState::default());
+    let mut executor =
+        Executor::<NestedJoinWithInnerNoEffectAnimal>::new(SelectJoinState::default());
 
     let run = tokio::time::timeout(Duration::from_secs(2), async {
         while !executor.is_complete() {

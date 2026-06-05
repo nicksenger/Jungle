@@ -643,16 +643,15 @@ impl MockClientBuilder {
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
         let default_journey_history_handler: JourneyHistoryHandler =
             Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
-        let default_journey_replay_page_handler: JourneyReplayPageHandler = Arc::new(
-            |_, _, _, _| {
+        let default_journey_replay_page_handler: JourneyReplayPageHandler =
+            Arc::new(|_, _, _, _| {
                 Box::pin(async {
                     Ok(JourneyReplayPage {
                         snapshot_end_sequence_id: None,
                         events: Vec::new(),
                     })
                 })
-            },
-        );
+            });
         let default_list_journeys_handler: ListJourneysHandler =
             Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
         let default_flow_status_handler: FlowStatusHandler =

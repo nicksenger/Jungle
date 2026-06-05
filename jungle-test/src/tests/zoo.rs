@@ -1090,11 +1090,13 @@ async fn jungle_worker_can_run_multiple_journeys_in_parallel_when_configured() {
         .on_flow_complete({
             let flow_complete_calls = Arc::clone(&flow_complete_calls);
             let replay_page_calls = Arc::clone(&replay_page_calls);
-            let replay_page_calls_at_first_complete = Arc::clone(&replay_page_calls_at_first_complete);
+            let replay_page_calls_at_first_complete =
+                Arc::clone(&replay_page_calls_at_first_complete);
             move |_| {
                 let flow_complete_calls = Arc::clone(&flow_complete_calls);
                 let replay_page_calls = Arc::clone(&replay_page_calls);
-                let replay_page_calls_at_first_complete = Arc::clone(&replay_page_calls_at_first_complete);
+                let replay_page_calls_at_first_complete =
+                    Arc::clone(&replay_page_calls_at_first_complete);
                 async move {
                     let prior = flow_complete_calls.fetch_add(1, Ordering::Relaxed);
                     if prior == 0 {

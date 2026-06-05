@@ -14,7 +14,10 @@ type ClaimWorkHandler =
 type CreateFlowHandler = Arc<dyn Fn(String, u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type JourneyHistoryHandler = Arc<dyn Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static>;
 type JourneyReplayPageHandler = Arc<
-    dyn Fn(Uuid, Option<u64>, Option<u64>, u32) -> Result<JourneyReplayPage> + Send + Sync + 'static,
+    dyn Fn(Uuid, Option<u64>, Option<u64>, u32) -> Result<JourneyReplayPage>
+        + Send
+        + Sync
+        + 'static,
 >;
 type ListJourneysHandler =
     Arc<dyn Fn(String) -> Result<Vec<JourneyRecord>> + Send + Sync + 'static>;

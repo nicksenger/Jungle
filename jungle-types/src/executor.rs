@@ -1,7 +1,8 @@
 use crate::{
     Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
-    Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NodeLifecycle,
-    NodeLifecyclePhase, NoEffect, RunnerOut, Running, Scoped, Select, StateCarrier, Transparent, While,
+    Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NoEffect,
+    NodeLifecycle, NodeLifecyclePhase, RunnerOut, Running, Scoped, Select, StateCarrier,
+    Transparent, While,
 };
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
@@ -394,6 +395,10 @@ impl ExecutableEffectRequest {
         self.live_history_rx.take()
     }
 
+    pub fn has_live_history(&self) -> bool {
+        self.live_history_rx.is_some()
+    }
+
     fn with_live_history(mut self, live_history_rx: UnboundedReceiver<RunnerOut>) -> Self {
         self.live_history_rx = Some(live_history_rx);
         self
@@ -596,7 +601,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>()
+            == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -632,7 +638,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>()
+            == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -846,7 +853,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>()
+            == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
@@ -882,7 +890,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<NoEffect>()
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>()
+            == core::any::type_name::<NoEffect>()
         {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));

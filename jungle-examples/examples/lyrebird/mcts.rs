@@ -830,11 +830,9 @@ mod tests {
             vec![submission("00000001", 0.3)],
         )
         .unwrap_err();
-        assert!(
-            submit_err
-                .to_string()
-                .contains("select must precede submit")
-        );
+        assert!(submit_err
+            .to_string()
+            .contains("select must precede submit"));
 
         let _ = select_for_instrument(&ecosystem, LyrebirdInstrument::GuitarSolo).unwrap();
         let select_err =
@@ -904,10 +902,9 @@ mod tests {
 
         let err = choose_expandable_node(&nodes, 8, LyrebirdInstrument::Vocals).unwrap_err();
 
-        assert!(
-            err.to_string()
-                .contains("node 999 missing while computing vocals tree depth")
-        );
+        assert!(err
+            .to_string()
+            .contains("node 999 missing while computing vocals tree depth"));
     }
 
     #[test]

@@ -1360,7 +1360,10 @@ async fn combinator_attempt_successes_complete_and_emit_expected_events() {
 
     let (status, history) = run_case!(JoinFailureZoo, JoinInsideAttemptOkAnimal, "join-inside-ok");
     assert_eq!(status, JourneyStatus::Completed);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 411, 412, 800, 800]);
+    assert_eq!(
+        decode_i32_effect_inputs(&history),
+        vec![100, 411, 412, 800, 800]
+    );
     assert_history_effect_counts(&history, 6, 6);
 
     let (status, history) = run_case!(

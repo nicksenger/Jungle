@@ -337,11 +337,14 @@ impl JungleStore for RedbStore {
         let snapshot_end_sequence_id = match snapshot_end_sequence_id {
             Some(sequence_id) => Some(sequence_id),
             None => {
-                let sequences = read_tx.open_table(JOURNEY_EVENT_SEQUENCE_TABLE).map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb journey_replay_page open sequence table failed: {err}"
-                    ))
-                })?;
+                let sequences =
+                    read_tx
+                        .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                        .map_err(|err| {
+                            crate::PersistenceError::Message(format!(
+                                "redb journey_replay_page open sequence table failed: {err}"
+                            ))
+                        })?;
                 let key = &journey_id.as_bytes()[..];
                 sequences
                     .get(key)
@@ -382,10 +385,8 @@ impl JungleStore for RedbStore {
                             "redb journey_replay_page read events entry failed: {err}"
                         ))
                     })?;
-                    let (_, sequence_id) = decode_event_key(
-                        key.value(),
-                        "redb journey_replay_page decode event key",
-                    )?;
+                    let (_, sequence_id) =
+                        decode_event_key(key.value(), "redb journey_replay_page decode event key")?;
                     let (kind, data) = decode_event_value(
                         value.value(),
                         "redb journey_replay_page decode event value",

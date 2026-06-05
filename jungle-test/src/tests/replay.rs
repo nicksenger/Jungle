@@ -44,12 +44,8 @@ impl DropHistoryEventsClient {
     fn try_drop(counter: &AtomicUsize) -> bool {
         let mut current = counter.load(Ordering::SeqCst);
         while current > 0 {
-            match counter.compare_exchange(
-                current,
-                current - 1,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
+            match counter.compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst)
+            {
                 Ok(_) => return true,
                 Err(actual) => current = actual,
             }
@@ -237,9 +233,7 @@ impl JungleClient for DropHistoryEventsClient {
 
     async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError> {
         let should_drop = match &event {
-            RunnerOut::EffectInput { .. } => {
-                Self::try_drop(&self.remaining_effect_inputs_to_drop)
-            }
+            RunnerOut::EffectInput { .. } => Self::try_drop(&self.remaining_effect_inputs_to_drop),
             RunnerOut::EffectSuccessOutput { .. } => {
                 Self::try_drop(&self.remaining_effect_success_outputs_to_drop)
             }
@@ -748,6 +742,170 @@ impl From<ReplayGateState> for () {
     fn from(_value: ReplayGateState) -> Self {}
 }
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayJoinLeftState {
+    ran: bool,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayJoinRightState {
+    ran: bool,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayJoinState {
+    #[jungle(focus)]
+    left: ReplayJoinLeftState,
+    #[jungle(focus)]
+    right: ReplayJoinRightState,
+    gate_opened: bool,
+    post_ran: bool,
+}
+
+pub struct ReplayJoinLeftSpec;
+#[jungle::action]
+impl Action for ReplayJoinLeftSpec {
+    type Effect = ReplayPreIncrementEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayJoinLeftState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut ReplayJoinLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("left join branch should succeed"))?;
+        state.ran = true;
+        Ok(())
+    }
+}
+
+pub struct ReplayJoinRightSpec;
+#[jungle::action]
+impl Action for ReplayJoinRightSpec {
+    type Effect = ReplayPreIncrementEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayJoinRightState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut ReplayJoinRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("right join branch should succeed"))?;
+        state.ran = true;
+        Ok(())
+    }
+}
+
+pub struct ReplayJoinGateSpec;
+#[jungle::action]
+impl Action for ReplayJoinGateSpec {
+    type Effect = ReplayGateEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &ReplayJoinState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut ReplayJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("join gate should succeed"))?;
+        state.gate_opened = true;
+        Ok(())
+    }
+}
+
+pub struct ReplayJoinPostSpec;
+#[jungle::action]
+impl Action for ReplayJoinPostSpec {
+    type Effect = ReplayPostIncrementEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayJoinState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut ReplayJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("join post step should succeed"))?;
+        state.post_ran = true;
+        Ok(())
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = ReplayJoinLeftState)]
+pub struct ReplayJoinLeftFlow(Step<ReplayJoinLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = ReplayJoinRightState)]
+pub struct ReplayJoinRightFlow(Step<ReplayJoinRightSpec>);
+
+#[derive(Flow)]
+pub struct ReplayJoinJourney(
+    Join<ReplayJoinLeftFlow, ReplayJoinRightFlow>,
+    Step<ReplayJoinGateSpec>,
+    Step<ReplayJoinPostSpec>,
+);
+
+pub struct ReplayJoinAnimal;
+#[jungle::animal(id = 1, generation = 0)]
+impl Animal for ReplayJoinAnimal {
+    type State = ReplayJoinState;
+    type Seed = ReplayJoinState;
+    type Flow = ReplayJoinJourney;
+}
+
+#[derive(Animals)]
+pub struct ReplayJoinAnimals(ReplayJoinAnimal);
+
+impl Ecosystem for ReplayJoinZoo {
+    const NAME: &'static str = "replay-join-zoo";
+    type Animals = ReplayJoinAnimals;
+}
+
+#[derive(Clone)]
+pub struct ReplayJoinZoo {
+    pre_counter: Arc<AtomicUsize>,
+    post_counter: Arc<AtomicUsize>,
+    reached_tx: mpsc::UnboundedSender<()>,
+    gate: Arc<Semaphore>,
+}
+
+impl ReplayPreIncrementRuntime for ReplayJoinZoo {
+    fn run_replay_pre_increment(&self) {
+        self.pre_counter.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+impl ReplayPostIncrementRuntime for ReplayJoinZoo {
+    fn run_replay_post_increment(&self) {
+        self.post_counter.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+impl ReplayGateRuntime for ReplayJoinZoo {
+    fn run_replay_gate(&self) -> impl std::future::Future<Output = Result<(), ()>> + Send {
+        let reached_tx = self.reached_tx.clone();
+        let gate = Arc::clone(&self.gate);
+        async move {
+            reached_tx.send(()).map_err(|_| ())?;
+            let permit = gate.acquire().await.map_err(|_| ())?;
+            permit.forget();
+            Ok(())
+        }
+    }
+}
+
+impl From<ReplayJoinState> for () {
+    fn from(_value: ReplayJoinState) -> Self {}
+}
+
 #[tokio::test]
 async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
@@ -862,6 +1020,133 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 }
 
 #[tokio::test]
+async fn replay_after_join_live_history_crash_skips_child_events_and_resumes() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client = connect_client_with_retry(listen_addr).await;
+    let worker_two_client = connect_client_with_retry(listen_addr).await;
+
+    let pre_counter = Arc::new(AtomicUsize::new(0));
+    let post_counter = Arc::new(AtomicUsize::new(0));
+    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+    let gate = Arc::new(Semaphore::new(0));
+
+    let worker_one = tokio::spawn({
+        let client = worker_one_client.clone();
+        let zoo = ReplayJoinZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client)
+                .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
+                .with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    let journey_id = control_client
+        .spawn::<ReplayJoinAnimal>(&ReplayJoinState::default())
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+        .await
+        .expect("first gate notification should arrive")
+        .expect("first gate notification channel should remain open");
+
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        2,
+        "join child side effects should run exactly once before crash"
+    );
+    assert_eq!(post_counter.load(Ordering::SeqCst), 0);
+
+    worker_one.abort();
+    let _ = worker_one.await;
+
+    let worker_two = tokio::spawn({
+        let client = worker_two_client.clone();
+        let zoo = ReplayJoinZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx,
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if reached_rx.try_recv().is_ok() {
+                break;
+            }
+            let _ = control_client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed while waiting for replay gate");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("replay gate notification should arrive after reclaim");
+
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        2,
+        "replay should not rerun join child side effects"
+    );
+    assert_eq!(post_counter.load(Ordering::SeqCst), 0);
+
+    gate.add_permits(1);
+    wait_for_completed(listen_addr, journey_id, Duration::from_secs(20)).await;
+
+    assert_eq!(pre_counter.load(Ordering::SeqCst), 2);
+    assert_eq!(post_counter.load(Ordering::SeqCst), 1);
+
+    let history = control_client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed after replay");
+    let effect_inputs = history
+        .iter()
+        .filter_map(|event| match event {
+            RunnerOut::EffectInput { node_id, .. } => Some(*node_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        effect_inputs.len() >= 4,
+        "expected join parent, join children, and gate effect inputs in history: {effect_inputs:?}"
+    );
+
+    worker_two.abort();
+    let _ = worker_two.await;
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_own_writes() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
@@ -879,8 +1164,12 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
     });
 
     let control_client = connect_client_with_retry(listen_addr).await;
-    let worker_one_client =
-        DropHistoryEventsClient::new(connect_client_with_retry(listen_addr).await, PRE_STEPS, 0, 0);
+    let worker_one_client = DropHistoryEventsClient::new(
+        connect_client_with_retry(listen_addr).await,
+        PRE_STEPS,
+        0,
+        0,
+    );
     let worker_two_client = connect_client_with_retry(listen_addr).await;
 
     let pre_counter = Arc::new(AtomicUsize::new(0));
@@ -997,8 +1286,12 @@ async fn replay_recovery_synthesizes_missing_effect_success_outputs_once() {
     });
 
     let control_client = connect_client_with_retry(listen_addr).await;
-    let worker_one_client =
-        DropHistoryEventsClient::new(connect_client_with_retry(listen_addr).await, 0, PRE_STEPS, 0);
+    let worker_one_client = DropHistoryEventsClient::new(
+        connect_client_with_retry(listen_addr).await,
+        0,
+        PRE_STEPS,
+        0,
+    );
     let worker_two_client = connect_client_with_retry(listen_addr).await;
 
     let pre_counter = Arc::new(AtomicUsize::new(0));
@@ -1119,8 +1412,12 @@ async fn replay_cursor_freezes_snapshot_end_sequence_id_while_history_grows() {
     });
 
     let control_client = connect_client_with_retry(listen_addr).await;
-    let worker_one_client =
-        DropHistoryEventsClient::new(connect_client_with_retry(listen_addr).await, PRE_STEPS, 0, 0);
+    let worker_one_client = DropHistoryEventsClient::new(
+        connect_client_with_retry(listen_addr).await,
+        PRE_STEPS,
+        0,
+        0,
+    );
     let worker_two_client = SnapshotProbeClient::new(connect_client_with_retry(listen_addr).await);
 
     let pre_counter = Arc::new(AtomicUsize::new(0));
@@ -1214,13 +1511,11 @@ async fn replay_cursor_freezes_snapshot_end_sequence_id_while_history_grows() {
         "history should grow beyond the frozen replay snapshot"
     );
     assert!(
-        tail.events.iter().any(
-            |event| matches!(
-                &event.event,
-                RunnerOut::EffectInput { node_id, data, .. }
-                    if *node_id == u32::MAX && data.as_slice() == [0x42]
-            )
-        ),
+        tail.events.iter().any(|event| matches!(
+            &event.event,
+            RunnerOut::EffectInput { node_id, data, .. }
+                if *node_id == u32::MAX && data.as_slice() == [0x42]
+        )),
         "tail history should include the injected post-snapshot effect input"
     );
 

@@ -826,7 +826,8 @@ fn while_executable_inline_no_effect_then_effect_keeps_request_completion_handsh
 
 #[test]
 fn while_context_executable_inline_no_effect_then_effect_keeps_request_completion_handshake() {
-    let mut executor = ContextExecutor::<(), WhileInlineNoEffectThenEffectAnimal>::new(Arc::new(()), 0);
+    let mut executor =
+        ContextExecutor::<(), WhileInlineNoEffectThenEffectAnimal>::new(Arc::new(()), 0);
     let request = executor
         .next_executable_request(())
         .expect("context while body should advance from inline no-effect to effect request");
@@ -867,7 +868,8 @@ fn nested_while_executable_inline_no_effect_then_effect_keeps_request_completion
 }
 
 #[test]
-fn nested_while_context_executable_inline_no_effect_then_effect_keeps_request_completion_handshake() {
+fn nested_while_context_executable_inline_no_effect_then_effect_keeps_request_completion_handshake()
+{
     let mut executor =
         ContextExecutor::<(), NestedWhileInlineNoEffectThenEffectAnimal>::new(Arc::new(()), 0);
     let request = executor
