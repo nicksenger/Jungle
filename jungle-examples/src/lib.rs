@@ -59,6 +59,7 @@ impl<J> Effect<J> for BumpEffect {
 
 pub struct ObserveSleep;
 impl BoundAction<ObserveAnimal> for ObserveSleep {
+    const NAME: &'static str = "ObserveSleep";
     type Effect = Sleep;
     type Aspect = Identity;
     type Input = ();
@@ -90,6 +91,7 @@ impl BoundAction<ObserveAnimal> for ObserveSleep {
 
 pub struct ObserveBump;
 impl BoundAction<ObserveAnimal> for ObserveBump {
+    const NAME: &'static str = "ObserveBump";
     type Effect = BumpEffect;
     type Aspect = Identity;
     type Input = ();

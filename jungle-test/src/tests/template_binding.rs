@@ -192,6 +192,7 @@ impl<A> BoundAction<A> for CounterAddOne<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "CounterAddOne";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -227,6 +228,7 @@ impl<A> BoundAction<A> for LedgerAddOne<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "LedgerAddOne";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -262,6 +264,7 @@ impl<A> BoundAction<A> for CounterCommit<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "CounterCommit";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -298,6 +301,7 @@ impl<A> BoundAction<A> for LedgerCommit<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "LedgerCommit";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -334,6 +338,7 @@ impl<A> BoundAction<A> for GenericAddOne<A>
 where
     A: Animal<State = i32> + LateBoundPolicy,
 {
+    const NAME: &'static str = "GenericAddOne";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -369,6 +374,7 @@ impl<A> BoundAction<A> for GenericCommit<A>
 where
     A: Animal<State = i32> + LateBoundPolicy,
 {
+    const NAME: &'static str = "GenericCommit";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -644,6 +650,7 @@ impl<A> BoundAction<A> for ContextBoundAct<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "ContextBoundAct";
     type Effect = ContextBoundEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -952,6 +959,7 @@ impl<A> BoundAction<A> for LensReadSpareAct<A>
 where
     A: Animal<State = LensRootState>,
 {
+    const NAME: &'static str = "LensReadSpareAct";
     type Effect = TemplateAddEffect;
     type Aspect = LensRootSpareCarrier;
     type Input = i32;
@@ -987,6 +995,7 @@ impl<A> BoundAction<A> for LensReadLeafAct<A>
 where
     A: Animal<State = LensRootState>,
 {
+    const NAME: &'static str = "LensReadLeafAct";
     type Effect = TemplateAddEffect;
     type Aspect = LensRootLeafValueCarrier;
     type Input = i32;
@@ -1022,6 +1031,7 @@ impl<A> BoundAction<A> for LensCommitAct<A>
 where
     A: Animal<State = LensRootState>,
 {
+    const NAME: &'static str = "LensCommitAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -1274,6 +1284,7 @@ impl<A> BoundAction<A> for NestedBranchSpareAct<A>
 where
     A: Animal<State = NestedLensBranch>,
 {
+    const NAME: &'static str = "NestedBranchSpareAct";
     type Effect = TemplateAddEffect;
     type Aspect = NestedBranchSpareCarrier;
     type Input = i32;
@@ -1310,6 +1321,7 @@ impl<A> BoundAction<A> for NestedLeafValueAct<A>
 where
     A: Animal<State = NestedLensLeaf>,
 {
+    const NAME: &'static str = "NestedLeafValueAct";
     type Effect = TemplateAddEffect;
     type Aspect = NestedLeafValueCarrier;
     type Input = i32;
@@ -1346,6 +1358,7 @@ impl<A> BoundAction<A> for NestedLeafNoiseAct<A>
 where
     A: Animal<State = NestedLensLeaf>,
 {
+    const NAME: &'static str = "NestedLeafNoiseAct";
     type Effect = TemplateAddEffect;
     type Aspect = NestedLeafNoiseCarrier;
     type Input = i32;
@@ -1963,7 +1976,8 @@ impl<St> Action for NoEffectLoop2DecCounter<St> {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_20 = {
-            output.map_err(|_err| Failure::from("no-effect loop2 decrement step should succeed"))?;
+            output
+                .map_err(|_err| Failure::from("no-effect loop2 decrement step should succeed"))?;
             state.counter = state.counter.saturating_sub(1);
         };
         Ok(__absorb_out_20)
@@ -2075,7 +2089,10 @@ struct NoEffectLoop2Body<St, L: TraverseFlow, R: TraverseFlow>(
 #[jungle(focus = Loop2Container<St>)]
 struct NoEffectLoop2<St, L: TraverseFlow, R: TraverseFlow>(
     Step<NoEffectLoop2SetCounter<St>>,
-    While<FocusedLoopCondition<NoEffectLoop2CounterGt0, Loop2Container<St>>, NoEffectLoop2Body<St, L, R>>,
+    While<
+        FocusedLoopCondition<NoEffectLoop2CounterGt0, Loop2Container<St>>,
+        NoEffectLoop2Body<St, L, R>,
+    >,
 );
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2095,7 +2112,8 @@ impl From<NoEffectLoop2TraceState> for NoEffectLoop2HarnessState {
     }
 }
 
-type NoEffectLoop2Journey = NoEffectLoop2<NoEffectLoop2TraceState, NoEffectLoop2LeftFlow, NoEffectLoop2RightFlow>;
+type NoEffectLoop2Journey =
+    NoEffectLoop2<NoEffectLoop2TraceState, NoEffectLoop2LeftFlow, NoEffectLoop2RightFlow>;
 
 struct NoEffectLoop2HarnessAnimal;
 #[jungle::animal(id = 58, generation = 0)]
@@ -2107,9 +2125,9 @@ impl Animal for NoEffectLoop2HarnessAnimal {
 
 #[test]
 fn template_binding_no_effect_loop2_repro_completes_during_executor_init() {
-    let mut exec = ManualExecutor::<NoEffectLoop2HarnessAnimal>::new(NoEffectLoop2HarnessState::from(
-        NoEffectLoop2TraceState::default(),
-    ));
+    let mut exec = ManualExecutor::<NoEffectLoop2HarnessAnimal>::new(
+        NoEffectLoop2HarnessState::from(NoEffectLoop2TraceState::default()),
+    );
 
     assert!(!exec.is_complete());
     let step: Result<(), ExecutorError> = exec.next_typed((), Ok::<(), ()>(()));
@@ -3002,6 +3020,7 @@ impl<A> BoundAction<A> for JoinLeftAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "JoinLeftAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3034,6 +3053,7 @@ impl<A> BoundAction<A> for JoinRightAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "JoinRightAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3066,6 +3086,7 @@ impl<A> BoundAction<A> for JoinToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "JoinToCarryAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = (i32, i32);
@@ -3101,6 +3122,7 @@ impl<A> BoundAction<A> for SelectFastAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "SelectFastAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3133,6 +3155,7 @@ impl<A> BoundAction<A> for SelectSlowAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "SelectSlowAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3165,6 +3188,7 @@ impl<A> BoundAction<A> for SelectToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "SelectToCarryAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = Either<i32, i32>;
@@ -3202,6 +3226,7 @@ impl<A> BoundAction<A> for LoopAdvanceAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "LoopAdvanceAct";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3238,6 +3263,7 @@ impl<A> BoundAction<A> for UniqueAlphaAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "UniqueAlphaAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3273,6 +3299,7 @@ impl<A> BoundAction<A> for UniqueBetaAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "UniqueBetaAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3308,6 +3335,7 @@ impl<A> BoundAction<A> for FinalizeAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "FinalizeAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3343,6 +3371,7 @@ impl<A> BoundAction<A> for UniqueToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "UniqueToCarryAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = Either<i32, i32>;

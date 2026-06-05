@@ -41,6 +41,7 @@ where
     T: Animal,
     Focus: Aspect<T::State>,
 {
+    const NAME: &'static str = "SleepStep";
     type Effect = Sleep;
     type Aspect = Focus;
     type Input = Duration;

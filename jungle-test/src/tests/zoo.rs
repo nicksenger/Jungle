@@ -127,6 +127,7 @@ where
     T: Animal,
     A: EffectSchema<In = (), Out = (), Err = ()>,
 {
+    const NAME: &'static str = "UnitOkStep";
     type Effect = A;
     type Aspect = Identity;
     type Input = ();
@@ -573,6 +574,7 @@ where
     Focus: jungle_sdk::types::Aspect<T::State, Focus = i32>,
     A: EffectSchema<In = i32, Out = i32, Err = ()>,
 {
+    const NAME: &'static str = "AddI32";
     type Effect = A;
     type Aspect = Focus;
     type Input = i32;

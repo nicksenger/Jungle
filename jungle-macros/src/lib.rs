@@ -6,7 +6,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, Attribute, Data,
     DeriveInput, Expr, Fields, FnArg, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl,
-    Lit, Meta, Path, Token, Type, TypeReference, Visibility,
+    Lit, LitStr, Meta, Path, Token, Type, TypeReference, Visibility,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -542,6 +542,7 @@ struct ActAttributes {
     aspect: Option<Type>,
     bind: Option<Type>,
     carry: Option<Type>,
+    name: Option<LitStr>,
 }
 
 impl Parse for ActAttributes {
@@ -551,12 +552,14 @@ impl Parse for ActAttributes {
                 aspect: None,
                 bind: None,
                 carry: None,
+                name: None,
             });
         }
 
         let mut aspect = None;
         let mut bind = None;
         let mut carry = None;
+        let mut name = None;
 
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
@@ -578,6 +581,12 @@ impl Parse for ActAttributes {
                     return Err(syn::Error::new_spanned(key, "Duplicate `carry` setting."));
                 }
                 carry = Some(input.parse::<Type>()?);
+            } else if key == "name" {
+                input.parse::<Token![=]>()?;
+                if name.is_some() {
+                    return Err(syn::Error::new_spanned(key, "Duplicate `name` setting."));
+                }
+                name = Some(input.parse::<LitStr>()?);
             } else if key == "bind_vis" {
                 // Back-compat: consume and ignore deprecated `bind_vis`.
                 input.parse::<Token![=]>()?;
@@ -585,7 +594,7 @@ impl Parse for ActAttributes {
             } else {
                 return Err(syn::Error::new_spanned(
                     key,
-                    "Unknown `action` setting. Supported: `aspect = ...`, `bind = ...`, `carry = ...`.",
+                    "Unknown `action` setting. Supported: `aspect = ...`, `bind = ...`, `carry = ...`, `name = \"...\"`.",
                 ));
             }
 
@@ -603,6 +612,7 @@ impl Parse for ActAttributes {
             aspect,
             bind,
             carry,
+            name,
         })
     }
 }
@@ -1133,6 +1143,14 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
             ImplItem::Type(ty) if ty.ident == "Input" => input_assoc = Some(ty.clone()),
             ImplItem::Type(ty) if ty.ident == "Output" => output_assoc = Some(ty.clone()),
             ImplItem::Type(ty) if ty.ident == "Carry" => carry_assoc = Some(ty.clone()),
+            ImplItem::Const(item_const) if item_const.ident == "NAME" => {
+                return syn::Error::new_spanned(
+                    item_const,
+                    "`#[action]` generates `const NAME`; remove manual `NAME` or use `name = \"...\"`.",
+                )
+                .to_compile_error()
+                .into();
+            }
             ImplItem::Type(ty) if ty.ident == "Bind" => {
                 return syn::Error::new_spanned(
                     ty,
@@ -1163,6 +1181,10 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(ident) => ident,
         Err(err) => return err.into_compile_error().into(),
     };
+    let action_name = attrs
+        .name
+        .clone()
+        .unwrap_or_else(|| LitStr::new(&self_ident.to_string(), self_ident.span()));
     let generic_names = item_impl
         .generics
         .params
@@ -1233,6 +1255,7 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let mut generated_action_impl = item_impl.clone();
     generated_action_impl.items = vec![
+        parse_quote!(const NAME: &'static str = #action_name;),
         ImplItem::Type(effect_assoc.clone()),
         ImplItem::Type(input_assoc.clone()),
         ImplItem::Type(output_assoc.clone()),
@@ -1373,6 +1396,7 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
             impl #bound_impl_generics #types::BoundAction<#animal_ident> for #bound_ident #action_ty_generics
                 #bound_impl_where_clause
             {
+                const NAME: &'static str = <#self_ty as #types::Action>::NAME;
                 type Effect = #effect_ty;
                 type Aspect = #aspect_ty;
                 type Input = #input_ty;

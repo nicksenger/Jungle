@@ -119,6 +119,7 @@ impl StateCarrier<RootState> for LeafValueCarrier {
 
 pub struct LensOnLeafValue;
 impl BoundAction<OpticAnimal> for LensOnLeafValue {
+    const NAME: &'static str = "LensOnLeafValue";
     type Effect = EchoI32;
     type Aspect = LeafValueCarrier;
     type Input = i32;
@@ -151,6 +152,7 @@ impl BoundAction<OpticAnimal> for LensOnLeafValue {
 #[allow(dead_code)]
 pub struct RootStatePulse;
 impl BoundAction<OpticAnimal> for RootStatePulse {
+    const NAME: &'static str = "RootStatePulse";
     type Effect = EchoRootState;
     type Aspect = Identity;
     type Input = ();

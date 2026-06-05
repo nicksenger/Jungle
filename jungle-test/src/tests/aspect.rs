@@ -126,6 +126,7 @@ where
     T: Animal,
     Focus: Aspect<T::State, Focus = CoreState>,
 {
+    const NAME: &'static str = "CoreEnergyStep";
     type Effect = Sleep;
     type Aspect = Focus;
     type Input = i32;
@@ -158,6 +159,7 @@ where
     T: Animal,
     Focus: Aspect<T::State, Focus = CoreState>,
 {
+    const NAME: &'static str = "CoreEnergyStep";
     type Effect = Eat;
     type Aspect = Focus;
     type Input = i32;
@@ -193,6 +195,7 @@ where
     Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
+    const NAME: &'static str = "AddI32";
     type Effect = A;
     type Aspect = Focus;
     type Input = A::In;
@@ -228,6 +231,7 @@ where
     Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
+    const NAME: &'static str = "SubI32";
     type Effect = A;
     type Aspect = Focus;
     type Input = A::In;
