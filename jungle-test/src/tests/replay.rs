@@ -26,84 +26,110 @@ pub struct ReplayGateZoo {
     gate: Arc<Semaphore>,
 }
 
-pub struct ReplayPreIncrementEffect;
-#[jungle::effect(id = 41)]
-impl Effect<()> for ReplayPreIncrementEffect {
-    type In = ();
-    type Out = ();
-    type Err = ();
+trait ReplayPreIncrementRuntime {
+    fn run_replay_pre_increment(&self);
+}
 
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+impl ReplayPreIncrementRuntime for () {
+    fn run_replay_pre_increment(&self) {}
+}
+
+impl ReplayPreIncrementRuntime for ReplayGateZoo {
+    fn run_replay_pre_increment(&self) {
+        self.pre_counter.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+trait ReplayPostIncrementRuntime {
+    fn run_replay_post_increment(&self);
+}
+
+impl ReplayPostIncrementRuntime for () {
+    fn run_replay_post_increment(&self) {}
+}
+
+impl ReplayPostIncrementRuntime for ReplayGateZoo {
+    fn run_replay_post_increment(&self) {
+        self.post_counter.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+trait ReplayGateRuntime {
+    fn run_replay_gate(&self) -> impl std::future::Future<Output = Result<(), ()>> + Send;
+}
+
+impl ReplayGateRuntime for () {
+    fn run_replay_gate(&self) -> impl std::future::Future<Output = Result<(), ()>> + Send {
         std::future::ready(Ok(()))
     }
 }
 
-impl Effect<ReplayGateZoo> for ReplayPreIncrementEffect {
-    fn effect(
-        jungle: &ReplayGateZoo,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        jungle.pre_counter.fetch_add(1, Ordering::SeqCst);
-        std::future::ready(Ok(()))
-    }
-}
-
-pub struct ReplayPostIncrementEffect;
-#[jungle::effect(id = 42)]
-impl Effect<()> for ReplayPostIncrementEffect {
-    type In = ();
-    type Out = ();
-    type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(()))
-    }
-}
-
-impl Effect<ReplayGateZoo> for ReplayPostIncrementEffect {
-    fn effect(
-        jungle: &ReplayGateZoo,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        jungle.post_counter.fetch_add(1, Ordering::SeqCst);
-        std::future::ready(Ok(()))
-    }
-}
-
-pub struct ReplayGateEffect;
-#[jungle::effect(id = 43)]
-impl Effect<()> for ReplayGateEffect {
-    type In = ();
-    type Out = ();
-    type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(()))
-    }
-}
-
-impl Effect<ReplayGateZoo> for ReplayGateEffect {
-    fn effect(
-        jungle: &ReplayGateZoo,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        let reached_tx = jungle.reached_tx.clone();
-        let gate = Arc::clone(&jungle.gate);
+impl ReplayGateRuntime for ReplayGateZoo {
+    fn run_replay_gate(&self) -> impl std::future::Future<Output = Result<(), ()>> + Send {
+        let reached_tx = self.reached_tx.clone();
+        let gate = Arc::clone(&self.gate);
         async move {
             reached_tx.send(()).map_err(|_| ())?;
             let permit = gate.acquire().await.map_err(|_| ())?;
             permit.forget();
             Ok(())
         }
+    }
+}
+
+pub struct ReplayPreIncrementEffect;
+#[jungle::effect(id = 41)]
+impl<J> Effect<J> for ReplayPreIncrementEffect
+where
+    J: ReplayPreIncrementRuntime,
+{
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        jungle.run_replay_pre_increment();
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct ReplayPostIncrementEffect;
+#[jungle::effect(id = 42)]
+impl<J> Effect<J> for ReplayPostIncrementEffect
+where
+    J: ReplayPostIncrementRuntime,
+{
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        jungle.run_replay_post_increment();
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct ReplayGateEffect;
+#[jungle::effect(id = 43)]
+impl<J> Effect<J> for ReplayGateEffect
+where
+    J: ReplayGateRuntime,
+{
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        jungle.run_replay_gate()
     }
 }
 
@@ -382,53 +408,69 @@ pub struct ReplayTimeoutZoo {
     worker_pre_counter: Arc<AtomicUsize>,
 }
 
+trait ReplayTimeoutPreIncrementRuntime {
+    fn run_replay_timeout_pre_increment(&self);
+}
+
+impl ReplayTimeoutPreIncrementRuntime for () {
+    fn run_replay_timeout_pre_increment(&self) {}
+}
+
+impl ReplayTimeoutPreIncrementRuntime for ReplayTimeoutZoo {
+    fn run_replay_timeout_pre_increment(&self) {
+        self.global_pre_counter.fetch_add(1, Ordering::SeqCst);
+        self.worker_pre_counter.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+trait ReplayTimeoutPostIncrementRuntime {
+    fn run_replay_timeout_post_increment(&self);
+}
+
+impl ReplayTimeoutPostIncrementRuntime for () {
+    fn run_replay_timeout_post_increment(&self) {}
+}
+
+impl ReplayTimeoutPostIncrementRuntime for ReplayTimeoutZoo {
+    fn run_replay_timeout_post_increment(&self) {
+        self.global_post_counter.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 pub struct ReplayTimeoutPreIncrementEffect;
 #[jungle::effect(id = 44)]
-impl Effect<()> for ReplayTimeoutPreIncrementEffect {
+impl<J> Effect<J> for ReplayTimeoutPreIncrementEffect
+where
+    J: ReplayTimeoutPreIncrementRuntime,
+{
     type In = ();
     type Out = ();
     type Err = ();
 
     fn effect(
-        _jungle: &(),
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(()))
-    }
-}
-
-impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
-    fn effect(
-        jungle: &ReplayTimeoutZoo,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        jungle.global_pre_counter.fetch_add(1, Ordering::SeqCst);
-        jungle.worker_pre_counter.fetch_add(1, Ordering::SeqCst);
+        jungle.run_replay_timeout_pre_increment();
         std::future::ready(Ok(()))
     }
 }
 
 pub struct ReplayTimeoutPostIncrementEffect;
 #[jungle::effect(id = 45)]
-impl Effect<()> for ReplayTimeoutPostIncrementEffect {
+impl<J> Effect<J> for ReplayTimeoutPostIncrementEffect
+where
+    J: ReplayTimeoutPostIncrementRuntime,
+{
     type In = ();
     type Out = ();
     type Err = ();
 
     fn effect(
-        _jungle: &(),
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(()))
-    }
-}
-
-impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
-    fn effect(
-        jungle: &ReplayTimeoutZoo,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        jungle.global_post_counter.fetch_add(1, Ordering::SeqCst);
+        jungle.run_replay_timeout_post_increment();
         std::future::ready(Ok(()))
     }
 }

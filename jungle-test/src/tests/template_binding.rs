@@ -3,6 +3,8 @@ use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use num::*;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
@@ -32,6 +34,72 @@ impl<J> Effect<J> for TemplateCommitEffect {
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(input))
+    }
+}
+
+struct JoinConcurrentRuntime {
+    barrier: Mutex<Arc<tokio::sync::Barrier>>,
+    active: AtomicUsize,
+    max_active: AtomicUsize,
+}
+
+impl JoinConcurrentRuntime {
+    fn reset(&self, parties: usize) {
+        self.active.store(0, Ordering::SeqCst);
+        self.max_active.store(0, Ordering::SeqCst);
+        *self
+            .barrier
+            .lock()
+            .expect("join concurrent barrier lock should not be poisoned") =
+            Arc::new(tokio::sync::Barrier::new(parties));
+    }
+}
+
+fn join_concurrent_runtime() -> Arc<JoinConcurrentRuntime> {
+    static RUNTIME: OnceLock<Arc<JoinConcurrentRuntime>> = OnceLock::new();
+    RUNTIME
+        .get_or_init(|| {
+            Arc::new(JoinConcurrentRuntime {
+                barrier: Mutex::new(Arc::new(tokio::sync::Barrier::new(2))),
+                active: AtomicUsize::new(0),
+                max_active: AtomicUsize::new(0),
+            })
+        })
+        .clone()
+}
+
+struct JoinConcurrentGuard(Arc<JoinConcurrentRuntime>);
+
+impl Drop for JoinConcurrentGuard {
+    fn drop(&mut self) {
+        self.0.active.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub struct TemplateConcurrentJoinEffect;
+#[jungle::effect(id = 142)]
+impl<J> Effect<J> for TemplateConcurrentJoinEffect {
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            let runtime = join_concurrent_runtime();
+            let active = runtime.active.fetch_add(1, Ordering::SeqCst) + 1;
+            runtime.max_active.fetch_max(active, Ordering::SeqCst);
+            let _guard = JoinConcurrentGuard(runtime.clone());
+            let barrier = runtime
+                .barrier
+                .lock()
+                .expect("join concurrent barrier lock should not be poisoned")
+                .clone();
+            barrier.wait().await;
+            Ok(input)
+        }
     }
 }
 
@@ -216,7 +284,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
-            let value = output.map_err(|_err| Failure::from("counter commit step should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("counter commit step should succeed"))?;
             *state = value;
             value
         };
@@ -251,7 +320,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_4 = {
-            let value = output.map_err(|_err| Failure::from("ledger commit step should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("ledger commit step should succeed"))?;
             *state = value;
             value
         };
@@ -325,7 +395,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_6 = {
-            let value = output.map_err(|_err| Failure::from("generic commit step should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("generic commit step should succeed"))?;
             *state = value;
             value
         };
@@ -499,16 +570,12 @@ async fn template_binding_local_client_reuses_one_template_for_two_animals_end_t
     });
 
     let alpha_id = client
-        .spawn::<LocalTemplateAlphaAnimal>(
-            &3_i32,
-        )
+        .spawn::<LocalTemplateAlphaAnimal>(&3_i32)
         .await
         .expect("alpha journey should start")
         .journey_id;
     let beta_id = client
-        .spawn::<LocalTemplateBetaAnimal>(
-            &3_i32,
-        )
+        .spawn::<LocalTemplateBetaAnimal>(&3_i32)
         .await
         .expect("beta journey should start")
         .journey_id;
@@ -538,6 +605,12 @@ async fn template_binding_local_client_reuses_one_template_for_two_animals_end_t
 
 trait RequiresContextBump {
     fn context_bump(&self) -> i32;
+}
+
+impl RequiresContextBump for () {
+    fn context_bump(&self) -> i32 {
+        0
+    }
 }
 
 pub struct ContextBoundEffect;
@@ -593,7 +666,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_7 = {
-            let value = output.map_err(|_err| Failure::from("context-bound step should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("context-bound step should succeed"))?;
             *state = value;
             value
         };
@@ -653,9 +727,7 @@ async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with
     });
 
     let journey_id = client
-        .spawn::<LocalTemplateContextAnimal>(
-            &4_i32,
-        )
+        .spawn::<LocalTemplateContextAnimal>(&4_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -805,16 +877,12 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
     });
 
     let alpha_id = client
-        .spawn::<ComposedAlphaAnimal>(
-            &3_i32,
-        )
+        .spawn::<ComposedAlphaAnimal>(&3_i32)
         .await
         .expect("alpha journey should start")
         .journey_id;
     let beta_id = client
-        .spawn::<ComposedBetaAnimal>(
-            &3_i32,
-        )
+        .spawn::<ComposedBetaAnimal>(&3_i32)
         .await
         .expect("beta journey should start")
         .journey_id;
@@ -1134,9 +1202,7 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
     });
 
     let journey_id = client
-        .spawn::<LensAlphaAnimal>(
-            &30_i32,
-        )
+        .spawn::<LensAlphaAnimal>(&30_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -1230,7 +1296,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_11 = {
-            let out = output.map_err(|_err| Failure::from("nested branch spare step should succeed"))?;
+            let out =
+                output.map_err(|_err| Failure::from("nested branch spare step should succeed"))?;
             *view = out;
             out
         };
@@ -1265,7 +1332,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_12 = {
-            let out = output.map_err(|_err| Failure::from("nested leaf value step should succeed"))?;
+            let out =
+                output.map_err(|_err| Failure::from("nested leaf value step should succeed"))?;
             *view = out;
             out
         };
@@ -1300,7 +1368,8 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_13 = {
-            let out = output.map_err(|_err| Failure::from("nested leaf noise step should succeed"))?;
+            let out =
+                output.map_err(|_err| Failure::from("nested leaf noise step should succeed"))?;
             *view = out;
             out
         };
@@ -1345,7 +1414,8 @@ impl Action for NestedAutoBranchSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_14 = {
-            let out = output.map_err(|_err| Failure::from("nested auto branch step should succeed"))?;
+            let out =
+                output.map_err(|_err| Failure::from("nested auto branch step should succeed"))?;
             state.spare = out;
             out
         };
@@ -1466,9 +1536,7 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
     });
 
     let journey_id = client
-        .spawn::<NestedScopeAnimal>(
-            &3_i32,
-        )
+        .spawn::<NestedScopeAnimal>(&3_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -1539,9 +1607,7 @@ async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_lo
     });
 
     let journey_id = client
-        .spawn::<GenericNestedScopeAnimal>(
-            &3_i32,
-        )
+        .spawn::<GenericNestedScopeAnimal>(&3_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -1625,7 +1691,8 @@ impl<St> Action for Loop2DecrementCounterSpec<St> {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_16 = {
-            let value = output.map_err(|_err| Failure::from("loop2 decrement step should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("loop2 decrement step should succeed"))?;
             state.counter = state.counter.saturating_sub(1);
             (state.counter > 0, value)
         };
@@ -1823,9 +1890,7 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
     });
 
     let journey_id = client
-        .spawn::<Loop2CompositeAnimal>(
-            &5_i32,
-        )
+        .spawn::<Loop2CompositeAnimal>(&5_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -2123,9 +2188,7 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
     });
 
     let journey_id = client
-        .spawn::<InheritedAutoFocusAnimal>(
-            &3_i32,
-        )
+        .spawn::<InheritedAutoFocusAnimal>(&3_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -2219,9 +2282,7 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
     });
 
     let journey_id = client
-        .spawn::<InheritedAutoFocusConditionalAnimal>(
-            &3_i32,
-        )
+        .spawn::<InheritedAutoFocusConditionalAnimal>(&3_i32)
         .await
         .expect("journey should start")
         .journey_id;
@@ -2240,6 +2301,364 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
 
     worker_handle.abort();
     let _ = worker_handle.await;
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct JoinFocusedLeftState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct JoinFocusedRightState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct JoinFocusedHostState {
+    #[jungle(focus)]
+    left: JoinFocusedLeftState,
+    #[jungle(focus)]
+    right: JoinFocusedRightState,
+    marker: i32,
+}
+
+struct JoinFocusedLeftSpec;
+#[jungle::action]
+impl Action for JoinFocusedLeftSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedLeftState, input: Self::Input) -> i32 {
+        state.value + input
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("focused left join step should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+struct JoinFocusedRightSpec;
+#[jungle::action]
+impl Action for JoinFocusedRightSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedRightState, input: Self::Input) -> i32 {
+        state.value + input * 10
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("focused right join step should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedLeftState)]
+struct JoinFocusedLeftFlow(Step<JoinFocusedLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedRightState)]
+struct JoinFocusedRightFlow(Step<JoinFocusedRightSpec>);
+
+#[derive(Flow)]
+struct JoinFocusedTemplate(Join<JoinFocusedLeftFlow, JoinFocusedRightFlow>);
+
+struct JoinFocusedAnimal;
+#[jungle::animal(id = 88, generation = 0)]
+impl Animal for JoinFocusedAnimal {
+    type State = JoinFocusedHostState;
+    type Seed = i32;
+    type Flow = JoinFocusedTemplate;
+}
+
+struct JoinFocusedConcurrentLeftSpec;
+#[jungle::action]
+impl Action for JoinFocusedConcurrentLeftSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedLeftState, input: Self::Input) -> i32 {
+        state.value + input
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("focused concurrent left should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+struct JoinFocusedConcurrentRightSpec;
+#[jungle::action]
+impl Action for JoinFocusedConcurrentRightSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedRightState, input: Self::Input) -> i32 {
+        state.value + input * 10
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out =
+            output.map_err(|_err| Failure::from("focused concurrent right should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedLeftState)]
+struct JoinFocusedConcurrentLeftFlow(Step<JoinFocusedConcurrentLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedRightState)]
+struct JoinFocusedConcurrentRightFlow(Step<JoinFocusedConcurrentRightSpec>);
+
+#[derive(Flow)]
+struct JoinFocusedConcurrentTemplate(
+    Join<JoinFocusedConcurrentLeftFlow, JoinFocusedConcurrentRightFlow>,
+);
+
+struct JoinFocusedConcurrentAnimal;
+#[jungle::animal(id = 89, generation = 0)]
+impl Animal for JoinFocusedConcurrentAnimal {
+    type State = JoinFocusedHostState;
+    type Seed = i32;
+    type Flow = JoinFocusedConcurrentTemplate;
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct NestedJoinFocusedLeftState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct NestedJoinFocusedMiddleState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct NestedJoinFocusedRightState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct NestedJoinFocusedHostState {
+    #[jungle(focus)]
+    left: NestedJoinFocusedLeftState,
+    #[jungle(focus)]
+    middle: NestedJoinFocusedMiddleState,
+    #[jungle(focus)]
+    right: NestedJoinFocusedRightState,
+    marker: i32,
+}
+
+struct NestedJoinFocusedLeftSpec;
+#[jungle::action]
+impl Action for NestedJoinFocusedLeftSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &NestedJoinFocusedLeftState, input: Self::Input) -> i32 {
+        state.value + input
+    }
+
+    fn absorb(
+        state: &mut NestedJoinFocusedLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("nested focused left should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+struct NestedJoinFocusedMiddleSpec;
+#[jungle::action]
+impl Action for NestedJoinFocusedMiddleSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &NestedJoinFocusedMiddleState, input: Self::Input) -> i32 {
+        state.value + input * 10
+    }
+
+    fn absorb(
+        state: &mut NestedJoinFocusedMiddleState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("nested focused middle should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+struct NestedJoinFocusedRightSpec;
+#[jungle::action]
+impl Action for NestedJoinFocusedRightSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &NestedJoinFocusedRightState, input: Self::Input) -> i32 {
+        state.value + input * 100
+    }
+
+    fn absorb(
+        state: &mut NestedJoinFocusedRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("nested focused right should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = NestedJoinFocusedLeftState)]
+struct NestedJoinFocusedLeftFlow(Step<NestedJoinFocusedLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = NestedJoinFocusedMiddleState)]
+struct NestedJoinFocusedMiddleFlow(Step<NestedJoinFocusedMiddleSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = NestedJoinFocusedRightState)]
+struct NestedJoinFocusedRightFlow(Step<NestedJoinFocusedRightSpec>);
+
+#[derive(Flow)]
+struct NestedJoinFocusedPair(Join<NestedJoinFocusedLeftFlow, NestedJoinFocusedMiddleFlow>);
+
+#[derive(Flow)]
+struct NestedJoinFocusedTemplate(Join<NestedJoinFocusedPair, NestedJoinFocusedRightFlow>);
+
+struct NestedJoinFocusedAnimal;
+#[jungle::animal(id = 90, generation = 0)]
+impl Animal for NestedJoinFocusedAnimal {
+    type State = NestedJoinFocusedHostState;
+    type Seed = i32;
+    type Flow = NestedJoinFocusedTemplate;
+}
+
+#[test]
+fn template_binding_join_merges_distinct_focused_branch_states() {
+    let mut executor = Executor::<JoinFocusedAnimal>::new(JoinFocusedHostState {
+        left: JoinFocusedLeftState { value: 1 },
+        right: JoinFocusedRightState { value: 2 },
+        marker: 99,
+    });
+
+    let emitted = futures::executor::block_on(executor.advance_to_end_with(3))
+        .expect("focused join flow should complete");
+    let final_emitted: (i32, i32) =
+        postcard::from_bytes(emitted.last().expect("join should emit one final value"))
+            .expect("join final emitted tuple should deserialize");
+
+    assert_eq!(final_emitted, (4, 32));
+    assert_eq!(
+        executor.state(),
+        &JoinFocusedHostState {
+            left: JoinFocusedLeftState { value: 4 },
+            right: JoinFocusedRightState { value: 32 },
+            marker: 99,
+        }
+    );
+}
+
+#[tokio::test]
+async fn template_binding_focused_join_subflows_run_concurrently() {
+    let runtime = join_concurrent_runtime();
+    runtime.reset(2);
+
+    let mut executor = Executor::<JoinFocusedConcurrentAnimal>::new(JoinFocusedHostState {
+        left: JoinFocusedLeftState { value: 1 },
+        right: JoinFocusedRightState { value: 2 },
+        marker: 99,
+    });
+
+    let request = executor
+        .next_executable_request(3)
+        .expect("focused join should produce an executable request");
+    let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
+        .await
+        .expect("focused join branches should rendezvous without serial deadlock")
+        .expect("focused join effect runner should succeed");
+    let emitted = executor
+        .complete_serialized(completion)
+        .expect("focused join completion should apply cleanly");
+    let final_emitted: (i32, i32) =
+        postcard::from_bytes(&emitted).expect("join final emitted tuple should deserialize");
+
+    assert_eq!(runtime.max_active.load(Ordering::SeqCst), 2);
+    assert_eq!(final_emitted, (4, 32));
+    assert_eq!(
+        executor.state(),
+        &JoinFocusedHostState {
+            left: JoinFocusedLeftState { value: 4 },
+            right: JoinFocusedRightState { value: 32 },
+            marker: 99,
+        }
+    );
+}
+
+#[tokio::test]
+async fn template_binding_nested_focused_join_subflows_run_concurrently() {
+    let runtime = join_concurrent_runtime();
+    runtime.reset(3);
+
+    let mut executor = Executor::<NestedJoinFocusedAnimal>::new(NestedJoinFocusedHostState {
+        left: NestedJoinFocusedLeftState { value: 1 },
+        middle: NestedJoinFocusedMiddleState { value: 2 },
+        right: NestedJoinFocusedRightState { value: 3 },
+        marker: 99,
+    });
+
+    let request = executor
+        .next_executable_request(3)
+        .expect("nested focused join should produce an executable request");
+    let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
+        .await
+        .expect("nested focused join branches should rendezvous without serial deadlock")
+        .expect("nested focused join effect runner should succeed");
+    let emitted = executor
+        .complete_serialized(completion)
+        .expect("nested focused join completion should apply cleanly");
+    let final_emitted: ((i32, i32), i32) =
+        postcard::from_bytes(&emitted).expect("nested focused join output should deserialize");
+
+    assert_eq!(runtime.max_active.load(Ordering::SeqCst), 3);
+    assert_eq!(final_emitted, ((4, 32), 303));
+    assert_eq!(
+        executor.state(),
+        &NestedJoinFocusedHostState {
+            left: NestedJoinFocusedLeftState { value: 4 },
+            middle: NestedJoinFocusedMiddleState { value: 32 },
+            right: NestedJoinFocusedRightState { value: 303 },
+            marker: 99,
+        }
+    );
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2457,12 +2876,10 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
     });
 
     let journey_id = client
-        .spawn::<ConditionalJoinMergeAnimal>(
-            &ConditionalJoinMergeState {
-                marker: 1,
-                ..ConditionalJoinMergeState::default()
-            },
-        )
+        .spawn::<ConditionalJoinMergeAnimal>(&ConditionalJoinMergeState {
+            marker: 1,
+            ..ConditionalJoinMergeState::default()
+        })
         .await
         .expect("journey should start")
         .journey_id;
@@ -2606,7 +3023,8 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_30 = output.map_err(|_err| Failure::from("join-left effect should succeed"))?;
+        let __absorb_out_30 =
+            output.map_err(|_err| Failure::from("join-left effect should succeed"))?;
         Ok(__absorb_out_30)
     }
 }
@@ -2637,7 +3055,8 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_31 = output.map_err(|_err| Failure::from("join-right effect should succeed"))?;
+        let __absorb_out_31 =
+            output.map_err(|_err| Failure::from("join-right effect should succeed"))?;
         Ok(__absorb_out_31)
     }
 }
@@ -2703,7 +3122,8 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_33 = output.map_err(|_err| Failure::from("select-fast effect should succeed"))?;
+        let __absorb_out_33 =
+            output.map_err(|_err| Failure::from("select-fast effect should succeed"))?;
         Ok(__absorb_out_33)
     }
 }
@@ -2734,7 +3154,8 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_34 = output.map_err(|_err| Failure::from("select-slow effect should succeed"))?;
+        let __absorb_out_34 =
+            output.map_err(|_err| Failure::from("select-slow effect should succeed"))?;
         Ok(__absorb_out_34)
     }
 }
@@ -2945,7 +3366,8 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_40 = output.map_err(|_err| Failure::from("unique-to-carry should succeed"))?;
+        let __absorb_out_40 =
+            output.map_err(|_err| Failure::from("unique-to-carry should succeed"))?;
         Ok(__absorb_out_40)
     }
 }
@@ -3191,16 +3613,12 @@ async fn template_binding_long_shared_and_unique_segments_with_different_animal_
     });
 
     let alpha_id = client
-        .spawn::<ComplexAlphaAnimal>(
-            &5_i32,
-        )
+        .spawn::<ComplexAlphaAnimal>(&5_i32)
         .await
         .expect("alpha journey should start")
         .journey_id;
     let beta_id = client
-        .spawn::<ComplexBetaAnimal>(
-            &5_i32,
-        )
+        .spawn::<ComplexBetaAnimal>(&5_i32)
         .await
         .expect("beta journey should start")
         .journey_id;

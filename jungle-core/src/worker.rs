@@ -100,39 +100,7 @@ where
                     RunnerChannelMessage::History(history) => {
                         let history_kind = runner_out_kind(&history);
                         let submit_started_at = Instant::now();
-                        let out = match history {
-                            RunnerOut::EffectInput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => client_for_transport.effect_input(uuid, node_id, data).await,
-                            RunnerOut::EffectSuccessOutput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => {
-                                client_for_transport
-                                    .effect_success_output(uuid, node_id, data)
-                                    .await
-                            }
-                            RunnerOut::EffectFailureOutput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => {
-                                client_for_transport
-                                    .effect_failure_output(uuid, node_id, data)
-                                    .await
-                            }
-                            RunnerOut::Appearance { data, uuid } => {
-                                client_for_transport
-                                    .animal_appearance_update(uuid, data)
-                                    .await
-                            }
-                            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
-                                Ok(())
-                            }
-                        };
+                        let out = client_for_transport.submit_history_event(history).await;
                         history_submissions = history_submissions.saturating_add(1);
                         let submit_elapsed = submit_started_at.elapsed();
                         if submit_elapsed > WORKER_SLOW_HISTORY_SUBMIT_WARN_THRESHOLD {
@@ -410,6 +378,7 @@ where
 
 fn runner_out_kind(history: &RunnerOut) -> &'static str {
     match history {
+        RunnerOut::NodeLifecycle(..) => "node_lifecycle",
         RunnerOut::EffectInput { .. } => "effect_input",
         RunnerOut::EffectSuccessOutput { .. } => "effect_success_output",
         RunnerOut::EffectFailureOutput { .. } => "effect_failure_output",
@@ -417,6 +386,16 @@ fn runner_out_kind(history: &RunnerOut) -> &'static str {
         RunnerOut::SleepScheduled { .. } => "sleep_scheduled",
         RunnerOut::SleepFired { .. } => "sleep_fired",
     }
+}
+
+fn is_informational_history_event(history: Option<&RunnerOut>, journey_id: Uuid) -> bool {
+    matches!(
+        history,
+        Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
+    ) || matches!(
+        history,
+        Some(RunnerOut::NodeLifecycle(node)) if node.uuid == journey_id
+    )
 }
 
 fn is_terminal_journey_status(status: JourneyStatus) -> bool {
@@ -761,6 +740,7 @@ where
                     seed.into();
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
+                executor.set_journey_id(journey_id);
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
@@ -835,6 +815,7 @@ where
                         other => return Err(other),
                     }
                 }
+                executor.set_journey_id(journey_id);
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
@@ -907,10 +888,7 @@ where
         let effect_type = request.effect_type();
 
         // Appearance snapshots are informational and can interleave with step history.
-        while matches!(
-            history.get(index),
-            Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
-        ) {
+        while is_informational_history_event(history.get(index), journey_id) {
             index = index.saturating_add(1);
         }
         // Non-sleep requests should ignore stale sleep bookkeeping records that may remain
@@ -972,10 +950,7 @@ where
         }
 
         // Appearance snapshots can also be emitted after completion events.
-        while matches!(
-            history.get(index),
-            Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
-        ) {
+        while is_informational_history_event(history.get(index), journey_id) {
             index = index.saturating_add(1);
         }
 
@@ -983,6 +958,9 @@ where
             while matches!(
                 history.get(index),
                 Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+            ) || matches!(
+                history.get(index),
+                Some(RunnerOut::NodeLifecycle(node)) if node.uuid == journey_id
             ) || matches!(
                 history.get(index),
                 Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id

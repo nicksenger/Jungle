@@ -3,8 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    RunnerUpdateOut, SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, NodeLifecycle, OwnerWake,
+    RunnerOut, RunnerUpdateOut, SupportedAnimal, Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,7 @@ const EVENT_KIND_ACTION_SUCCESS_OUTPUT: u8 = 1;
 const EVENT_KIND_ACTION_FAILURE_OUTPUT: u8 = 2;
 const EVENT_KIND_SLEEP_SCHEDULED: u8 = 3;
 const EVENT_KIND_SLEEP_FIRED: u8 = 4;
+const EVENT_KIND_NODE_LIFECYCLE: u8 = 5;
 const REDB_UPDATES_LOG_INTERVAL: usize = 256;
 const REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
 const REDB_STALE_EVENT_WARN_MS: i64 = 1_000;
@@ -1053,6 +1054,12 @@ impl JungleStore for RedbStore {
 
     async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
         let (journey_id, kind, data) = match history {
+            RunnerOut::NodeLifecycle(node) => (
+                node.uuid,
+                EVENT_KIND_NODE_LIFECYCLE,
+                postcard::to_allocvec(&node)
+                    .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
             RunnerOut::EffectInput {
                 node_id,
                 data,
@@ -2128,6 +2135,12 @@ fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<Runner
                 fired_at_unix_ms: event.fired_at_unix_ms,
             })
         }
+        EVENT_KIND_NODE_LIFECYCLE => {
+            let mut event: NodeLifecycle = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            event.uuid = journey_id;
+            Ok(RunnerOut::NodeLifecycle(event))
+        }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in redb: {other}"
         ))),
@@ -2174,6 +2187,12 @@ fn decode_runner_update_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result
                 timer_id: event.timer_id,
                 fired_at_unix_ms: event.fired_at_unix_ms,
             })
+        }
+        EVENT_KIND_NODE_LIFECYCLE => {
+            let mut event: NodeLifecycle = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            event.uuid = journey_id;
+            Ok(RunnerUpdateOut::NodeLifecycle(event))
         }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in redb: {other}"

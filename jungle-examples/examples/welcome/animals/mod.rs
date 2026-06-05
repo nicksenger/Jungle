@@ -70,7 +70,7 @@ pub struct LeadVocalistState {
 impl Default for LeadVocalistState {
     fn default() -> Self {
         Self {
-            articulation: VocalsArticulation::Clean,
+            articulation: VocalsArticulation::GroupHarmony,
             intro_pickup_remaining: 1,
             lyrics: Lyrics {
                 phonemes: [

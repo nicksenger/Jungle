@@ -106,7 +106,8 @@ impl Action for TailAfterLoopSpec {
         output: EffectCompletion<TailEchoEffect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_2 = {
-            let (loop_should_continue, value) = output.map_err(|_err| Failure::from("tail effect should succeed"))?;
+            let (loop_should_continue, value) =
+                output.map_err(|_err| Failure::from("tail effect should succeed"))?;
             *state = if loop_should_continue {
                 -999
             } else {
@@ -382,7 +383,8 @@ impl Action for NestedInlineOuterEchoBoolSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_8 = {
-            let echoed = output.map_err(|_err| Failure::from("nested outer echo bool should succeed"))?;
+            let echoed =
+                output.map_err(|_err| Failure::from("nested outer echo bool should succeed"))?;
             assert!(!echoed, "nested outer step should receive inline false");
             state.outer_done = true;
         };
@@ -455,7 +457,8 @@ impl Action for RhythmLikeJoinRightSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_10 = {
-            let _ = output.map_err(|_err| Failure::from("rhythm-like join right should succeed"))?;
+            let _ =
+                output.map_err(|_err| Failure::from("rhythm-like join right should succeed"))?;
         };
         Ok(__absorb_out_10)
     }

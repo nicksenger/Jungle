@@ -5,10 +5,12 @@ edition = "2021"
 
 [features]
 default = []
-viewer = ["dep:jungle-vision", "dep:iced"]
+image = ["dep:spectrs", "dep:image", "dep:zensim"]
+reqwest = ["dep:reqwest", "dep:base64"]
+viewer = ["dep:jungle-vision", "dep:iced", "dep:rodio", "dep:image"]
 video = ["dep:welcome-video"]
 audio = ["dep:welcome-audio"]
-redb = []
+redb = ["dep:redb", "dep:directories-next"]
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
 bass = []
@@ -22,23 +24,33 @@ cron = ["dep:cron", "dep:chrono"]
 futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "fusion"] }
 jungle-vision = { path = "../jungle-vision", optional = true }
-iced = { version = "0.14", features = ["tokio", "svg"], optional = true }
+iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
+rodio = { version = "0.20", optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }
 welcome-video = { path = "examples/welcome/video", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
+serde_json = "1"
 toml = "0.8"
 thiserror = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
+directories-next = { version = "2", optional = true }
 testcontainers = { version = "0.23", optional = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 async-trait = { workspace = true }
 clap = { version = "4.6", features = ["derive"] }
 cron = { version = "0.16", optional = true }
 chrono = { version = "0.4", optional = true }
+spectrs = { version = "0.2.1", default-features = false, features = ["image"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+zensim = { version = "0.2.7", optional = true }
+rustfft = "6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+base64 = { version = "0.22", optional = true }
+redb = { version = "4.1", optional = true }
 
 [[example]]
 name = "welcome"
@@ -49,6 +61,11 @@ required-features = ["viewer", "audio"]
 name = "cronfish"
 path = "examples/cronfish/mod.rs"
 required-features = ["cron"]
+
+[[example]]
+name = "lyrebird"
+path = "examples/lyrebird/mod.rs"
+required-features = ["image", "reqwest", "redb"]
 
 [lints]
 workspace = true

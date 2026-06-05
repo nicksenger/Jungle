@@ -1,14 +1,14 @@
-use welcome_audio::{PlayPriority, PlayRequest};
+use crate::{AudioHandle, PlayPriority, PlayRequest};
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
 pub struct HiHat {
-    audio: welcome_audio::AudioHandle,
+    audio: AudioHandle,
     synth: SynthHandle,
 }
 
 impl HiHat {
-    pub fn new(audio: welcome_audio::AudioHandle, synth: SynthHandle) -> Self {
+    pub fn new(audio: AudioHandle, synth: SynthHandle) -> Self {
         Self { audio, synth }
     }
 }
@@ -25,7 +25,7 @@ impl Instrument for HiHat {
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = self.synth.hihat(note).await?;
 
-        let mut request = PlayRequest::new(pcm, 1, welcome_audio::dsp::SAMPLE_RATE);
+        let mut request = PlayRequest::new(pcm, 1, crate::dsp::SAMPLE_RATE);
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.2;

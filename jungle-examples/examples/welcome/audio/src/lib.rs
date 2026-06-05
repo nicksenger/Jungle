@@ -1,4 +1,5 @@
 pub mod dsp;
+pub mod instrumentation;
 mod mixer;
 pub mod speech_synthesis;
 pub mod vocals;

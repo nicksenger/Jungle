@@ -65,7 +65,8 @@ impl Action for AddBeforeSleepSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
-            state.counter += output.map_err(|_err| Failure::from("add before sleep should succeed"))?;
+            state.counter +=
+                output.map_err(|_err| Failure::from("add before sleep should succeed"))?;
             state.phase += 1;
         };
         Ok(__absorb_out_1)
@@ -109,7 +110,8 @@ impl Action for AddAfterSleepSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
-            state.counter += output.map_err(|_err| Failure::from("add after sleep should succeed"))?;
+            state.counter +=
+                output.map_err(|_err| Failure::from("add after sleep should succeed"))?;
             state.phase += 1;
         };
         Ok(__absorb_out_3)

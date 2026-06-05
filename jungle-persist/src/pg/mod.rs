@@ -2,8 +2,8 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::{
-    ClaimedPerturbable, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal,
-    Work,
+    ClaimedPerturbable, JourneyUpdateEvent, NodeLifecycle, OwnerWake, RunnerOut, RunnerUpdateOut,
+    SupportedAnimal, Work,
 };
 use jungle_types::{JourneyRecord, JourneyStatus};
 use serde::{Deserialize, Serialize};
@@ -222,6 +222,7 @@ impl JungleStore for PgStore {
                 node_id,
                 CASE
                     WHEN kind IN (3, 4) THEN data
+                    WHEN kind = 5 THEN data
                     WHEN kind IN (0, 1, 2) AND node_id IS NULL THEN data
                     ELSE NULL
                 END AS data
@@ -809,6 +810,18 @@ impl JungleStore for PgStore {
 
     async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
         let (journey_id, kind, node_id, data) = match history {
+            RunnerOut::NodeLifecycle(node) => (
+                node.uuid,
+                5_i16,
+                Some(i32::try_from(node.node_id).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "node_id exceeds i32 range for postgres: {}",
+                        node.node_id
+                    ))
+                })?),
+                postcard::to_allocvec(&node)
+                    .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
             RunnerOut::EffectInput {
                 node_id,
                 data,
@@ -1173,6 +1186,12 @@ fn decode_history_row(journey_id: Uuid, kind: i16, data: Vec<u8>) -> Result<Runn
                 fired_at_unix_ms: event.fired_at_unix_ms,
             })
         }
+        5 => {
+            let mut event: NodeLifecycle = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            event.uuid = journey_id;
+            Ok(RunnerOut::NodeLifecycle(event))
+        }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in postgres: {other}"
         ))),
@@ -1245,6 +1264,17 @@ fn decode_journey_update_row(
                 timer_id: event.timer_id,
                 fired_at_unix_ms: event.fired_at_unix_ms,
             })
+        }
+        5 => {
+            let lifecycle_data = data.ok_or_else(|| {
+                crate::PersistenceError::Message(
+                    "missing node-lifecycle payload in postgres events".to_string(),
+                )
+            })?;
+            let mut event: NodeLifecycle = postcard::from_bytes(&lifecycle_data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            event.uuid = journey_id;
+            Ok(RunnerUpdateOut::NodeLifecycle(event))
         }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in postgres: {other}"

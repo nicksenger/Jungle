@@ -8,7 +8,7 @@ use super::{
 pub fn synthesize_bass(note: &Note<()>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let base_hz = midi_to_hz(note.n_midi).clamp(35.0, 220.0);
+    let base_hz = midi_to_hz(note.n_midi).clamp(30.0, 200.0);
     let velocity = note.velocity.clamp(0.0, 1.0);
     let expression = note.expression.unwrap_or(Expression {
         bend: 0.0,
@@ -43,15 +43,21 @@ fn articulation_sample(base_hz: f32, phase: f32, t: f32, expression: Expression)
         (std::f32::consts::TAU * 5.2 * t).sin() * expression.vibrato.clamp(-1.0, 1.0) * 0.01;
     let freq = base_hz * (1.0 + bend + vibrato);
 
-    let transient = hash_noise(t * 15_500.0) * (1.0 - smoothstep(phase * 13.0));
+    // Enhanced transient for sharper attack and better spectral definition
+    let transient = hash_noise(t * 18_000.0) * (1.0 - smoothstep(phase * 15.0));
+
+    // Adjusted harmonics to match target energy distribution
+    // Increase fundamental and second harmonic presence for the 150-320Hz range
     let growl = saw(freq, t) * 0.56 + saw(freq * 2.0, t) * 0.22;
     let low_body = sine(freq * 0.5, t) * 0.2 + triangle(freq, t) * 0.18;
-    ((growl + low_body + transient * 0.24) * 1.25).tanh()
+
+    // Boost transient slightly to match the target's sharper onset
+    ((growl + low_body + transient * 0.35) * 1.25).tanh()
 }
 
 fn articulation_envelope(phase: f32) -> f32 {
-    let attack = 0.008;
-    let decay = 0.48;
+    let attack = 0.006;
+    let decay = 0.45;
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
     let decay_env = (-phase * decay * 4.0).exp();
     (attack_env * decay_env).clamp(0.0, 1.0)

@@ -23,15 +23,16 @@ static EFFECT_SKIPPED_NOTES: AtomicUsize = AtomicUsize::new(0);
 #[allow(unused)]
 pub struct Passthrough<T>(PhantomData<T>);
 #[effect(id = 2)]
-impl<T> Effect<TheJungle> for Passthrough<T>
+impl<T, J> Effect<J> for Passthrough<T>
 where
     T: Serialize + DeserializeOwned + Send + 'static,
+    J: Sync,
 {
     type In = T;
     type Out = T;
     type Err = String;
 
-    async fn effect(_jungle: &TheJungle, input: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(_jungle: &J, input: Self::In) -> Result<Self::Out, Self::Err> {
         Ok(input)
     }
 }
@@ -43,6 +44,12 @@ pub struct RestInput {
 }
 
 pub struct Rest;
+impl jungle_sdk::EffectSchema<()> for Rest {
+    type Id = <Self as jungle_sdk::EffectSchema<TheJungle>>::Id;
+    type In = <Self as jungle_sdk::EffectSchema<TheJungle>>::In;
+    type Out = <Self as jungle_sdk::EffectSchema<TheJungle>>::Out;
+    type Err = <Self as jungle_sdk::EffectSchema<TheJungle>>::Err;
+}
 #[effect(id = 1)]
 impl Effect<TheJungle> for Rest {
     type In = RestInput;
@@ -84,6 +91,17 @@ pub struct SoundInput<A> {
     pub rest_ticks: u32,
 }
 pub struct Sound<I: Instrument>(PhantomData<I>);
+impl<I> jungle_sdk::EffectSchema<()> for Sound<I>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a TheJungle>,
+    I::Articulation: Copy + Serialize + DeserializeOwned + Send + 'static,
+{
+    type Id = <Self as jungle_sdk::EffectSchema<TheJungle>>::Id;
+    type In = <Self as jungle_sdk::EffectSchema<TheJungle>>::In;
+    type Out = <Self as jungle_sdk::EffectSchema<TheJungle>>::Out;
+    type Err = <Self as jungle_sdk::EffectSchema<TheJungle>>::Err;
+}
 #[effect(id = 0)]
 impl<I> Effect<TheJungle> for Sound<I>
 where

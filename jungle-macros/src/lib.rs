@@ -1088,55 +1088,13 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     };
 
-    let self_ty = &item_impl.self_ty;
-
-    let generic_names = item_impl
-        .generics
-        .params
-        .iter()
-        .map(|param| match param {
-            GenericParam::Type(ty) => ty.ident.to_string(),
-            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
-            GenericParam::Const(const_param) => const_param.ident.to_string(),
-        })
-        .collect::<HashSet<_>>();
-
-    let self_ty_names = collect_ident_names(quote!(#self_ty));
-    let context_names = collect_ident_names(quote!(#context_ty));
-    let self_generic_names = self_ty_names
-        .intersection(&generic_names)
-        .cloned()
-        .collect::<HashSet<_>>();
-    let context_only_generic_names = context_names
-        .intersection(&generic_names)
-        .filter(|name| !self_generic_names.contains(*name))
-        .cloned()
-        .collect::<HashSet<_>>();
-
-    let schema_types_tokens = quote! { #id_ty #in_ty #out_ty #err_ty };
-    let schema_type_names = collect_ident_names(schema_types_tokens);
-    if let Some(offender) = context_only_generic_names
-        .iter()
-        .find(|name| schema_type_names.contains(*name))
-    {
-        return syn::Error::new_spanned(
-            &item_impl,
-            format!(
-                "Effect schema cannot depend on context-only generic `{offender}`. Move it onto the effect type or make schema context-agnostic."
-            ),
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let (schema_impl_generics, schema_where_clause) = self_impl_generics(&item_impl, self_ty);
-
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
     let effect_schema = jungle_type("EffectSchema");
     let effect_exec = jungle_type("Effect");
+    let self_ty = &item_impl.self_ty;
 
     quote! {
-        impl #schema_impl_generics #effect_schema for #self_ty #schema_where_clause {
+        impl #exec_impl_generics #effect_schema<#context_ty> for #self_ty #exec_where_clause {
             type Id = #id_ty;
             type In = #in_ty;
             type Out = #out_ty;

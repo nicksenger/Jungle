@@ -1,4 +1,1 @@
-pub mod parser;
-pub mod reciter;
-pub mod renderer;
-pub mod singer;
+pub use crate::dsp::vocals::formant::speech_synthesis::{parser, reciter, renderer, singer};

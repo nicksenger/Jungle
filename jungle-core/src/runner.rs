@@ -1,5 +1,7 @@
 use futures::channel::oneshot;
+use futures::future;
 use futures::SinkExt;
+use futures::StreamExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError,
@@ -47,6 +49,7 @@ where
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let mut executor = self.new_executor::<A>(state);
+        executor.set_journey_id(journey_id);
         let appearance = self.initial_appearance::<A>(&executor)?;
         self.emit_appearance(journey_id, appearance, &mut tx)
             .await?;
@@ -120,9 +123,13 @@ where
             process_perturbations(executor, journey_id, tx).await?;
             let request = match executor.next_executable_request(initial_input.clone()) {
                 Ok(request) => request,
-                Err(ExecutorError::Complete) => break,
+                Err(ExecutorError::Complete) => {
+                    send_lifecycle_updates(executor, tx).await?;
+                    break;
+                }
                 Err(err) => return Err(err),
             };
+            send_lifecycle_updates(executor, tx).await?;
             let node_id = request.node_id();
             send_history(
                 tx,
@@ -146,7 +153,7 @@ where
                 });
             }
 
-            let completion = request.run().await?;
+            let completion = run_request_with_live_history(&mut *tx, request).await?;
             if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
                 executor, journey_id, tx, node_id, completion,
             )
@@ -189,6 +196,33 @@ where
     }
 }
 
+async fn run_request_with_live_history(
+    tx: &mut RunnerChannelTx,
+    mut request: jungle_types::ExecutableEffectRequest,
+) -> Result<Result<Vec<u8>, Vec<u8>>, ExecutorError> {
+    let Some(mut live_history_rx) = request.take_live_history() else {
+        return request.run().await;
+    };
+    let mut completion = Box::pin(request.run());
+    loop {
+        match future::select(completion, live_history_rx.next()).await {
+            future::Either::Left((result, _)) => {
+                while let Some(event) = live_history_rx.next().await {
+                    send_history(tx, event).await?;
+                }
+                return result;
+            }
+            future::Either::Right((maybe_event, next_completion)) => {
+                completion = next_completion;
+                match maybe_event {
+                    Some(event) => send_history(tx, event).await?,
+                    None => return completion.await,
+                }
+            }
+        }
+    }
+}
+
 async fn apply_completion_and_emit_appearance<T, A>(
     executor: &mut ContextExecutor<T, A>,
     journey_id: Uuid,
@@ -227,6 +261,7 @@ where
         }
     }
     let _emitted = executor.complete_serialized(completion)?;
+    send_lifecycle_updates(executor, tx).await?;
     if let Some(appearance) =
         <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())?
     {
@@ -238,6 +273,22 @@ where
             },
         )
         .await?;
+    }
+    Ok(())
+}
+
+async fn send_lifecycle_updates<T, A>(
+    executor: &mut ContextExecutor<T, A>,
+    tx: &mut RunnerChannelTx,
+) -> Result<(), ExecutorError>
+where
+    T: 'static,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+{
+    for update in executor.take_node_lifecycle_updates() {
+        send_history(tx, RunnerOut::NodeLifecycle(update)).await?;
     }
     Ok(())
 }

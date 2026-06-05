@@ -1,8 +1,10 @@
 use crate::{
     Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
-    Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, Noop, Running,
-    Scoped, Select, StateCarrier, Transparent, While,
+    Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NodeLifecycle,
+    NodeLifecyclePhase, Noop, RunnerOut, Running, Scoped, Select, StateCarrier, Transparent, While,
 };
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::StreamExt;
 use inception::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,92 @@ type EffectFuture =
 type EffectRunner = Box<dyn FnOnce() -> EffectFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
+
+#[derive(Default)]
+struct LifecycleState {
+    node_id: u32,
+    journey_id: Option<uuid::Uuid>,
+    next_activation_id: u64,
+    parent_activation_path: Vec<u64>,
+    current_activation_path: Option<Vec<u64>>,
+    updates: Vec<NodeLifecycle>,
+}
+
+impl LifecycleState {
+    fn set_node_id(&mut self, node_id: u32) {
+        self.node_id = node_id;
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.journey_id = Some(journey_id);
+    }
+
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        if self.current_activation_path.is_none() {
+            self.parent_activation_path.clear();
+            self.parent_activation_path.extend_from_slice(path);
+        }
+    }
+
+    fn enter(&mut self) {
+        if self.current_activation_path.is_some() {
+            return;
+        }
+        let activation_id = self.next_activation_id;
+        self.next_activation_id = self.next_activation_id.saturating_add(1);
+        let mut activation_path = self.parent_activation_path.clone();
+        activation_path.push(activation_id);
+        if let Some(journey_id) = self.journey_id {
+            self.updates.push(NodeLifecycle {
+                node_id: self.node_id,
+                activation_path: activation_path.clone(),
+                phase: NodeLifecyclePhase::Entered,
+                uuid: journey_id,
+            });
+        }
+        self.current_activation_path = Some(activation_path);
+    }
+
+    fn succeed(&mut self) {
+        let Some(activation_path) = self.current_activation_path.take() else {
+            return;
+        };
+        if let Some(journey_id) = self.journey_id {
+            self.updates.push(NodeLifecycle {
+                node_id: self.node_id,
+                activation_path,
+                phase: NodeLifecyclePhase::Succeeded,
+                uuid: journey_id,
+            });
+        }
+    }
+
+    fn fail(&mut self) {
+        let Some(activation_path) = self.current_activation_path.take() else {
+            return;
+        };
+        if let Some(journey_id) = self.journey_id {
+            self.updates.push(NodeLifecycle {
+                node_id: self.node_id,
+                activation_path,
+                phase: NodeLifecyclePhase::Failed,
+                uuid: journey_id,
+            });
+        }
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.current_activation_path.as_deref()
+    }
+
+    fn journey_id(&self) -> Option<uuid::Uuid> {
+        self.journey_id
+    }
+
+    fn take_updates(&mut self) -> Vec<NodeLifecycle> {
+        std::mem::take(&mut self.updates)
+    }
+}
 
 fn input_deserialize_error(context: &'static str, err: postcard::Error) -> ExecutorError {
     ExecutorError::InputDeserialize(format!("{context}: {err}"))
@@ -59,6 +147,13 @@ where
 }
 
 impl<State, View, F> ArgputForState<State> for Scoped<View, F>
+where
+    F: ArgputForState<State>,
+{
+    type Carry = <F as ArgputForState<State>>::Carry;
+}
+
+impl<State, Carrier, F> ArgputForState<State> for crate::FocusedBoundFlow<Carrier, F>
 where
     F: ArgputForState<State>,
 {
@@ -253,6 +348,7 @@ pub struct ExecutableEffectRequest {
     effect_type: &'static str,
     request: Serialized,
     runner: EffectRunner,
+    live_history_rx: Option<UnboundedReceiver<RunnerOut>>,
 }
 
 impl ExecutableEffectRequest {
@@ -267,6 +363,7 @@ impl ExecutableEffectRequest {
             effect_type,
             request,
             runner,
+            live_history_rx: None,
         }
     }
 
@@ -291,6 +388,15 @@ impl ExecutableEffectRequest {
 
     pub fn run(self) -> impl Future<Output = Result<SerializedCompletion, ExecutorError>> {
         (self.runner)()
+    }
+
+    pub fn take_live_history(&mut self) -> Option<UnboundedReceiver<RunnerOut>> {
+        self.live_history_rx.take()
+    }
+
+    fn with_live_history(mut self, live_history_rx: UnboundedReceiver<RunnerOut>) -> Self {
+        self.live_history_rx = Some(live_history_rx);
+        self
     }
 }
 
@@ -318,6 +424,22 @@ pub trait ErasedFlow<State>: Send {
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         Ok((state, None, false))
+    }
+
+    fn set_parent_activation_path(&mut self, _path: &[u64]) {}
+
+    fn set_journey_id(&mut self, _journey_id: uuid::Uuid) {}
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        None
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        Vec::new()
+    }
+
+    fn node_id(&self) -> u32 {
+        0
     }
 
     fn assign_node_ids(&mut self, _next_id: &mut u32) {}
@@ -387,6 +509,7 @@ pub struct TypedErasedStep<Step>
 where
     Step: StepCarry,
 {
+    lifecycle: LifecycleState,
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
@@ -401,6 +524,7 @@ where
 {
     pub fn new() -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             complete: false,
             waiting_completion: false,
@@ -450,6 +574,7 @@ where
         }
 
         let typed_input = deserialize_step_input::<A::Input>(&input)?;
+        self.lifecycle.enter();
         let (state, (_request, carry)) =
             <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
@@ -476,6 +601,7 @@ where
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
+            self.lifecycle.enter();
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -484,6 +610,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
+        self.lifecycle.enter();
         let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -510,6 +637,7 @@ where
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
+            self.lifecycle.enter();
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -518,6 +646,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
+        self.lifecycle.enter();
         let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
         let effect_input = request.into_input();
@@ -574,12 +703,20 @@ where
             .expect("carry must exist while waiting for completion");
         let mut state = state;
         let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
-        let emitted = <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
-            .map_err(ExecutorError::ActionFailure)?;
+        let emitted = match <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
+        {
+            Ok(emitted) => emitted,
+            Err(failure) => {
+                self.waiting_completion = false;
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+        };
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
         self.complete = true;
+        self.lifecycle.succeed();
         Ok((state, emitted))
     }
 
@@ -591,8 +728,29 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        self.lifecycle.take_updates()
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
     }
 }
@@ -602,6 +760,7 @@ where
     R: StepCarry,
 {
     context: Arc<Context>,
+    lifecycle: LifecycleState,
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
@@ -617,6 +776,7 @@ where
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             context,
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             complete: false,
             waiting_completion: false,
@@ -634,9 +794,17 @@ where
     A: BoundAction<T>,
     <A as BoundAction<T>>::Carry: Send + 'static,
     <A as BoundAction<T>>::Effect: Effect<Context>,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
+    <A as BoundAction<T>>::Effect: EffectSchema<
+        Context,
+        In = <<A as BoundAction<T>>::Effect as EffectSchema>::In,
+        Out = <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
+        Err = <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
+    >,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::In: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Out:
+        Serialize + DeserializeOwned + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Err:
+        Serialize + DeserializeOwned + 'static,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -656,6 +824,7 @@ where
         }
 
         let typed_input = deserialize_step_input::<A::Input>(&input)?;
+        self.lifecycle.enter();
         let (state, (_request, carry)) =
             <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
@@ -682,6 +851,7 @@ where
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
+            self.lifecycle.enter();
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -690,6 +860,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
+        self.lifecycle.enter();
         let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -716,6 +887,7 @@ where
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
+            self.lifecycle.enter();
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -724,6 +896,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
+        self.lifecycle.enter();
         let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
         let effect_input = request.into_input();
@@ -784,12 +957,20 @@ where
             .expect("carry must exist while waiting for completion");
         let mut state = state;
         let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
-        let emitted = <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
-            .map_err(ExecutorError::ActionFailure)?;
+        let emitted = match <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
+        {
+            Ok(emitted) => emitted,
+            Err(failure) => {
+                self.waiting_completion = false;
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+        };
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
         self.complete = true;
+        self.lifecycle.succeed();
         Ok((state, emitted))
     }
 
@@ -801,8 +982,29 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        self.lifecycle.take_updates()
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
     }
 }
@@ -825,6 +1027,8 @@ struct ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    lifecycle: LifecycleState,
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
@@ -842,6 +1046,8 @@ where
         choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
+            node_id: 0,
             left,
             right,
             choose_left,
@@ -884,17 +1090,31 @@ where
             return Ok((state, None, false));
         }
         if self.cursor >= self.branch_len() {
+            self.lifecycle.succeed();
             return Ok((state, None, true));
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
+        node.set_parent_activation_path(&parent_path);
         if node.is_waiting_completion() {
             return Ok((state, None, false));
         }
 
-        let (state, emitted, completed) = node.try_complete_without_progress(state)?;
+        let (state, emitted, completed) = match node.try_complete_without_progress(state) {
+            Ok(result) => result,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
         if !completed {
             return Ok((state, emitted, false));
         }
@@ -905,6 +1125,7 @@ where
                 .active_branch
                 .expect("active branch is present while conditional is executing");
             let emitted = emitted.map(|bytes| encode_conditional_emitted(active_branch, bytes));
+            self.lifecycle.succeed();
             return Ok((state, emitted, true));
         }
 
@@ -924,12 +1145,19 @@ where
             if self.cursor >= self.branch_len() {
                 return Err((state, ExecutorError::Complete));
             }
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
             let node = self
                 .active_node_mut()
                 .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
             return node.request(state, request_input);
         };
         if self.active_branch.is_none() {
+            self.lifecycle.enter();
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
             } else {
@@ -945,10 +1173,22 @@ where
             return Err((state, ExecutorError::Complete));
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request(state, branch_input)
+        node.set_parent_activation_path(&parent_path);
+        match node.request(state, branch_input) {
+            Err((state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((state, ExecutorError::ActionFailure(failure)))
+            }
+            other => other,
+        }
     }
 
     fn complete(
@@ -960,10 +1200,23 @@ where
             return Err(ExecutorError::Complete);
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        let (state, emitted) = node.complete(state, completion)?;
+        node.set_parent_activation_path(&parent_path);
+        let (state, emitted) = match node.complete(state, completion) {
+            Ok(result) => result,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
         let node_complete = node.is_complete();
         if node_complete {
             self.cursor += 1;
@@ -972,6 +1225,7 @@ where
             let active_branch = self
                 .active_branch
                 .expect("active branch is present while conditional is executing");
+            self.lifecycle.succeed();
             return Ok((state, encode_conditional_emitted(active_branch, emitted)));
         }
         Ok((state, emitted))
@@ -994,12 +1248,19 @@ where
             if self.cursor >= self.branch_len() {
                 return Err((state, ExecutorError::Complete));
             }
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
             let node = self
                 .active_node_mut()
                 .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
             return node.request_executable(state, request_input);
         };
         if self.active_branch.is_none() {
+            self.lifecycle.enter();
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
             } else {
@@ -1015,10 +1276,22 @@ where
             return Err((state, ExecutorError::Complete));
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request_executable(state, branch_input)
+        node.set_parent_activation_path(&parent_path);
+        match node.request_executable(state, branch_input) {
+            Err((state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((state, ExecutorError::ActionFailure(failure)))
+            }
+            other => other,
+        }
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1045,7 +1318,35 @@ where
         self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.left, journey_id);
+        assign_flow_journey_id(&mut self.right, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
+        *next_id = next_id.saturating_add(1);
         for node in &mut self.left {
             node.assign_node_ids(next_id);
         }
@@ -1059,6 +1360,8 @@ struct WhileErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    lifecycle: LifecycleState,
+    node_id: u32,
     should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
     build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     active_body: DynFlow<State>,
@@ -1067,6 +1370,7 @@ where
     complete: bool,
     deferred_state: Option<State>,
     deferred_emitted: Option<Serialized>,
+    active_control_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -1077,6 +1381,7 @@ struct SelectRequestEnvelope {
 }
 
 struct SelectErasedFlow<State> {
+    lifecycle: LifecycleState,
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
@@ -1085,6 +1390,7 @@ struct SelectErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> SelectErasedFlow<State> {
@@ -1095,6 +1401,7 @@ impl<State> SelectErasedFlow<State> {
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             left,
             right,
@@ -1103,11 +1410,13 @@ impl<State> SelectErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
 
 struct SelectContextErasedFlow<State> {
+    lifecycle: LifecycleState,
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
@@ -1116,6 +1425,7 @@ struct SelectContextErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> SelectContextErasedFlow<State> {
@@ -1126,6 +1436,7 @@ impl<State> SelectContextErasedFlow<State> {
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             left,
             right,
@@ -1134,6 +1445,7 @@ impl<State> SelectContextErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
@@ -1154,6 +1466,96 @@ enum SelectTraceEnvelope {
 struct JoinTraceEnvelope {
     left: FlowCompletionTrace,
     right: FlowCompletionTrace,
+}
+
+trait JoinFocusMarker<State> {
+    const ENABLED: bool;
+
+    fn merge_into(_target: &mut State, _branch_state: State) {}
+}
+
+impl<State> JoinFocusMarker<State> for list::Empty {
+    const ENABLED: bool = true;
+}
+
+impl<State, Head, Tail> JoinFocusMarker<State> for TList<(Head, Tail)>
+where
+    State: Clone,
+    Head: JoinFocusMarker<State>,
+    Tail: JoinFocusMarker<State>,
+{
+    const ENABLED: bool =
+        <Head as JoinFocusMarker<State>>::ENABLED && <Tail as JoinFocusMarker<State>>::ENABLED;
+
+    fn merge_into(target: &mut State, branch_state: State) {
+        if !Self::ENABLED {
+            return;
+        }
+
+        <Head as JoinFocusMarker<State>>::merge_into(target, branch_state.clone());
+        <Tail as JoinFocusMarker<State>>::merge_into(target, branch_state);
+    }
+}
+
+impl<State, T, A> JoinFocusMarker<State> for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAction<T>,
+{
+    const ENABLED: bool = false;
+}
+
+impl<State, P, L, R, M> JoinFocusMarker<State> for Conditional<P, L, R, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, C, F, M> JoinFocusMarker<State> for While<C, F, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, M, F> JoinFocusMarker<State> for Transparent<M, F> {
+    const ENABLED: bool = false;
+}
+
+impl<State, L, R, M> JoinFocusMarker<State> for Select<L, R, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, L, R, M> JoinFocusMarker<State> for Join<L, R, M>
+where
+    State: Clone,
+    L: JoinFocusMarker<State>,
+    R: JoinFocusMarker<State>,
+{
+    const ENABLED: bool =
+        <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
+
+    fn merge_into(target: &mut State, branch_state: State) {
+        if !Self::ENABLED {
+            return;
+        }
+
+        <L as JoinFocusMarker<State>>::merge_into(target, branch_state.clone());
+        <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
+    }
+}
+
+impl<State, M, F> JoinFocusMarker<State> for Attempt<F, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, Carrier, F> JoinFocusMarker<State> for crate::FocusedBoundFlow<Carrier, F>
+where
+    State: Clone,
+    Carrier: crate::Aspect<State>,
+    <Carrier as crate::StateCarrier<State>>::Focus: Clone,
+{
+    const ENABLED: bool = true;
+
+    fn merge_into(target: &mut State, mut branch_state: State) {
+        let focused = <Carrier as crate::StateCarrier<State>>::focus(&mut branch_state).clone();
+        *<Carrier as crate::StateCarrier<State>>::focus(target) = focused;
+    }
 }
 
 fn settle_subflow_without_progress<State>(
@@ -1272,15 +1674,78 @@ fn subflow_complete_serialized<State>(
     Ok((next_state, emitted))
 }
 
+fn emit_subflow_history(
+    live_history_tx: Option<&UnboundedSender<RunnerOut>>,
+    event: RunnerOut,
+) -> Result<(), ExecutorError> {
+    if let Some(tx) = live_history_tx {
+        tx.unbounded_send(event).map_err(|_| {
+            ExecutorError::ClientTransport(
+                "subflow live history receiver dropped before nested history could be forwarded"
+                    .to_string(),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn emit_subflow_lifecycle_updates<State>(
+    flow: &mut DynFlow<State>,
+    live_history_tx: Option<&UnboundedSender<RunnerOut>>,
+) -> Result<(), ExecutorError> {
+    let Some(tx) = live_history_tx else {
+        return Ok(());
+    };
+    for update in take_flow_node_lifecycle_updates(flow) {
+        emit_subflow_history(Some(tx), RunnerOut::NodeLifecycle(update))?;
+    }
+    Ok(())
+}
+
+async fn run_request_with_live_history(
+    mut request: ExecutableEffectRequest,
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
+) -> Result<SerializedCompletion, ExecutorError> {
+    let Some(mut live_history_rx) = request.take_live_history() else {
+        return request.run().await;
+    };
+    let mut completion = Box::pin(request.run());
+    loop {
+        match futures::future::select(completion, live_history_rx.next()).await {
+            futures::future::Either::Left((result, _)) => {
+                while let Some(event) = live_history_rx.next().await {
+                    emit_subflow_history(live_history_tx.as_ref(), event)?;
+                }
+                return result;
+            }
+            futures::future::Either::Right((maybe_event, next_completion)) => {
+                completion = next_completion;
+                match maybe_event {
+                    Some(event) => emit_subflow_history(live_history_tx.as_ref(), event)?,
+                    None => return completion.await,
+                }
+            }
+        }
+    }
+}
+
 async fn run_subflow_to_end_with_state<State>(
     mut flow: DynFlow<State>,
     mut state: State,
     input: Serialized,
+    start_node_id: u32,
+    journey_id: Option<uuid::Uuid>,
+    parent_activation_path: &[u64],
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
 ) -> Result<(State, FlowCompletionTrace), ExecutorError>
 where
     State: Clone,
 {
-    assign_flow_node_ids(&mut flow);
+    assign_flow_node_ids_starting_at(&mut flow, start_node_id);
+    if let Some(journey_id) = journey_id {
+        assign_flow_journey_id(&mut flow, journey_id);
+    }
+    assign_flow_parent_activation_path(&mut flow, parent_activation_path);
     let mut cursor = 0_usize;
     let mut completions = Vec::new();
     let mut last_emitted = input;
@@ -1291,6 +1756,7 @@ where
             {
                 Ok((next_state, request)) => {
                     state = next_state;
+                    emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
                     request
                 }
                 Err((next_state, ExecutorError::Complete)) => {
@@ -1300,6 +1766,7 @@ where
                         next_state,
                         &mut last_emitted,
                     )?;
+                    emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
                     if cursor < flow.len() {
                         return Err(ExecutorError::NoPendingRequest);
                     }
@@ -1311,9 +1778,43 @@ where
                         },
                     ));
                 }
-                Err((_next_state, err)) => return Err(err),
+                Err((_next_state, err)) => {
+                    emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
+                    return Err(err);
+                }
             };
-        let completion = request.run().await?;
+        if let Some(journey_id) = journey_id {
+            emit_subflow_history(
+                live_history_tx.as_ref(),
+                RunnerOut::EffectInput {
+                    node_id: request.node_id(),
+                    data: request.request_bytes().to_vec(),
+                    uuid: journey_id,
+                },
+            )?;
+        }
+        let request_node_id = request.node_id();
+        let completion = run_request_with_live_history(request, live_history_tx.clone()).await?;
+        if let Some(journey_id) = journey_id {
+            match &completion {
+                Ok(output) => emit_subflow_history(
+                    live_history_tx.as_ref(),
+                    RunnerOut::EffectSuccessOutput {
+                        node_id: request_node_id,
+                        data: output.clone(),
+                        uuid: journey_id,
+                    },
+                )?,
+                Err(error) => emit_subflow_history(
+                    live_history_tx.as_ref(),
+                    RunnerOut::EffectFailureOutput {
+                        node_id: request_node_id,
+                        data: error.clone(),
+                        uuid: journey_id,
+                    },
+                )?,
+            }
+        }
         let (next_state, emitted) = subflow_complete_serialized(
             &mut flow,
             &mut cursor,
@@ -1321,6 +1822,7 @@ where
             &mut last_emitted,
             completion.clone(),
         )?;
+        emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
         state = next_state;
         completions.push(completion);
         last_emitted = emitted;
@@ -1331,11 +1833,24 @@ async fn run_subflow_to_end<State>(
     flow: DynFlow<State>,
     state: State,
     input: Serialized,
+    start_node_id: u32,
+    journey_id: Option<uuid::Uuid>,
+    parent_activation_path: &[u64],
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
 ) -> Result<FlowCompletionTrace, ExecutorError>
 where
     State: Clone,
 {
-    let (_state, trace) = run_subflow_to_end_with_state(flow, state, input).await?;
+    let (_state, trace) = run_subflow_to_end_with_state(
+        flow,
+        state,
+        input,
+        start_node_id,
+        journey_id,
+        parent_activation_path,
+        live_history_tx,
+    )
+    .await?;
     Ok(trace)
 }
 
@@ -1388,7 +1903,326 @@ where
     Ok((state, trace.emitted))
 }
 
+struct TransparentErasedFlow<State> {
+    lifecycle: LifecycleState,
+    node_id: u32,
+    inner: DynFlow<State>,
+    cursor: usize,
+    pending_input: Option<Serialized>,
+    waiting_completion: bool,
+    complete: bool,
+}
+
+impl<State> TransparentErasedFlow<State> {
+    fn new(inner: DynFlow<State>) -> Self {
+        Self {
+            lifecycle: LifecycleState::default(),
+            node_id: 0,
+            inner,
+            cursor: 0,
+            pending_input: None,
+            waiting_completion: false,
+            complete: false,
+        }
+    }
+}
+
+impl<State> ErasedFlow<State> for TransparentErasedFlow<State>
+where
+    State: Clone + Send + 'static,
+{
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        if self.complete {
+            return Err((state, ExecutorError::Complete));
+        }
+        if self.waiting_completion {
+            return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        self.lifecycle.enter();
+
+        let mut last_input = input.clone();
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err((state, ExecutorError::ActionFailure(failure)));
+            }
+            Err(err) => return Err((state, err)),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            self.pending_input = Some(last_input);
+            self.lifecycle.succeed();
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
+        match node.request(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                self.pending_input = Some(last_input);
+                self.waiting_completion = true;
+                Ok((next_state, request))
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(next_state.clone()) {
+                        Ok(result) => result,
+                        Err(ExecutorError::ActionFailure(failure)) => {
+                            self.lifecycle.fail();
+                            return Err((next_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err(err) => return Err((next_state, err)),
+                    };
+                self.pending_input = Some(emitted.unwrap_or(last_input));
+                if completed {
+                    self.cursor += 1;
+                }
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((next_state, ExecutorError::ActionFailure(failure)))
+            }
+            Err((next_state, err)) => Err((next_state, err)),
+        }
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if !self.waiting_completion {
+            return Err(ExecutorError::NoPendingRequest);
+        }
+        if self.cursor >= self.inner.len() {
+            return Err(ExecutorError::Complete);
+        }
+
+        let last_input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
+        match node.complete(state.clone(), completion) {
+            Ok((next_state, emitted)) => {
+                self.waiting_completion = false;
+                let mut last_input = emitted;
+                if node.is_complete() {
+                    self.cursor += 1;
+                }
+                let next_state = match settle_subflow_without_progress(
+                    &mut self.inner,
+                    &mut self.cursor,
+                    next_state.clone(),
+                    &mut last_input,
+                ) {
+                    Ok(state) => state,
+                    Err(ExecutorError::ActionFailure(failure)) => {
+                        self.lifecycle.fail();
+                        return Err(ExecutorError::ActionFailure(failure));
+                    }
+                    Err(err) => return Err(err),
+                };
+                if self.cursor >= self.inner.len() {
+                    self.complete = true;
+                    self.lifecycle.succeed();
+                }
+                Ok((next_state, last_input))
+            }
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.waiting_completion = false;
+                self.lifecycle.fail();
+                Err(ExecutorError::ActionFailure(failure))
+            }
+            Err(err) => {
+                self.waiting_completion = false;
+                self.pending_input = Some(last_input);
+                Err(err)
+            }
+        }
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> RequestResult<State, ExecutableEffectRequest> {
+        if self.complete {
+            return Err((state, ExecutorError::Complete));
+        }
+        if self.waiting_completion {
+            return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        self.lifecycle.enter();
+
+        let mut last_input = input.clone();
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err((state, ExecutorError::ActionFailure(failure)));
+            }
+            Err(err) => return Err((state, err)),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            self.pending_input = Some(last_input);
+            self.lifecycle.succeed();
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
+        match node.request_executable(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                self.pending_input = Some(last_input);
+                self.waiting_completion = true;
+                Ok((next_state, request))
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(next_state.clone()) {
+                        Ok(result) => result,
+                        Err(ExecutorError::ActionFailure(failure)) => {
+                            self.lifecycle.fail();
+                            return Err((next_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err(err) => return Err((next_state, err)),
+                    };
+                self.pending_input = Some(emitted.unwrap_or(last_input));
+                if completed {
+                    self.cursor += 1;
+                }
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((next_state, ExecutorError::ActionFailure(failure)))
+            }
+            Err((next_state, err)) => Err((next_state, err)),
+        }
+    }
+
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.complete {
+            return Ok((state, self.pending_input.take(), true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let Some(mut last_input) = self.pending_input.take() else {
+            return Ok((state, None, false));
+        };
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            self.lifecycle.succeed();
+            return Ok((state, Some(last_input), true));
+        }
+
+        self.pending_input = Some(last_input);
+        Ok((state, None, false))
+    }
+
+    fn is_waiting_completion(&self) -> bool {
+        self.waiting_completion
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.inner, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.inner));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.inner {
+            node.assign_node_ids(next_id);
+        }
+    }
+}
+
 struct AttemptErasedFlow<State, Out> {
+    lifecycle: LifecycleState,
     node_id: u32,
     inner: DynFlow<State>,
     cursor: usize,
@@ -1404,6 +2238,7 @@ where
 {
     fn new(inner: DynFlow<State>) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             inner,
             cursor: 0,
@@ -1438,6 +2273,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
+        self.lifecycle.enter();
 
         let mut last_input = input.clone();
         let state = match settle_subflow_without_progress(
@@ -1446,18 +2282,18 @@ where
             state.clone(),
             &mut last_input,
         ) {
-                Ok(state) => state,
-                Err(ExecutorError::ActionFailure(failure)) => {
-                    let emitted = match Self::encode_failure(failure) {
-                        Ok(emitted) => emitted,
-                        Err(err) => return Err((state, err)),
-                    };
-                    self.complete = true;
-                    self.pending_input = Some(emitted);
-                    return Err((state, ExecutorError::Complete));
-                }
-                Err(err) => return Err((state, err)),
-            };
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                let emitted = match Self::encode_failure(failure) {
+                    Ok(emitted) => emitted,
+                    Err(err) => return Err((state, err)),
+                };
+                self.complete = true;
+                self.pending_input = Some(emitted);
+                return Err((state, ExecutorError::Complete));
+            }
+            Err(err) => return Err((state, err)),
+        };
         if self.cursor >= self.inner.len() {
             let emitted = match Self::encode_success(last_input) {
                 Ok(emitted) => emitted,
@@ -1472,6 +2308,12 @@ where
             .inner
             .get_mut(self.cursor)
             .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
         match node.request(state, last_input.clone()) {
             Ok((next_state, request)) => {
                 self.pending_input = Some(last_input);
@@ -1532,11 +2374,20 @@ where
             return Err(ExecutorError::Complete);
         }
 
-        let last_input = self.pending_input.take().ok_or(ExecutorError::NoPendingRequest)?;
+        let last_input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
         let node = self
             .inner
             .get_mut(self.cursor)
             .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
         match node.complete(state.clone(), completion) {
             Ok((next_state, emitted)) => {
                 self.waiting_completion = false;
@@ -1554,12 +2405,14 @@ where
                     Err(ExecutorError::ActionFailure(failure)) => {
                         let emitted = Self::encode_failure(failure)?;
                         self.complete = true;
+                        self.lifecycle.succeed();
                         return Ok((next_state, emitted));
                     }
                     Err(err) => return Err(err),
                 };
                 if self.cursor >= self.inner.len() {
                     self.complete = true;
+                    self.lifecycle.succeed();
                     return Ok((next_state, Self::encode_success(last_input)?));
                 }
                 Ok((next_state, last_input))
@@ -1567,6 +2420,7 @@ where
             Err(ExecutorError::ActionFailure(failure)) => {
                 self.waiting_completion = false;
                 self.complete = true;
+                self.lifecycle.succeed();
                 Ok((state, Self::encode_failure(failure)?))
             }
             Err(err) => {
@@ -1588,6 +2442,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
+        self.lifecycle.enter();
 
         let mut last_input = input.clone();
         let state = match settle_subflow_without_progress(
@@ -1596,18 +2451,18 @@ where
             state.clone(),
             &mut last_input,
         ) {
-                Ok(state) => state,
-                Err(ExecutorError::ActionFailure(failure)) => {
-                    let emitted = match Self::encode_failure(failure) {
-                        Ok(emitted) => emitted,
-                        Err(err) => return Err((state, err)),
-                    };
-                    self.complete = true;
-                    self.pending_input = Some(emitted);
-                    return Err((state, ExecutorError::Complete));
-                }
-                Err(err) => return Err((state, err)),
-            };
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                let emitted = match Self::encode_failure(failure) {
+                    Ok(emitted) => emitted,
+                    Err(err) => return Err((state, err)),
+                };
+                self.complete = true;
+                self.pending_input = Some(emitted);
+                return Err((state, ExecutorError::Complete));
+            }
+            Err(err) => return Err((state, err)),
+        };
         if self.cursor >= self.inner.len() {
             let emitted = match Self::encode_success(last_input) {
                 Ok(emitted) => emitted,
@@ -1622,6 +2477,12 @@ where
             .inner
             .get_mut(self.cursor)
             .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
         match node.request_executable(state, last_input.clone()) {
             Ok((next_state, request)) => {
                 self.pending_input = Some(last_input);
@@ -1693,6 +2554,7 @@ where
             Ok(state) => state,
             Err(ExecutorError::ActionFailure(failure)) => {
                 self.complete = true;
+                self.lifecycle.succeed();
                 return Ok((state, Some(Self::encode_failure(failure)?), true));
             }
             Err(err) => return Err(err),
@@ -1714,8 +2576,350 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.inner, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.inner));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.inner {
+            node.assign_node_ids(next_id);
+        }
+    }
+}
+
+struct TransparentContextErasedFlow<State> {
+    lifecycle: LifecycleState,
+    node_id: u32,
+    inner: DynFlow<State>,
+    cursor: usize,
+    pending_input: Option<Serialized>,
+    waiting_completion: bool,
+    complete: bool,
+}
+
+impl<State> TransparentContextErasedFlow<State> {
+    fn new(inner: DynFlow<State>) -> Self {
+        Self {
+            lifecycle: LifecycleState::default(),
+            node_id: 0,
+            inner,
+            cursor: 0,
+            pending_input: None,
+            waiting_completion: false,
+            complete: false,
+        }
+    }
+}
+
+impl<State> ErasedFlow<State> for TransparentContextErasedFlow<State>
+where
+    State: Clone + Send + 'static,
+{
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        if self.complete {
+            return Err((state, ExecutorError::Complete));
+        }
+        if self.waiting_completion {
+            return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        self.lifecycle.enter();
+
+        let mut last_input = input.clone();
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err((state, ExecutorError::ActionFailure(failure)));
+            }
+            Err(err) => return Err((state, err)),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            self.pending_input = Some(last_input);
+            self.lifecycle.succeed();
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
+        match node.request(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                self.pending_input = Some(last_input);
+                self.waiting_completion = true;
+                Ok((next_state, request))
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(next_state.clone()) {
+                        Ok(result) => result,
+                        Err(ExecutorError::ActionFailure(failure)) => {
+                            self.lifecycle.fail();
+                            return Err((next_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err(err) => return Err((next_state, err)),
+                    };
+                self.pending_input = Some(emitted.unwrap_or(last_input));
+                if completed {
+                    self.cursor += 1;
+                }
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((next_state, ExecutorError::ActionFailure(failure)))
+            }
+            Err((next_state, err)) => Err((next_state, err)),
+        }
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if !self.waiting_completion {
+            return Err(ExecutorError::NoPendingRequest);
+        }
+        if self.cursor >= self.inner.len() {
+            return Err(ExecutorError::Complete);
+        }
+
+        let last_input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
+        match node.complete(state.clone(), completion) {
+            Ok((next_state, emitted)) => {
+                self.waiting_completion = false;
+                let mut last_input = emitted;
+                if node.is_complete() {
+                    self.cursor += 1;
+                }
+                let next_state = match settle_subflow_without_progress(
+                    &mut self.inner,
+                    &mut self.cursor,
+                    next_state.clone(),
+                    &mut last_input,
+                ) {
+                    Ok(state) => state,
+                    Err(ExecutorError::ActionFailure(failure)) => {
+                        self.lifecycle.fail();
+                        return Err(ExecutorError::ActionFailure(failure));
+                    }
+                    Err(err) => return Err(err),
+                };
+                if self.cursor >= self.inner.len() {
+                    self.complete = true;
+                    self.lifecycle.succeed();
+                }
+                Ok((next_state, last_input))
+            }
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.waiting_completion = false;
+                self.lifecycle.fail();
+                Err(ExecutorError::ActionFailure(failure))
+            }
+            Err(err) => {
+                self.waiting_completion = false;
+                self.pending_input = Some(last_input);
+                Err(err)
+            }
+        }
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> RequestResult<State, ExecutableEffectRequest> {
+        if self.complete {
+            return Err((state, ExecutorError::Complete));
+        }
+        if self.waiting_completion {
+            return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        self.lifecycle.enter();
+
+        let mut last_input = input.clone();
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err((state, ExecutorError::ActionFailure(failure)));
+            }
+            Err(err) => return Err((state, err)),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            self.pending_input = Some(last_input);
+            self.lifecycle.succeed();
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        node.set_parent_activation_path(&parent_path);
+        match node.request_executable(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                self.pending_input = Some(last_input);
+                self.waiting_completion = true;
+                Ok((next_state, request))
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(next_state.clone()) {
+                        Ok(result) => result,
+                        Err(ExecutorError::ActionFailure(failure)) => {
+                            self.lifecycle.fail();
+                            return Err((next_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err(err) => return Err((next_state, err)),
+                    };
+                self.pending_input = Some(emitted.unwrap_or(last_input));
+                if completed {
+                    self.cursor += 1;
+                }
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((next_state, ExecutorError::ActionFailure(failure)))
+            }
+            Err((next_state, err)) => Err((next_state, err)),
+        }
+    }
+
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.complete {
+            return Ok((state, self.pending_input.take(), true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let Some(mut last_input) = self.pending_input.take() else {
+            return Ok((state, None, false));
+        };
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            self.lifecycle.succeed();
+            return Ok((state, Some(last_input), true));
+        }
+
+        self.pending_input = Some(last_input);
+        Ok((state, None, false))
+    }
+
+    fn is_waiting_completion(&self) -> bool {
+        self.waiting_completion
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.inner, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.inner));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
         for node in &mut self.inner {
             node.assign_node_ids(next_id);
@@ -1761,6 +2965,13 @@ where
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        assign_flow_parent_activation_path(&mut self.left, &parent_path);
+        assign_flow_parent_activation_path(&mut self.right, &parent_path);
         let emitted = match envelope {
             SelectTraceEnvelope::Left(left_trace) => {
                 let (left_state, left_emitted) =
@@ -1779,9 +2990,14 @@ where
                 (right_state, serialized)
             }
         };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
+        self.lifecycle.succeed();
         Ok(emitted)
     }
 
@@ -1801,6 +3017,7 @@ where
             left: input.clone(),
             right: input.clone(),
         };
+        self.lifecycle.enter();
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -1811,11 +3028,38 @@ where
         let right_state = state.clone();
         let left_input = input.clone();
         let right_input = input.clone();
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = run_subflow_to_end(left_flow, left_state, left_input);
-                let right = run_subflow_to_end(right_flow, right_state, right_input);
+                let left = run_subflow_to_end(
+                    left_flow,
+                    left_state,
+                    left_input,
+                    left_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx.clone(),
+                );
+                let right = run_subflow_to_end(
+                    right_flow,
+                    right_state,
+                    right_input,
+                    right_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx,
+                );
                 let selected = futures::future::select(
                     Box::pin(left) as Pin<Box<_>>,
                     Box::pin(right) as Pin<Box<_>>,
@@ -1837,10 +3081,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1851,8 +3098,34 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.left, journey_id);
+        assign_flow_journey_id(&mut self.right, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
         for node in &mut self.left {
             node.assign_node_ids(next_id);
@@ -1901,6 +3174,13 @@ where
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        assign_flow_parent_activation_path(&mut self.left, &parent_path);
+        assign_flow_parent_activation_path(&mut self.right, &parent_path);
         let emitted = match envelope {
             SelectTraceEnvelope::Left(left_trace) => {
                 let (left_state, left_emitted) =
@@ -1919,9 +3199,14 @@ where
                 (right_state, serialized)
             }
         };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
+        self.lifecycle.succeed();
         Ok(emitted)
     }
 
@@ -1941,6 +3226,7 @@ where
             left: input.clone(),
             right: input.clone(),
         };
+        self.lifecycle.enter();
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -1951,11 +3237,38 @@ where
         let right_state = state.clone();
         let left_input = input.clone();
         let right_input = input.clone();
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = run_subflow_to_end(left_flow, left_state, left_input);
-                let right = run_subflow_to_end(right_flow, right_state, right_input);
+                let left = run_subflow_to_end(
+                    left_flow,
+                    left_state,
+                    left_input,
+                    left_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx.clone(),
+                );
+                let right = run_subflow_to_end(
+                    right_flow,
+                    right_state,
+                    right_input,
+                    right_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx,
+                );
                 let selected = futures::future::select(
                     Box::pin(left) as Pin<Box<_>>,
                     Box::pin(right) as Pin<Box<_>>,
@@ -1977,10 +3290,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1991,8 +3307,34 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.left, journey_id);
+        assign_flow_journey_id(&mut self.right, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
         for node in &mut self.left {
             node.assign_node_ids(next_id);
@@ -2010,6 +3352,7 @@ struct JoinRequestEnvelope {
 }
 
 struct JoinErasedFlow<State> {
+    lifecycle: LifecycleState,
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
@@ -2018,6 +3361,10 @@ struct JoinErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    focused_merge: bool,
+    merge_left: Box<dyn Fn(&mut State, State) + Send>,
+    merge_right: Box<dyn Fn(&mut State, State) + Send>,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> JoinErasedFlow<State> {
@@ -2026,8 +3373,12 @@ impl<State> JoinErasedFlow<State> {
         right: DynFlow<State>,
         build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+        focused_merge: bool,
+        merge_left: Box<dyn Fn(&mut State, State) + Send>,
+        merge_right: Box<dyn Fn(&mut State, State) + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             left,
             right,
@@ -2036,11 +3387,16 @@ impl<State> JoinErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            focused_merge,
+            merge_left,
+            merge_right,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
 
 struct JoinContextErasedFlow<State> {
+    lifecycle: LifecycleState,
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
@@ -2049,6 +3405,10 @@ struct JoinContextErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    focused_merge: bool,
+    merge_left: Box<dyn Fn(&mut State, State) + Send>,
+    merge_right: Box<dyn Fn(&mut State, State) + Send>,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> JoinContextErasedFlow<State> {
@@ -2057,8 +3417,12 @@ impl<State> JoinContextErasedFlow<State> {
         right: DynFlow<State>,
         build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+        focused_merge: bool,
+        merge_left: Box<dyn Fn(&mut State, State) + Send>,
+        merge_right: Box<dyn Fn(&mut State, State) + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
             node_id: 0,
             left,
             right,
@@ -2067,6 +3431,10 @@ impl<State> JoinContextErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            focused_merge,
+            merge_left,
+            merge_right,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
@@ -2109,17 +3477,47 @@ where
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
-        let (left_state, left_emitted) =
-            replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
-        let (right_state, right_emitted) =
-            replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
-        let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-        emitted.extend_from_slice(&left_emitted);
-        emitted.extend_from_slice(&right_emitted);
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        assign_flow_parent_activation_path(&mut self.left, &parent_path);
+        assign_flow_parent_activation_path(&mut self.right, &parent_path);
+        let (merged_state, emitted) = if self.focused_merge {
+            let base_state = state.clone();
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state.clone(), input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, state, input, envelope.right)?;
+            let mut merged_state = base_state;
+            (self.merge_left)(&mut merged_state, left_state);
+            (self.merge_right)(&mut merged_state, right_state);
+            (merged_state, {
+                let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+                emitted.extend_from_slice(&left_emitted);
+                emitted.extend_from_slice(&right_emitted);
+                emitted
+            })
+        } else {
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
+            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+            emitted.extend_from_slice(&left_emitted);
+            emitted.extend_from_slice(&right_emitted);
+            (right_state, emitted)
+        };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
-        Ok((right_state, emitted))
+        self.lifecycle.succeed();
+        Ok((merged_state, emitted))
     }
 
     fn request_executable(
@@ -2138,6 +3536,7 @@ where
             left: input.clone(),
             right: input.clone(),
         };
+        self.lifecycle.enter();
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -2145,15 +3544,71 @@ where
         let left_flow = (self.build_left)();
         let right_flow = (self.build_right)();
         let left_state = state.clone();
+        let right_state = if self.focused_merge {
+            state.clone()
+        } else {
+            left_state.clone()
+        };
         let left_input = input.clone();
         let right_input = input.clone();
+        let focused_merge = self.focused_merge;
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_state, left_trace) =
-                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
-                let (_right_state, right_trace) =
-                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                let (left_trace, right_trace) = if focused_merge {
+                    let left = run_subflow_to_end(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
+                    let right = run_subflow_to_end(
+                        right_flow,
+                        right_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
+                    futures::future::try_join(left, right).await?
+                } else {
+                    let (left_state, left_trace) = run_subflow_to_end_with_state(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
+                    let (_right_state, right_trace) = run_subflow_to_end_with_state(
+                        right_flow,
+                        left_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
+                    (left_trace, right_trace)
+                };
                 let envelope = JoinTraceEnvelope {
                     left: left_trace,
                     right: right_trace,
@@ -2166,10 +3621,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -2180,8 +3638,34 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.left, journey_id);
+        assign_flow_journey_id(&mut self.right, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
         for node in &mut self.left {
             node.assign_node_ids(next_id);
@@ -2230,17 +3714,45 @@ where
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
-        let (left_state, left_emitted) =
-            replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
-        let (right_state, right_emitted) =
-            replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
-        let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-        emitted.extend_from_slice(&left_emitted);
-        emitted.extend_from_slice(&right_emitted);
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        assign_flow_parent_activation_path(&mut self.left, &parent_path);
+        assign_flow_parent_activation_path(&mut self.right, &parent_path);
+        let (merged_state, emitted) = if self.focused_merge {
+            let base_state = state.clone();
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state.clone(), input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, state, input, envelope.right)?;
+            let mut merged_state = base_state;
+            (self.merge_left)(&mut merged_state, left_state);
+            (self.merge_right)(&mut merged_state, right_state);
+            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+            emitted.extend_from_slice(&left_emitted);
+            emitted.extend_from_slice(&right_emitted);
+            (merged_state, emitted)
+        } else {
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
+            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+            emitted.extend_from_slice(&left_emitted);
+            emitted.extend_from_slice(&right_emitted);
+            (right_state, emitted)
+        };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
-        Ok((right_state, emitted))
+        self.lifecycle.succeed();
+        Ok((merged_state, emitted))
     }
 
     fn request_executable(
@@ -2259,6 +3771,7 @@ where
             left: input.clone(),
             right: input.clone(),
         };
+        self.lifecycle.enter();
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -2266,15 +3779,71 @@ where
         let left_flow = (self.build_left)();
         let right_flow = (self.build_right)();
         let left_state = state.clone();
+        let right_state = if self.focused_merge {
+            state.clone()
+        } else {
+            left_state.clone()
+        };
         let left_input = input.clone();
         let right_input = input.clone();
+        let focused_merge = self.focused_merge;
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_state, left_trace) =
-                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
-                let (_right_state, right_trace) =
-                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                let (left_trace, right_trace) = if focused_merge {
+                    let left = run_subflow_to_end(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
+                    let right = run_subflow_to_end(
+                        right_flow,
+                        right_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
+                    futures::future::try_join(left, right).await?
+                } else {
+                    let (left_state, left_trace) = run_subflow_to_end_with_state(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
+                    let (_right_state, right_trace) = run_subflow_to_end_with_state(
+                        right_flow,
+                        left_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
+                    (left_trace, right_trace)
+                };
                 let envelope = JoinTraceEnvelope {
                     left: left_trace,
                     right: right_trace,
@@ -2287,10 +3856,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -2301,8 +3873,34 @@ where
         self.complete
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.left, journey_id);
+        assign_flow_journey_id(&mut self.right, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         *next_id = next_id.saturating_add(1);
         for node in &mut self.left {
             node.assign_node_ids(next_id);
@@ -2322,6 +3920,8 @@ where
         build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
+            node_id: 0,
             should_continue,
             build_body,
             active_body: Vec::new(),
@@ -2330,6 +3930,7 @@ where
             complete: false,
             deferred_state: None,
             deferred_emitted: None,
+            active_control_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -2337,6 +3938,9 @@ where
     fn ensure_iteration_ready(&mut self) {
         if self.active_body.is_empty() {
             self.active_body = (self.build_body)();
+            if let Some(journey_id) = self.lifecycle.journey_id {
+                assign_flow_journey_id(&mut self.active_body, journey_id);
+            }
             let mut next_id = self.body_node_id_start;
             for node in &mut self.active_body {
                 node.assign_node_ids(&mut next_id);
@@ -2353,98 +3957,15 @@ where
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let mut state = state;
+        let body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
-            let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
-                    (self.should_continue)(&state, carry)
-                }) {
-                    Ok(pair) => pair,
-                    Err(err) => return Err((state, err)),
-                };
-            if !should_continue {
-                self.complete = true;
-                self.deferred_state = Some(state);
-                let state = self
-                    .deferred_state
-                    .take()
-                    .expect("deferred state was just set");
-                return Err((state, ExecutorError::Complete));
-            }
-            let branch_input = if self.active_body.is_empty() {
-                match postcard::to_allocvec(&branch_input) {
-                    Ok(branch_input) => branch_input,
-                    Err(err) => {
-                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
-                    }
-                }
-            } else {
-                input.clone()
-            };
-
-            self.ensure_iteration_ready();
-
-            let node = self
-                .active_body
-                .get_mut(self.body_cursor)
-                .expect("body cursor always points to an active body node");
-            match node.request(state, branch_input) {
-                Ok((next_state, request)) => return Ok((next_state, request)),
-                Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
-                        self.body_cursor += 1;
-                        if self.body_cursor >= self.active_body.len() {
-                            self.active_body.clear();
-                            self.body_cursor = 0;
-                        }
-                        state = next_state;
-                        continue;
-                    }
-                    return Err((next_state, ExecutorError::Complete));
-                }
-                Err((next_state, err)) => return Err((next_state, err)),
-            }
-        }
-    }
-
-    fn complete(
-        &mut self,
-        state: State,
-        completion: SerializedCompletion,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        if self.complete {
-            return Err(ExecutorError::Complete);
-        }
-
-        let node = self
-            .active_body
-            .get_mut(self.body_cursor)
-            .expect("body cursor always points to an active body node");
-        let (state, emitted) = node.complete(state, completion)?;
-        if node.is_complete() {
-            self.body_cursor += 1;
-            if self.body_cursor >= self.active_body.len() {
-                self.active_body.clear();
-                self.body_cursor = 0;
-            }
-        }
-        Ok((state, emitted))
-    }
-
-    fn request_executable(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, ExecutableEffectRequest> {
-        let mut state = state;
-        let control_input = input.clone();
-        let mut body_input = input;
-        loop {
-            if self.complete {
-                return Err((state, ExecutorError::Complete));
-            }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
             let (should_continue, branch_input) =
                 match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
@@ -2455,6 +3976,8 @@ where
             if !should_continue {
                 self.complete = true;
                 self.deferred_state = Some(state);
+                self.active_control_input = None;
+                self.lifecycle.succeed();
                 let state = self
                     .deferred_state
                     .take()
@@ -2472,6 +3995,125 @@ where
                 body_input.clone()
             };
 
+            self.lifecycle.enter();
+            self.ensure_iteration_ready();
+
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            node.set_parent_activation_path(&parent_path);
+            match node.request(state, branch_input) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    if node.is_complete() {
+                        self.body_cursor += 1;
+                        if self.body_cursor >= self.active_body.len() {
+                            self.active_body.clear();
+                            self.body_cursor = 0;
+                        }
+                        state = next_state;
+                        continue;
+                    }
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                    self.lifecycle.fail();
+                    return Err((next_state, ExecutorError::ActionFailure(failure)));
+                }
+                Err((next_state, err)) => return Err((next_state, err)),
+            }
+        }
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let node = self
+            .active_body
+            .get_mut(self.body_cursor)
+            .expect("body cursor always points to an active body node");
+        node.set_parent_activation_path(&parent_path);
+        let (state, emitted) = match node.complete(state, completion) {
+            Ok(result) => result,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
+        if node.is_complete() {
+            self.body_cursor += 1;
+            if self.body_cursor >= self.active_body.len() {
+                self.active_body.clear();
+                self.body_cursor = 0;
+                self.active_control_input = Some(emitted.clone());
+            }
+        }
+        Ok((state, emitted))
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> RequestResult<State, ExecutableEffectRequest> {
+        let mut state = state;
+        let mut body_input = input;
+        loop {
+            if self.complete {
+                return Err((state, ExecutorError::Complete));
+            }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
+            let (should_continue, branch_input) =
+                match decode_loop_input::<In, _>(&control_input, |carry| {
+                    (self.should_continue)(&state, carry)
+                }) {
+                    Ok(pair) => pair,
+                    Err(err) => return Err((state, err)),
+                };
+            if !should_continue {
+                self.complete = true;
+                self.deferred_state = Some(state);
+                self.active_control_input = None;
+                self.lifecycle.succeed();
+                let state = self
+                    .deferred_state
+                    .take()
+                    .expect("deferred state was just set");
+                return Err((state, ExecutorError::Complete));
+            }
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                body_input.clone()
+            };
+
+            self.lifecycle.enter();
             self.ensure_iteration_ready();
             enum NodeAdvance<S> {
                 Request((S, ExecutableEffectRequest)),
@@ -2481,10 +4123,16 @@ where
             }
 
             let advance = {
+                let parent_path = self
+                    .lifecycle
+                    .current_activation_path()
+                    .unwrap_or(&[])
+                    .to_vec();
                 let node = self
                     .active_body
                     .get_mut(self.body_cursor)
                     .expect("body cursor always points to an active body node");
+                node.set_parent_activation_path(&parent_path);
                 match node.request_executable(state, branch_input) {
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
@@ -2507,6 +4155,10 @@ where
                             }
                         }
                     }
+                    Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                        self.lifecycle.fail();
+                        NodeAdvance::Bubble((next_state, ExecutorError::ActionFailure(failure)))
+                    }
                     Err((next_state, err)) => NodeAdvance::Bubble((next_state, err)),
                 }
             };
@@ -2518,12 +4170,17 @@ where
                 }
                 NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
+                    let mut iteration_completed = false;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
+                        iteration_completed = true;
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
+                        if iteration_completed {
+                            self.active_control_input = Some(emitted.clone());
+                        }
                         self.deferred_emitted = Some(emitted.clone());
                         body_input = emitted;
                     }
@@ -2559,10 +4216,14 @@ where
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
+            self.lifecycle.succeed();
             return Ok((saved, emitted, true));
         }
         if self.complete {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
+            self.lifecycle.succeed();
             return Ok((state, emitted, true));
         }
         let mut emitted_out = self.deferred_emitted.take();
@@ -2579,11 +4240,24 @@ where
                 .active_body
                 .get_mut(self.body_cursor)
                 .expect("body cursor always points to an active body node");
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            node.set_parent_activation_path(&parent_path);
             if node.is_waiting_completion() {
                 break;
             }
 
-            let (next_state, emitted, completed) = node.try_complete_without_progress(state)?;
+            let (next_state, emitted, completed) = match node.try_complete_without_progress(state) {
+                Ok(result) => result,
+                Err(ExecutorError::ActionFailure(failure)) => {
+                    self.lifecycle.fail();
+                    return Err(ExecutorError::ActionFailure(failure));
+                }
+                Err(err) => return Err(err),
+            };
             state = next_state;
             if emitted.is_some() {
                 emitted_out = emitted;
@@ -2591,6 +4265,9 @@ where
             if completed {
                 self.body_cursor += 1;
                 if self.body_cursor >= self.active_body.len() {
+                    if let Some(emitted) = emitted_out.clone() {
+                        self.active_control_input = Some(emitted);
+                    }
                     self.active_body.clear();
                     self.body_cursor = 0;
                     break;
@@ -2606,8 +4283,34 @@ where
         Ok((state, None, false))
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.active_body, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.active_body));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         self.body_node_id_start = *next_id;
+        *next_id = next_id.saturating_add(1);
         let mut template = (self.build_body)();
         for node in &mut template {
             node.assign_node_ids(next_id);
@@ -2719,6 +4422,14 @@ where
 }
 
 impl<State, View, F> FlowCarry<State> for Scoped<View, F>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, Carrier, F> FlowCarry<State> for crate::FocusedBoundFlow<Carrier, F>
 where
     F: FlowCarry<State>,
 {
@@ -2921,12 +4632,15 @@ where
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<State, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
 where
+    State: Clone + Send + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
 {
     type Output = DynFlow<State>;
 
-    fn push_steps(steps: DynFlow<State>) -> Self::Output {
-        <F as BuildFlow<DynFlow<State>>>::push_steps(steps)
+    fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
+        let inner = <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
+        steps.push(Box::new(TransparentErasedFlow::<State>::new(inner)));
+        steps
     }
 }
 
@@ -2959,9 +4673,12 @@ where
 impl<State, L, R, M> BuildFlow<DynFlow<State>> for Join<L, R, M>
 where
     State: Clone + Send + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
+        + ArgputForState<State>
+        + JoinFocusMarker<State>,
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
-        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>
+        + JoinFocusMarker<State>,
 {
     type Output = DynFlow<State>;
 
@@ -2970,11 +4687,22 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let build_left = Box::new(|| <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         let build_right = Box::new(|| <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        let focused_merge =
+            <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
+        let merge_left = Box::new(|target: &mut State, branch_state: State| {
+            <L as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
+        let merge_right = Box::new(|target: &mut State, branch_state: State| {
+            <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
         steps.push(Box::new(JoinErasedFlow::<State>::new(
             left,
             right,
             build_left,
             build_right,
+            focused_merge,
+            merge_left,
+            merge_right,
         )));
         steps
     }
@@ -2991,10 +4719,23 @@ where
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let inner = <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        steps.push(Box::new(
-            AttemptErasedFlow::<State, <F as FlowCarry<State>>::Out>::new(inner),
-        ));
+        steps.push(Box::new(AttemptErasedFlow::<
+            State,
+            <F as FlowCarry<State>>::Out,
+        >::new(inner)));
         steps
+    }
+}
+
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, Carrier, F> BuildFlow<DynFlow<State>> for crate::FocusedBoundFlow<Carrier, F>
+where
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        <F as BuildFlow<DynFlow<State>>>::push_steps(steps)
     }
 }
 
@@ -3176,10 +4917,16 @@ where
     A: BoundAction<T> + 'static,
     <A as BoundAction<T>>::Carry: Send + 'static,
     <A as BoundAction<T>>::Effect: Effect<Context> + 'static,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    <A as BoundAction<T>>::Effect: EffectSchema<
+        Context,
+        In = <<A as BoundAction<T>>::Effect as EffectSchema>::In,
+        Out = <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
+        Err = <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
+    >,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Out: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Err: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -3198,6 +4945,8 @@ struct ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    lifecycle: LifecycleState,
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
@@ -3215,6 +4964,8 @@ where
         choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
+            node_id: 0,
             left,
             right,
             choose_left,
@@ -3257,17 +5008,31 @@ where
             return Ok((state, None, false));
         }
         if self.cursor >= self.branch_len() {
+            self.lifecycle.succeed();
             return Ok((state, None, true));
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
+        node.set_parent_activation_path(&parent_path);
         if node.is_waiting_completion() {
             return Ok((state, None, false));
         }
 
-        let (state, emitted, completed) = node.try_complete_without_progress(state)?;
+        let (state, emitted, completed) = match node.try_complete_without_progress(state) {
+            Ok(result) => result,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
         if !completed {
             return Ok((state, emitted, false));
         }
@@ -3279,6 +5044,7 @@ where
                 .expect("active branch is present while conditional is executing");
             let emitted =
                 emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
+            self.lifecycle.succeed();
             return Ok((state, emitted, true));
         }
 
@@ -3298,12 +5064,19 @@ where
             if self.cursor >= self.branch_len() {
                 return Err((state, ExecutorError::Complete));
             }
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
             let node = self
                 .active_node_mut()
                 .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
             return node.request(state, request_input);
         };
         if self.active_branch.is_none() {
+            self.lifecycle.enter();
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
             } else {
@@ -3319,10 +5092,22 @@ where
             return Err((state, ExecutorError::Complete));
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request(state, branch_input)
+        node.set_parent_activation_path(&parent_path);
+        match node.request(state, branch_input) {
+            Err((state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((state, ExecutorError::ActionFailure(failure)))
+            }
+            other => other,
+        }
     }
 
     fn complete(
@@ -3334,10 +5119,23 @@ where
             return Err(ExecutorError::Complete);
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        let (state, emitted) = node.complete(state, completion)?;
+        node.set_parent_activation_path(&parent_path);
+        let (state, emitted) = match node.complete(state, completion) {
+            Ok(result) => result,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
         let node_complete = node.is_complete();
         if node_complete {
             self.cursor += 1;
@@ -3346,6 +5144,7 @@ where
             let active_branch = self
                 .active_branch
                 .expect("active branch is present while conditional is executing");
+            self.lifecycle.succeed();
             return Ok((
                 state,
                 encode_conditional_context_emitted(active_branch, emitted),
@@ -3371,12 +5170,19 @@ where
             if self.cursor >= self.branch_len() {
                 return Err((state, ExecutorError::Complete));
             }
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
             let node = self
                 .active_node_mut()
                 .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
             return node.request_executable(state, request_input);
         };
         if self.active_branch.is_none() {
+            self.lifecycle.enter();
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
             } else {
@@ -3392,10 +5198,22 @@ where
             return Err((state, ExecutorError::Complete));
         }
 
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request_executable(state, branch_input)
+        node.set_parent_activation_path(&parent_path);
+        match node.request_executable(state, branch_input) {
+            Err((state, ExecutorError::ActionFailure(failure))) => {
+                self.lifecycle.fail();
+                Err((state, ExecutorError::ActionFailure(failure)))
+            }
+            other => other,
+        }
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -3422,7 +5240,35 @@ where
         self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.left, journey_id);
+        assign_flow_journey_id(&mut self.right, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
+        *next_id = next_id.saturating_add(1);
         for node in &mut self.left {
             node.assign_node_ids(next_id);
         }
@@ -3481,6 +5327,8 @@ struct WhileContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    lifecycle: LifecycleState,
+    node_id: u32,
     should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
     build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     active_body: DynFlow<State>,
@@ -3489,6 +5337,7 @@ where
     complete: bool,
     deferred_state: Option<State>,
     deferred_emitted: Option<Serialized>,
+    active_control_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -3501,6 +5350,8 @@ where
         build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
+            lifecycle: LifecycleState::default(),
+            node_id: 0,
             should_continue,
             build_body,
             active_body: Vec::new(),
@@ -3509,6 +5360,7 @@ where
             complete: false,
             deferred_state: None,
             deferred_emitted: None,
+            active_control_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -3516,6 +5368,9 @@ where
     fn ensure_iteration_ready(&mut self) {
         if self.active_body.is_empty() {
             self.active_body = (self.build_body)();
+            if let Some(journey_id) = self.lifecycle.journey_id {
+                assign_flow_journey_id(&mut self.active_body, journey_id);
+            }
             let mut next_id = self.body_node_id_start;
             for node in &mut self.active_body {
                 node.assign_node_ids(&mut next_id);
@@ -3532,98 +5387,15 @@ where
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let mut state = state;
+        let body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
-            let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
-                    (self.should_continue)(&state, carry)
-                }) {
-                    Ok(pair) => pair,
-                    Err(err) => return Err((state, err)),
-                };
-            if !should_continue {
-                self.complete = true;
-                self.deferred_state = Some(state);
-                let state = self
-                    .deferred_state
-                    .take()
-                    .expect("deferred state was just set");
-                return Err((state, ExecutorError::Complete));
-            }
-            let branch_input = if self.active_body.is_empty() {
-                match postcard::to_allocvec(&branch_input) {
-                    Ok(branch_input) => branch_input,
-                    Err(err) => {
-                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
-                    }
-                }
-            } else {
-                input.clone()
-            };
-
-            self.ensure_iteration_ready();
-
-            let node = self
-                .active_body
-                .get_mut(self.body_cursor)
-                .expect("body cursor always points to an active body node");
-            match node.request(state, branch_input) {
-                Ok((next_state, request)) => return Ok((next_state, request)),
-                Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
-                        self.body_cursor += 1;
-                        if self.body_cursor >= self.active_body.len() {
-                            self.active_body.clear();
-                            self.body_cursor = 0;
-                        }
-                        state = next_state;
-                        continue;
-                    }
-                    return Err((next_state, ExecutorError::Complete));
-                }
-                Err((next_state, err)) => return Err((next_state, err)),
-            }
-        }
-    }
-
-    fn complete(
-        &mut self,
-        state: State,
-        completion: SerializedCompletion,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        if self.complete {
-            return Err(ExecutorError::Complete);
-        }
-
-        let node = self
-            .active_body
-            .get_mut(self.body_cursor)
-            .expect("body cursor always points to an active body node");
-        let (state, emitted) = node.complete(state, completion)?;
-        if node.is_complete() {
-            self.body_cursor += 1;
-            if self.body_cursor >= self.active_body.len() {
-                self.active_body.clear();
-                self.body_cursor = 0;
-            }
-        }
-        Ok((state, emitted))
-    }
-
-    fn request_executable(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, ExecutableEffectRequest> {
-        let mut state = state;
-        let control_input = input.clone();
-        let mut body_input = input;
-        loop {
-            if self.complete {
-                return Err((state, ExecutorError::Complete));
-            }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
             let (should_continue, branch_input) =
                 match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
@@ -3634,6 +5406,8 @@ where
             if !should_continue {
                 self.complete = true;
                 self.deferred_state = Some(state);
+                self.active_control_input = None;
+                self.lifecycle.succeed();
                 let state = self
                     .deferred_state
                     .take()
@@ -3651,6 +5425,125 @@ where
                 body_input.clone()
             };
 
+            self.lifecycle.enter();
+            self.ensure_iteration_ready();
+
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            node.set_parent_activation_path(&parent_path);
+            match node.request(state, branch_input) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    if node.is_complete() {
+                        self.body_cursor += 1;
+                        if self.body_cursor >= self.active_body.len() {
+                            self.active_body.clear();
+                            self.body_cursor = 0;
+                        }
+                        state = next_state;
+                        continue;
+                    }
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                    self.lifecycle.fail();
+                    return Err((next_state, ExecutorError::ActionFailure(failure)));
+                }
+                Err((next_state, err)) => return Err((next_state, err)),
+            }
+        }
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+
+        let parent_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let node = self
+            .active_body
+            .get_mut(self.body_cursor)
+            .expect("body cursor always points to an active body node");
+        node.set_parent_activation_path(&parent_path);
+        let (state, emitted) = match node.complete(state, completion) {
+            Ok(result) => result,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err(ExecutorError::ActionFailure(failure));
+            }
+            Err(err) => return Err(err),
+        };
+        if node.is_complete() {
+            self.body_cursor += 1;
+            if self.body_cursor >= self.active_body.len() {
+                self.active_body.clear();
+                self.body_cursor = 0;
+                self.active_control_input = Some(emitted.clone());
+            }
+        }
+        Ok((state, emitted))
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> RequestResult<State, ExecutableEffectRequest> {
+        let mut state = state;
+        let mut body_input = input;
+        loop {
+            if self.complete {
+                return Err((state, ExecutorError::Complete));
+            }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
+            let (should_continue, branch_input) =
+                match decode_loop_input::<In, _>(&control_input, |carry| {
+                    (self.should_continue)(&state, carry)
+                }) {
+                    Ok(pair) => pair,
+                    Err(err) => return Err((state, err)),
+                };
+            if !should_continue {
+                self.complete = true;
+                self.deferred_state = Some(state);
+                self.active_control_input = None;
+                self.lifecycle.succeed();
+                let state = self
+                    .deferred_state
+                    .take()
+                    .expect("deferred state was just set");
+                return Err((state, ExecutorError::Complete));
+            }
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                body_input.clone()
+            };
+
+            self.lifecycle.enter();
             self.ensure_iteration_ready();
             enum NodeAdvance<S> {
                 Request((S, ExecutableEffectRequest)),
@@ -3660,10 +5553,16 @@ where
             }
 
             let advance = {
+                let parent_path = self
+                    .lifecycle
+                    .current_activation_path()
+                    .unwrap_or(&[])
+                    .to_vec();
                 let node = self
                     .active_body
                     .get_mut(self.body_cursor)
                     .expect("body cursor always points to an active body node");
+                node.set_parent_activation_path(&parent_path);
                 match node.request_executable(state, branch_input) {
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
@@ -3686,6 +5585,10 @@ where
                             }
                         }
                     }
+                    Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                        self.lifecycle.fail();
+                        NodeAdvance::Bubble((next_state, ExecutorError::ActionFailure(failure)))
+                    }
                     Err((next_state, err)) => NodeAdvance::Bubble((next_state, err)),
                 }
             };
@@ -3697,12 +5600,17 @@ where
                 }
                 NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
+                    let mut iteration_completed = false;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
+                        iteration_completed = true;
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
+                        if iteration_completed {
+                            self.active_control_input = Some(emitted.clone());
+                        }
                         self.deferred_emitted = Some(emitted.clone());
                         body_input = emitted;
                     }
@@ -3738,10 +5646,14 @@ where
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
+            self.lifecycle.succeed();
             return Ok((saved, emitted, true));
         }
         if self.complete {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
+            self.lifecycle.succeed();
             return Ok((state, emitted, true));
         }
         let mut emitted_out = self.deferred_emitted.take();
@@ -3758,11 +5670,24 @@ where
                 .active_body
                 .get_mut(self.body_cursor)
                 .expect("body cursor always points to an active body node");
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            node.set_parent_activation_path(&parent_path);
             if node.is_waiting_completion() {
                 break;
             }
 
-            let (next_state, emitted, completed) = node.try_complete_without_progress(state)?;
+            let (next_state, emitted, completed) = match node.try_complete_without_progress(state) {
+                Ok(result) => result,
+                Err(ExecutorError::ActionFailure(failure)) => {
+                    self.lifecycle.fail();
+                    return Err(ExecutorError::ActionFailure(failure));
+                }
+                Err(err) => return Err(err),
+            };
             state = next_state;
             if emitted.is_some() {
                 emitted_out = emitted;
@@ -3770,6 +5695,9 @@ where
             if completed {
                 self.body_cursor += 1;
                 if self.body_cursor >= self.active_body.len() {
+                    if let Some(emitted) = emitted_out.clone() {
+                        self.active_control_input = Some(emitted);
+                    }
                     self.active_body.clear();
                     self.body_cursor = 0;
                     break;
@@ -3785,8 +5713,34 @@ where
         Ok((state, None, false))
     }
 
+    fn set_parent_activation_path(&mut self, path: &[u64]) {
+        self.lifecycle.set_parent_activation_path(path);
+    }
+
+    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.lifecycle.set_journey_id(journey_id);
+        assign_flow_journey_id(&mut self.active_body, journey_id);
+    }
+
+    fn current_activation_path(&self) -> Option<&[u64]> {
+        self.lifecycle.current_activation_path()
+    }
+
+    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        let mut updates = self.lifecycle.take_updates();
+        updates.extend(take_flow_node_lifecycle_updates(&mut self.active_body));
+        updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        self.lifecycle.set_node_id(self.node_id);
         self.body_node_id_start = *next_id;
+        *next_id = next_id.saturating_add(1);
         let mut template = (self.build_body)();
         for node in &mut template {
             node.assign_node_ids(next_id);
@@ -3834,6 +5788,8 @@ where
 impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Transparent<M, F>
 where
+    Context: Send + Sync + 'static,
+    State: Clone + Send + 'static,
     F: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
@@ -3841,8 +5797,13 @@ where
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
-    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+    fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        let (_, inner) = <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
+            Vec::new(),
+        ));
+        steps.push(Box::new(TransparentContextErasedFlow::<State>::new(inner)));
+        (context, steps)
     }
 }
 
@@ -3864,10 +5825,27 @@ where
             Arc::clone(&context),
             Vec::new(),
         ));
-        steps.push(Box::new(
-            AttemptErasedFlow::<State, <F as FlowCarry<State>>::Out>::new(inner),
-        ));
+        steps.push(Box::new(AttemptErasedFlow::<
+            State,
+            <F as FlowCarry<State>>::Out,
+        >::new(inner)));
         (context, steps)
+    }
+}
+
+#[inception::primitive(property = JungleDynFlowContext)]
+impl<Context, State, Carrier, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for crate::FocusedBoundFlow<Carrier, F>
+where
+    F: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+{
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
     }
 }
 
@@ -3929,11 +5907,13 @@ where
     L: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + ArgputForState<State>,
+        > + ArgputForState<State>
+        + JoinFocusMarker<State>,
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>
+        + JoinFocusMarker<State>,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -3960,11 +5940,22 @@ where
             );
             flow
         });
+        let focused_merge =
+            <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
+        let merge_left = Box::new(|target: &mut State, branch_state: State| {
+            <L as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
+        let merge_right = Box::new(|target: &mut State, branch_state: State| {
+            <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
         steps.push(Box::new(JoinContextErasedFlow::<State>::new(
             left,
             right,
             build_left,
             build_right,
+            focused_merge,
+            merge_left,
+            merge_right,
         )));
         (context, steps)
     }
@@ -4028,9 +6019,37 @@ where
 }
 
 fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
-    let mut next_id = 0_u32;
+    assign_flow_node_ids_starting_at(steps, 0);
+}
+
+fn assign_flow_node_ids_starting_at<State>(steps: &mut DynFlow<State>, start_id: u32) {
+    let mut next_id = start_id;
     for node in steps {
         node.assign_node_ids(&mut next_id);
+    }
+}
+
+fn first_flow_node_id<State>(steps: &DynFlow<State>) -> u32 {
+    steps.first().map(|node| node.node_id()).unwrap_or(0)
+}
+
+fn assign_flow_journey_id<State>(steps: &mut DynFlow<State>, journey_id: uuid::Uuid) {
+    for node in steps {
+        node.set_journey_id(journey_id);
+    }
+}
+
+fn take_flow_node_lifecycle_updates<State>(steps: &mut DynFlow<State>) -> Vec<NodeLifecycle> {
+    let mut updates = Vec::new();
+    for node in steps {
+        updates.extend(node.take_node_lifecycle_updates());
+    }
+    updates
+}
+
+fn assign_flow_parent_activation_path<State>(steps: &mut DynFlow<State>, path: &[u64]) {
+    for node in steps {
+        node.set_parent_activation_path(path);
     }
 }
 
@@ -4093,21 +6112,25 @@ where
             DynFlow<A::State>,
         )>>::push_steps((context, Vec::new()));
         assign_flow_node_ids(&mut steps);
-        let mut executor = Self {
+        Self {
             _context: core::marker::PhantomData,
             state: Some(state),
             steps,
             cursor: 0,
             last_emitted: None,
-        };
-        executor
-            .settle_without_progress()
-            .expect("initial settle should not fail");
-        executor
+        }
     }
 
     pub fn is_complete(&self) -> bool {
         self.cursor >= self.steps.len()
+    }
+
+    pub fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        assign_flow_journey_id(&mut self.steps, journey_id);
+    }
+
+    pub fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        take_flow_node_lifecycle_updates(&mut self.steps)
     }
 
     pub fn state(&self) -> &A::State {
@@ -4393,20 +6416,24 @@ where
         let mut steps =
             <BoundAnimalJourney<A> as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
         assign_flow_node_ids(&mut steps);
-        let mut executor = Self {
+        Self {
             state: Some(state),
             steps,
             cursor: 0,
             last_emitted: None,
-        };
-        executor
-            .settle_without_progress()
-            .expect("initial settle should not fail");
-        executor
+        }
     }
 
     pub fn is_complete(&self) -> bool {
         self.cursor >= self.steps.len()
+    }
+
+    pub fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        assign_flow_journey_id(&mut self.steps, journey_id);
+    }
+
+    pub fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        take_flow_node_lifecycle_updates(&mut self.steps)
     }
 
     pub fn state(&self) -> &A::State {
@@ -4698,6 +6725,14 @@ where
 
     pub fn is_complete(&self) -> bool {
         self.manual.is_complete()
+    }
+
+    pub fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
+        self.manual.set_journey_id(journey_id);
+    }
+
+    pub fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
+        self.manual.take_node_lifecycle_updates()
     }
 
     pub fn state(&self) -> &A::State {

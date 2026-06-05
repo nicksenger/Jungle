@@ -155,7 +155,9 @@ impl Action for AddOneBeforeFullStateSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
-            state.total += output.map_err(|_err| Failure::from("first pre-focused full-state effect should succeed"))?;
+            state.total += output.map_err(|_err| {
+                Failure::from("first pre-focused full-state effect should succeed")
+            })?;
             state.before_steps += 1;
         };
         Ok(__absorb_out_1)
@@ -176,7 +178,9 @@ impl Action for AddTwoBeforeFullStateSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_2 = {
-            state.total += output.map_err(|_err| Failure::from("second pre-focused full-state effect should succeed"))?;
+            state.total += output.map_err(|_err| {
+                Failure::from("second pre-focused full-state effect should succeed")
+            })?;
             state.before_steps += 1;
         };
         Ok(__absorb_out_2)
@@ -197,7 +201,8 @@ impl Action for AddOneFocusedSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
-            state.value += output.map_err(|_err| Failure::from("first focused integration effect should succeed"))?;
+            state.value += output
+                .map_err(|_err| Failure::from("first focused integration effect should succeed"))?;
             state.updates += 1;
         };
         Ok(__absorb_out_3)
@@ -218,7 +223,9 @@ impl Action for AddTwoFocusedSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_4 = {
-            state.value += output.map_err(|_err| Failure::from("second focused integration effect should succeed"))?;
+            state.value += output.map_err(|_err| {
+                Failure::from("second focused integration effect should succeed")
+            })?;
             state.updates += 1;
         };
         Ok(__absorb_out_4)
@@ -239,7 +246,9 @@ impl Action for AddOneDeepFocusedSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_5 = {
-            state.value += output.map_err(|_err| Failure::from("first deep-focused integration effect should succeed"))?;
+            state.value += output.map_err(|_err| {
+                Failure::from("first deep-focused integration effect should succeed")
+            })?;
             state.updates += 1;
         };
         Ok(__absorb_out_5)
@@ -260,7 +269,9 @@ impl Action for AddTwoDeepFocusedSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_6 = {
-            state.value += output.map_err(|_err| Failure::from("second deep-focused integration effect should succeed"))?;
+            state.value += output.map_err(|_err| {
+                Failure::from("second deep-focused integration effect should succeed")
+            })?;
             state.updates += 1;
         };
         Ok(__absorb_out_6)
@@ -281,7 +292,9 @@ impl Action for AddOneAfterFullStateSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_7 = {
-            state.total += output.map_err(|_err| Failure::from("first post-focused full-state effect should succeed"))?;
+            state.total += output.map_err(|_err| {
+                Failure::from("first post-focused full-state effect should succeed")
+            })?;
             state.after_steps += 1;
         };
         Ok(__absorb_out_7)
@@ -302,7 +315,9 @@ impl Action for AddTwoAfterFullStateSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_8 = {
-            state.total += output.map_err(|_err| Failure::from("second post-focused full-state effect should succeed"))?;
+            state.total += output.map_err(|_err| {
+                Failure::from("second post-focused full-state effect should succeed")
+            })?;
             state.after_steps += 1;
         };
         Ok(__absorb_out_8)
@@ -689,6 +704,13 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
                 RunnerUpdateOut::EffectFailureOutput { uuid, .. } => {
                     failed_count += 1;
                     (update.sequence_id, uuid)
+                }
+                RunnerUpdateOut::NodeLifecycle(node) => {
+                    assert_eq!(
+                        node.uuid, journey_id,
+                        "lifecycle update should match journey"
+                    );
+                    continue;
                 }
                 RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
                     continue;
