@@ -42,7 +42,6 @@ const ANALYSIS_HOP_SIZE: usize = 512;
 const SPECTRAL_ROLLOFF_FRACTION: f32 = 0.85;
 const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/lyrebird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
-const SAMPLER_BINARY_PATH: &str = "./target/release/lyrebird-sample";
 
 #[derive(Clone, Copy, Debug)]
 struct ScoredAudioSample {
@@ -350,17 +349,7 @@ where
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FinalizeIterationInstrumentInput {
-    pub instrument: LyrebirdInstrument,
-    pub dsp_source_path: String,
-    pub original_source: String,
-    pub target_spectrogram_path: String,
-    pub target_audio_metrics: LyrebirdAudioMetrics,
-    pub candidates: Vec<FinalizeIterationCandidateInput>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FinalizeIterationCandidateInput {
+pub struct IterationCandidateInput {
     pub patch: LyrebirdPatch,
     pub generated_source: String,
     pub sample_path: String,
@@ -368,32 +357,69 @@ pub struct FinalizeIterationCandidateInput {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FinalizeIterationInstrumentOutput {
+pub struct GenerateIterationAudioInput {
+    pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
+    pub dsp_source_path: String,
+    pub original_source: String,
+    pub candidates: Vec<IterationCandidateInput>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IterationCandidatesOutcome {
     pub candidates: Vec<LyrebirdGeneratedCandidate>,
     pub retry_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FinalizeIterationSamplesInput {
+pub struct GenerateIterationMelsInput {
     pub iteration_id: String,
-    pub instruments: Vec<FinalizeIterationInstrumentInput>,
+    pub instrument: LyrebirdInstrument,
+    pub candidates: Vec<LyrebirdGeneratedCandidate>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FinalizeIterationSamplesOutcome {
-    pub rendered: Vec<FinalizeIterationInstrumentOutput>,
+pub struct CompareIterationMelsInput {
+    pub iteration_id: String,
+    pub instrument: LyrebirdInstrument,
+    pub target_spectrogram_path: String,
+    pub target_audio_metrics: LyrebirdAudioMetrics,
+    pub candidates: Vec<LyrebirdGeneratedCandidate>,
 }
 
-pub struct FinalizeIterationSamples;
+pub struct GenerateIterationAudio;
 #[effect(id = 11)]
-impl<J> Effect<J> for FinalizeIterationSamples {
-    type In = FinalizeIterationSamplesInput;
-    type Out = FinalizeIterationSamplesOutcome;
+impl<J> Effect<J> for GenerateIterationAudio {
+    type In = GenerateIterationAudioInput;
+    type Out = IterationCandidatesOutcome;
     type Err = String;
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { finalize_iteration_samples(input).await }
+        async move { generate_iteration_audio(input).await }
+    }
+}
+
+pub struct GenerateIterationMels;
+#[effect(id = 19)]
+impl<J> Effect<J> for GenerateIterationMels {
+    type In = GenerateIterationMelsInput;
+    type Out = IterationCandidatesOutcome;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { generate_iteration_mels(input).await }
+    }
+}
+
+pub struct CompareIterationMels;
+#[effect(id = 20)]
+impl<J> Effect<J> for CompareIterationMels {
+    type In = CompareIterationMelsInput;
+    type Out = IterationCandidatesOutcome;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { compare_iteration_mels(input).await }
     }
 }
 
@@ -750,77 +776,131 @@ fn normalize_zensim(raw_score: f32) -> f32 {
     1.0 / (1.0 + (-(raw_score - x0) * k).exp())
 }
 
-async fn finalize_iteration_samples(
-    input: FinalizeIterationSamplesInput,
-) -> Result<FinalizeIterationSamplesOutcome, String> {
-    let mut rendered = Vec::with_capacity(input.instruments.len());
-    for instrument in input.instruments {
-        let mut candidates = Vec::new();
-        let mut retry_reasons = Vec::new();
-        for candidate in instrument.candidates {
-            let compiled = compile_prepared_patch(CompilePreparedPatchInput {
-                iteration_id: input.iteration_id.clone(),
-                instrument: instrument.instrument,
-                prompt_attempt: 0,
-                dsp_source_path: instrument.dsp_source_path.clone(),
-                original_source: instrument.original_source.clone(),
-                generated_source: Some(candidate.generated_source.clone()),
-            })
-            .await?;
-            if !compiled.compile_ok {
-                if let Some(retry_reason) = compiled.retry_reason {
-                    retry_reasons.push(retry_reason);
-                }
-                continue;
+async fn generate_iteration_audio(
+    input: GenerateIterationAudioInput,
+) -> Result<IterationCandidatesOutcome, String> {
+    let mut candidates = Vec::new();
+    let mut retry_reasons = Vec::new();
+
+    for candidate in input.candidates {
+        let compiled = compile_prepared_patch(CompilePreparedPatchInput {
+            iteration_id: input.iteration_id.clone(),
+            instrument: input.instrument,
+            prompt_attempt: 0,
+            dsp_source_path: input.dsp_source_path.clone(),
+            original_source: input.original_source.clone(),
+            generated_source: Some(candidate.generated_source.clone()),
+        })
+        .await?;
+        if !compiled.compile_ok {
+            if let Some(retry_reason) = compiled.retry_reason {
+                retry_reasons.push(retry_reason);
             }
+            continue;
+        }
 
-            let similarity = match render_and_score_candidate(
-                &input.iteration_id,
-                instrument.instrument,
-                &instrument.dsp_source_path,
-                &instrument.original_source,
-                &candidate.generated_source,
-                &candidate.sample_path,
-                &candidate.spectrogram_path,
-                &instrument.target_spectrogram_path,
-                instrument.target_audio_metrics,
-            )
-            .await
-            {
-                Ok(similarity) => similarity,
-                Err(err) => {
-                    retry_reasons.push(err);
-                    continue;
-                }
-            };
-
-            candidates.push(LyrebirdGeneratedCandidate {
+        match generate_candidate_audio(
+            &input.iteration_id,
+            input.instrument,
+            &input.dsp_source_path,
+            &input.original_source,
+            &candidate.generated_source,
+            &candidate.sample_path,
+        )
+        .await
+        {
+            Ok(()) => candidates.push(LyrebirdGeneratedCandidate {
                 patch: candidate.patch,
                 code: DspCode {
                     iteration_id: input.iteration_id.clone(),
                     source: candidate.generated_source,
                     sample_path: candidate.sample_path,
                     spectrogram_path: candidate.spectrogram_path,
+                    mel_similarity: None,
+                    score: None,
+                    audio_metrics: None,
+                    audio_metric_errors: None,
+                },
+            }),
+            Err(err) => retry_reasons.push(err),
+        }
+    }
+
+    Ok(IterationCandidatesOutcome {
+        retry_reason: if candidates.is_empty() {
+            summarize_retry_reasons(&retry_reasons)
+        } else {
+            None
+        },
+        candidates,
+    })
+}
+
+async fn generate_iteration_mels(
+    input: GenerateIterationMelsInput,
+) -> Result<IterationCandidatesOutcome, String> {
+    let mut candidates = Vec::new();
+    let mut retry_reasons = Vec::new();
+
+    for candidate in input.candidates {
+        match generate_candidate_mel(
+            &input.iteration_id,
+            input.instrument,
+            &candidate.code.sample_path,
+            &candidate.code.spectrogram_path,
+        ) {
+            Ok(()) => candidates.push(candidate),
+            Err(err) => retry_reasons.push(err),
+        }
+    }
+
+    Ok(IterationCandidatesOutcome {
+        retry_reason: if candidates.is_empty() {
+            summarize_retry_reasons(&retry_reasons)
+        } else {
+            None
+        },
+        candidates,
+    })
+}
+
+async fn compare_iteration_mels(
+    input: CompareIterationMelsInput,
+) -> Result<IterationCandidatesOutcome, String> {
+    let mut candidates = Vec::new();
+    let mut retry_reasons = Vec::new();
+
+    for candidate in input.candidates {
+        match compare_candidate_mel(
+            &input.iteration_id,
+            input.instrument,
+            &candidate.code.sample_path,
+            &candidate.code.spectrogram_path,
+            &input.target_spectrogram_path,
+            input.target_audio_metrics,
+        ) {
+            Ok(similarity) => candidates.push(LyrebirdGeneratedCandidate {
+                patch: candidate.patch,
+                code: DspCode {
                     mel_similarity: Some(similarity.mel_similarity),
                     score: Some(similarity.score),
                     audio_metrics: Some(similarity.audio_metrics),
                     audio_metric_errors: Some(similarity.audio_metric_errors),
+                    ..candidate.code
                 },
-            });
+            }),
+            Err(err) => retry_reasons.push(err),
         }
-
-        rendered.push(FinalizeIterationInstrumentOutput {
-            instrument: instrument.instrument,
-            retry_reason: if candidates.is_empty() {
-                summarize_retry_reasons(&retry_reasons)
-            } else {
-                None
-            },
-            candidates,
-        });
     }
 
-    Ok(FinalizeIterationSamplesOutcome { rendered })
+    Ok(IterationCandidatesOutcome {
+        retry_reason: if candidates.is_empty() {
+            summarize_retry_reasons(&retry_reasons)
+        } else {
+            None
+        },
+        candidates,
+    })
 }
 
 async fn request_prompt_candidates(
@@ -1001,22 +1081,26 @@ fn render_prompt_for_log(prompt: &Prompt) -> String {
     serde_json::to_string_pretty(prompt).unwrap_or_else(|_| format!("{prompt:?}"))
 }
 
-async fn render_and_score_candidate(
+async fn generate_candidate_audio(
     iteration_id: &str,
     instrument: LyrebirdInstrument,
     dsp_source_path: &str,
     original_source: &str,
     generated_source: &str,
     sample_path: &str,
-    spectrogram_path: &str,
-    target_spectrogram_path: &str,
-    target_audio_metrics: LyrebirdAudioMetrics,
-) -> Result<ScoredAudioSample, String> {
+) -> Result<(), String> {
     with_temporary_dsp_source(
         dsp_source_path,
         generated_source,
         original_source,
-        || async { build_sampler_release().await },
+        || async {
+            run_sampler(
+                LYREBIRD_DURATION_SECS,
+                sample_path,
+                &instrument_score_specs(instrument),
+            )
+            .await
+        },
     )
     .await
     .map_err(|err| {
@@ -1029,22 +1113,21 @@ async fn render_and_score_candidate(
         err
     })?;
 
-    run_sampler_binary(
-        LYREBIRD_DURATION_SECS,
+    info!(
+        iteration_id = %iteration_id,
+        instrument = instrument.slug(),
         sample_path,
-        &instrument_score_specs(instrument),
-    )
-    .await
-    .map_err(|err| {
-        warn!(
-            iteration_id = %iteration_id,
-            instrument = instrument.slug(),
-            error = %err,
-            "lyrebird sampler run failed; skipping candidate render"
-        );
-        err
-    })?;
+        "generated lyrebird candidate audio"
+    );
+    Ok(())
+}
 
+fn generate_candidate_mel(
+    iteration_id: &str,
+    instrument: LyrebirdInstrument,
+    sample_path: &str,
+    spectrogram_path: &str,
+) -> Result<(), String> {
     generate_mel_spectrogram(sample_path, spectrogram_path).map_err(|err| {
         warn!(
             iteration_id = %iteration_id,
@@ -1055,6 +1138,24 @@ async fn render_and_score_candidate(
         err
     })?;
 
+    info!(
+        iteration_id = %iteration_id,
+        instrument = instrument.slug(),
+        sample_path,
+        spectrogram_path,
+        "generated lyrebird candidate mel"
+    );
+    Ok(())
+}
+
+fn compare_candidate_mel(
+    iteration_id: &str,
+    instrument: LyrebirdInstrument,
+    sample_path: &str,
+    spectrogram_path: &str,
+    target_spectrogram_path: &str,
+    target_audio_metrics: LyrebirdAudioMetrics,
+) -> Result<ScoredAudioSample, String> {
     let scored_sample = score_rendered_sample(
         sample_path,
         spectrogram_path,
@@ -1569,13 +1670,6 @@ fn format_scalar(value: f32) -> String {
     format!("{value:.6}")
 }
 
-async fn build_sampler_release() -> Result<(), String> {
-    if run_sampler_cargo(["build", "--release"]).await? {
-        return Ok(());
-    }
-    Err("cargo build --release for lyrebird-sample exited unsuccessfully".to_owned())
-}
-
 async fn check_sampler_compilation() -> Result<(), String> {
     let output = Command::new("cargo")
         .arg("check")
@@ -1602,36 +1696,6 @@ async fn check_sampler_compilation() -> Result<(), String> {
         "lyrebird-sample compilation failed:\n{}",
         truncate_retry_reason(details)
     ))
-}
-
-async fn run_sampler_cargo<const N: usize>(args: [&str; N]) -> Result<bool, String> {
-    let mut child = Command::new("cargo")
-        .args(args)
-        .arg("--manifest-path")
-        .arg(SAMPLER_MANIFEST_PATH)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|err| format!("failed to spawn cargo {}: {err}", args.join(" ")))?;
-
-    match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
-        Ok(wait_result) => {
-            let status = wait_result
-                .map_err(|err| format!("failed to wait for cargo {}: {err}", args.join(" ")))?;
-            Ok(status.success())
-        }
-        Err(_) => {
-            child.kill().await.map_err(|err| {
-                format!(
-                    "timed out and failed to kill cargo {}: {err}",
-                    args.join(" ")
-                )
-            })?;
-            let _ = child.wait().await;
-            Ok(false)
-        }
-    }
 }
 
 async fn with_temporary_dsp_source<T, F, Fut>(
@@ -1692,7 +1756,6 @@ async fn run_sampler(
     let mut command = Command::new("cargo");
     command
         .arg("run")
-        .arg("--release")
         .arg("--manifest-path")
         .arg(SAMPLER_MANIFEST_PATH)
         .arg("--")
@@ -1727,60 +1790,6 @@ async fn run_sampler(
                 .map_err(|err| format!("timed out and failed to kill cargo sampler run: {err}"))?;
             let _ = child.wait().await;
             Err("cargo sampler run timed out".to_string())
-        }
-    }
-}
-
-async fn run_sampler_binary(
-    duration_secs: f64,
-    output_path: &str,
-    score_specs: &[String],
-) -> Result<(), String> {
-    if !duration_secs.is_finite() || duration_secs <= 0.0 {
-        return Err("duration seconds must be a finite value > 0".to_string());
-    }
-    if score_specs.is_empty() {
-        return Err("run sampler requires at least one score spec".to_string());
-    }
-
-    ensure_parent_dir(Path::new(output_path))?;
-    debug!(
-        output_path,
-        duration_secs,
-        score_spec_count = score_specs.len(),
-        "running lyrebird sampler binary"
-    );
-
-    let mut child = Command::new(SAMPLER_BINARY_PATH)
-        .arg("--duration-secs")
-        .arg(duration_secs.to_string())
-        .arg("--output-path")
-        .arg(output_path)
-        .args(score_specs)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|err| format!("failed to spawn lyrebird-sample binary: {err}"))?;
-
-    match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
-        Ok(wait_result) => {
-            let status = wait_result
-                .map_err(|err| format!("failed to wait for lyrebird-sample binary: {err}"))?;
-            if status.success() {
-                Ok(())
-            } else {
-                Err(format!(
-                    "lyrebird-sample binary exited unsuccessfully: {status}"
-                ))
-            }
-        }
-        Err(_) => {
-            child.kill().await.map_err(|err| {
-                format!("timed out and failed to kill lyrebird-sample binary: {err}")
-            })?;
-            let _ = child.wait().await;
-            Err("lyrebird-sample binary timed out".to_string())
         }
     }
 }

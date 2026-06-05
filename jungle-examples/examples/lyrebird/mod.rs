@@ -23,10 +23,11 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, BuildOptimizationPromptFocused, FinalizeIterationRender, FlattenEither,
-    FlattenLyrebirdPromptPhase, InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming,
-    LyrebirdLoopForever, PreparePromptCandidatesFocused, RequestPromptCandidatesFocused,
-    SeedLyrebirdState, SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
+    BeginIteration, BuildOptimizationPromptFocused, CompareIterationCandidateMels, FlattenEither,
+    FlattenLyrebirdPromptPhase, GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
+    InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
+    PreparePromptCandidatesFocused, RequestPromptCandidatesFocused, SeedLyrebirdState,
+    SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
     SkipInstrumentSubmit, SubmitDspBranch,
 };
 use crate::tokens::{Prompt, Tool};
@@ -857,6 +858,9 @@ pub struct LyrebirdPromptPhase(
 #[derive(Flow)]
 pub struct LyrebirdInstrumentSubmitEnabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
     Step<SetCurrentInstrument<Marker>>,
+    Step<GenerateIterationCandidateAudio<Marker>>,
+    Step<GenerateIterationCandidateMels<Marker>>,
+    Step<CompareIterationCandidateMels<Marker>>,
     Step<SubmitDspBranch<Marker>>,
 );
 
@@ -881,7 +885,6 @@ pub struct LyrebirdIteration(
     Step<LogIterationTiming>,
     Step<BeginIteration>,
     LyrebirdPromptPhase,
-    Step<FinalizeIterationRender>,
     LyrebirdInstrumentSubmit<RhythmGuitarMarker>,
     LyrebirdInstrumentSubmit<VocalsMarker>,
     LyrebirdInstrumentSubmit<BackupVocalsMarker>,
