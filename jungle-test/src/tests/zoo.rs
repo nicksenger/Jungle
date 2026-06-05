@@ -154,6 +154,7 @@ impl<E> Action for UnitOkSpec<E>
 where
     E: EffectSchema<In = (), Out = (), Err = ()>,
 {
+    const NAME: &'static str = "UnitOkSpec";
     type Effect = E;
     type Input = ();
     type Output = ();
