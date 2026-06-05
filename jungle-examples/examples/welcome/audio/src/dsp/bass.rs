@@ -47,12 +47,12 @@ fn articulation_sample(base_hz: f32, phase: f32, t: f32, expression: Expression)
     let transient = hash_noise(t * 18_000.0) * (1.0 - smoothstep(phase * 15.0));
 
     // Adjusted harmonics to match target energy distribution
-    // Increase fundamental and second harmonic presence for the 150-320Hz range
-    let growl = saw(freq, t) * 0.56 + saw(freq * 2.0, t) * 0.22;
-    let low_body = sine(freq * 0.5, t) * 0.2 + triangle(freq, t) * 0.18;
+    // Use sawtooth for rich harmonics and sine for clean sub/fundamental
+    let growl = saw(freq, t) * 0.30 + saw(freq * 2.0, t) * 0.15;
+    let low_body = sine(freq, t) * 0.40 + sine(freq * 0.5, t) * 0.25;
 
-    // Boost transient slightly to match the target's sharper onset
-    ((growl + low_body + transient * 0.35) * 1.25).tanh()
+    // Boost transient for sharper attack and better spectral definition
+    ((growl + low_body + transient * 0.20) * 1.1).tanh()
 }
 
 fn articulation_envelope(phase: f32) -> f32 {

@@ -41,7 +41,9 @@ pub mod cymbal {
         let metallic = triangle(3_800.0 * tilt, t) * 0.2
             + triangle(5_250.0 * tilt, t) * 0.16
             + triangle(6_850.0 * tilt, t) * 0.11
-            + triangle(9_100.0 * tilt, t) * 0.08;
+            + triangle(9_100.0 * tilt, t) * 0.08
+            + triangle(12_000.0 * tilt, t) * 0.06
+            + triangle(15_000.0 * tilt, t) * 0.04;
         let low_metal = triangle(1_250.0 * tilt, t) * 0.08 + triangle(1_900.0 * tilt, t) * 0.06;
         (wash + metallic * bite + broadband + low_metal + stick).tanh()
     }
@@ -102,10 +104,12 @@ pub mod hihat {
         let hiss = hash_noise(t * 11_400.0) * (0.22 + 0.16 * smoothstep(phase * 1.15));
         let metallic = triangle(6_900.0 * tilt, t) * 0.24
             + triangle(8_700.0 * tilt, t) * 0.18
-            + triangle(11_400.0 * tilt, t) * 0.12;
+            + triangle(11_400.0 * tilt, t) * 0.12
+            + triangle(14_000.0 * tilt, t) * 0.08
+            + triangle(17_000.0 * tilt, t) * 0.05;
 
         let bark = 1.0 - smoothstep((phase / 0.58).clamp(0.0, 1.0));
-        (bright * 0.54 + metallic * 0.6 + hiss * 0.26 + stick * 0.68) * bark
+        (bright * 0.6 + metallic * 0.65 + hiss * 0.3 + stick * 0.75) * bark
     }
 
     fn articulation_envelope(phase: f32, velocity: f32) -> f32 {
