@@ -187,7 +187,7 @@ impl BackoffUi {
 
         let mut body = column![
             text("Joined Backoffs").size(28),
-            text("Left arm runs subflow backoff, right arm runs single-action backoff, and both loop forever under a Join.")
+            text("Left arm runs subflow backoff, right arm runs single-action backoff, and the two branches intentionally use different start/max delays under the same Join.")
                 .size(14),
             text(format!("Journey {short_journey_id}")).size(16),
         ]

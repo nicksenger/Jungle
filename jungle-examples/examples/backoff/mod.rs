@@ -24,9 +24,37 @@ mod ui;
 
 const DEFAULT_LOG_FILTER: &str = "warn,backoff=info";
 const INNER_ATTEMPT_SLEEP_MS: u64 = 200;
-const INITIAL_DELAY_MS: u64 = 250;
-const MAX_DELAY_MS: u64 = 4_000;
 const DELAY_MULTIPLIER: u32 = 2;
+const SUBFLOW_INITIAL_DELAY_MS: u64 = 250;
+const SUBFLOW_MAX_DELAY_MS: u64 = 4_000;
+const ACTION_INITIAL_DELAY_MS: u64 = 600;
+const ACTION_MAX_DELAY_MS: u64 = 2_400;
+
+fn subflow_backoff_policy() -> ExponentialBackoffPolicy {
+    ExponentialBackoffPolicy {
+        initial_delay_ms: SUBFLOW_INITIAL_DELAY_MS,
+        multiplier: DELAY_MULTIPLIER,
+        max_delay_ms: SUBFLOW_MAX_DELAY_MS,
+    }
+}
+
+fn action_backoff_policy() -> ExponentialBackoffPolicy {
+    ExponentialBackoffPolicy {
+        initial_delay_ms: ACTION_INITIAL_DELAY_MS,
+        multiplier: DELAY_MULTIPLIER,
+        max_delay_ms: ACTION_MAX_DELAY_MS,
+    }
+}
+
+fn with_backoff_policy(
+    input: ExponentialBackoffInput<()>,
+    policy: ExponentialBackoffPolicy,
+) -> ExponentialBackoffInput<()> {
+    ExponentialBackoffInput {
+        action_input: input.action_input,
+        policy,
+    }
+}
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct SubflowBranchMetrics {
@@ -317,7 +345,7 @@ impl Action for EnterSubflowJoinArm {
         _state: &SubflowBackoffState,
         input: Self::Input,
     ) -> ((), ExponentialBackoffInput<()>) {
-        ((), input)
+        ((), with_backoff_policy(input, subflow_backoff_policy()))
     }
 
     fn absorb(
@@ -342,7 +370,7 @@ impl Action for EnterActionJoinArm {
         _state: &ActionBackoffState,
         input: Self::Input,
     ) -> ((), ExponentialBackoffInput<()>) {
-        ((), input)
+        ((), with_backoff_policy(input, action_backoff_policy()))
     }
 
     fn absorb(
@@ -487,9 +515,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(
         db_path = %db_path.display(),
-        initial_delay_ms = INITIAL_DELAY_MS,
         multiplier = DELAY_MULTIPLIER,
-        max_delay_ms = MAX_DELAY_MS,
+        subflow_initial_delay_ms = SUBFLOW_INITIAL_DELAY_MS,
+        subflow_max_delay_ms = SUBFLOW_MAX_DELAY_MS,
+        action_initial_delay_ms = ACTION_INITIAL_DELAY_MS,
+        action_max_delay_ms = ACTION_MAX_DELAY_MS,
         inner_attempt_sleep_ms = INNER_ATTEMPT_SLEEP_MS,
         "starting backoff runtime"
     );
@@ -511,11 +541,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let seed = ExponentialBackoffInput {
         action_input: (),
-        policy: ExponentialBackoffPolicy {
-            initial_delay_ms: INITIAL_DELAY_MS,
-            multiplier: DELAY_MULTIPLIER,
-            max_delay_ms: MAX_DELAY_MS,
-        },
+        policy: subflow_backoff_policy(),
     };
     let journey_id = client.spawn::<BackoffAnimal>(&seed).await?.journey_id;
 
@@ -591,6 +617,19 @@ mod tests {
         assert!(parse_img_dump_time_secs("-1").is_err());
     }
 
+    #[test]
+    fn join_arms_use_distinct_backoff_policies() {
+        assert_ne!(subflow_backoff_policy(), action_backoff_policy());
+        assert_ne!(
+            subflow_backoff_policy().initial_delay_ms,
+            action_backoff_policy().initial_delay_ms
+        );
+        assert_ne!(
+            subflow_backoff_policy().max_delay_ms,
+            action_backoff_policy().max_delay_ms
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn join_runs_both_backoff_arms() {
         let namespace = format!("{}-{}", BackoffZoo::NAME, Uuid::new_v4());
@@ -606,11 +645,7 @@ mod tests {
 
         let seed = ExponentialBackoffInput {
             action_input: (),
-            policy: ExponentialBackoffPolicy {
-                initial_delay_ms: INITIAL_DELAY_MS,
-                multiplier: DELAY_MULTIPLIER,
-                max_delay_ms: MAX_DELAY_MS,
-            },
+            policy: subflow_backoff_policy(),
         };
 
         let journey_id = client
