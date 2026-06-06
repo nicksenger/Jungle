@@ -68,8 +68,7 @@ pub struct ExponentialBackoffInput<Input> {
     pub policy: ExponentialBackoffPolicy,
 }
 
-#[derive(Optic, Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(bound(serialize = "St: Serialize", deserialize = "St: Deserialize<'de>"))]
+#[derive(Optic, Clone, Debug, PartialEq)]
 pub struct ExponentialBackoffState<St, A>
 where
     A: BackoffAction,
@@ -77,9 +76,7 @@ where
     pub attempts: u32,
     pub current_delay_ms: u64,
     pub policy: ExponentialBackoffPolicy,
-    #[serde(skip)]
     pub action_input: Option<A::Input>,
-    #[serde(skip)]
     pub last_result: Option<Result<A::Success, A::Error>>,
     #[jungle(focus)]
     pub st: St,
@@ -344,7 +341,7 @@ pub struct ExponentialBackoffBody<
     Scoped<St, Step<Act>>,
     Step<RecordBackoffResult<St, Act>>,
     Conditional<
-        FocusedCondition<BackoffShouldSleep<St, Act>, ExponentialBackoffState<St, Act>>,
+        BackoffShouldSleep<St, Act>,
         Step<SleepForBackoff<St, Act>>,
         Step<SkipBackoffSleep<St, Act>>,
     >,
@@ -352,7 +349,6 @@ pub struct ExponentialBackoffBody<
 );
 
 #[derive(Flow)]
-#[jungle(focus = ExponentialBackoffState<St, Act>)]
 pub struct ExponentialBackoffFlow<
     St,
     In: Clone + Serialize + DeserializeOwned,
@@ -361,10 +357,7 @@ pub struct ExponentialBackoffFlow<
     Act: Action<Input = In, Output = Result<Ok, Err>>,
 >(
     Step<InitializeBackoff<St, Act>>,
-    While<
-        FocusedLoopCondition<BackoffPending<St, Act>, ExponentialBackoffState<St, Act>>,
-        ExponentialBackoffBody<St, In, Ok, Err, Act>,
-    >,
+    While<BackoffPending<St, Act>, ExponentialBackoffBody<St, In, Ok, Err, Act>>,
     Step<TakeBackoffSuccess<St, Act>>,
 );
 
