@@ -38,7 +38,7 @@ pub struct ExponentialBackoffPolicy {
 }
 
 impl ExponentialBackoffPolicy {
-    fn next_delay_ms(self, current_delay_ms: u64) -> u64 {
+    pub(crate) fn next_delay_ms(self, current_delay_ms: u64) -> u64 {
         if current_delay_ms == 0 {
             return 0;
         }
