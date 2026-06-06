@@ -313,10 +313,7 @@ impl Action for EnterSubflowJoinArm {
     type Output = ExponentialBackoffInput<()>;
     type Carry = ExponentialBackoffInput<()>;
 
-    fn emit(
-        _state: &SubflowBackoffState,
-        input: Self::Input,
-    ) -> ((), ExponentialBackoffInput<()>) {
+    fn emit(_state: &SubflowBackoffState, input: Self::Input) -> ((), ExponentialBackoffInput<()>) {
         ((), input)
     }
 
@@ -338,10 +335,7 @@ impl Action for EnterActionJoinArm {
     type Output = ExponentialBackoffInput<()>;
     type Carry = ExponentialBackoffInput<()>;
 
-    fn emit(
-        _state: &ActionBackoffState,
-        input: Self::Input,
-    ) -> ((), ExponentialBackoffInput<()>) {
+    fn emit(_state: &ActionBackoffState, input: Self::Input) -> ((), ExponentialBackoffInput<()>) {
         ((), input)
     }
 
@@ -645,10 +639,7 @@ mod tests {
         }
         worker_handle.abort();
 
-        assert!(
-            saw_subflow_sleep,
-            "expected subflow backoff arm activity"
-        );
+        assert!(saw_subflow_sleep, "expected subflow backoff arm activity");
         assert!(
             saw_action_sleep,
             "expected single-action backoff arm activity"

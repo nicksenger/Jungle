@@ -42,6 +42,9 @@ const ANALYSIS_HOP_SIZE: usize = 512;
 const SPECTRAL_ROLLOFF_FRACTION: f32 = 0.85;
 const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/lyrebird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
+const PROMPT_REQUEST_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
+const PROMPT_REQUEST_BACKOFF_MAX_DELAY_MS: u64 = 4_000;
+const PROMPT_REQUEST_BACKOFF_MULTIPLIER: u32 = 2;
 
 #[derive(Clone, Copy, Debug)]
 struct ScoredAudioSample {
@@ -924,7 +927,7 @@ async fn request_prompt_candidates(
     input: RequestPromptCandidatesInput,
 ) -> Result<RequestPromptCandidatesOutcome, String> {
     let prompt_results = join_all((0..input.instrument_parallelism).map(|candidate_index| {
-        request_prompt_model_candidate(
+        request_prompt_model_candidate_with_backoff(
             jungle,
             PromptModelInput {
                 prompt: input.prompt.clone(),
@@ -957,7 +960,7 @@ async fn request_prompt_candidates(
     })
 }
 
-async fn request_prompt_model_candidate(
+async fn request_prompt_model_candidate_with_backoff(
     jungle: &PulseCodePurgatory,
     input: PromptModelInput,
 ) -> Result<Vec<ToolCall>, String> {
@@ -970,6 +973,36 @@ async fn request_prompt_model_candidate(
             "sending lyrebird prompt model request"
         );
     }
+
+    let mut request_attempt = 1_u32;
+    let mut delay_ms = PROMPT_REQUEST_BACKOFF_INITIAL_DELAY_MS;
+    loop {
+        match request_prompt_model_candidate(jungle, input.clone(), request_attempt).await {
+            Ok(tool_calls) => return Ok(tool_calls),
+            Err(error) => {
+                warn!(
+                    iteration_id = %input.iteration_id,
+                    instrument = input.instrument.slug(),
+                    prompt_attempt = input.prompt_attempt,
+                    candidate_index = input.candidate_index,
+                    request_attempt,
+                    delay_ms,
+                    error,
+                    "lyrebird prompt model request backoff sleeping before retry"
+                );
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                delay_ms = next_prompt_request_backoff_delay_ms(delay_ms);
+                request_attempt = request_attempt.saturating_add(1);
+            }
+        }
+    }
+}
+
+async fn request_prompt_model_candidate(
+    jungle: &PulseCodePurgatory,
+    input: PromptModelInput,
+    request_attempt: u32,
+) -> Result<Vec<ToolCall>, String> {
     let prompt_started_at = Instant::now();
     let response = jungle
         .predict(input.prompt, Some(input.instrument))
@@ -982,6 +1015,7 @@ async fn request_prompt_model_candidate(
             instrument = input.instrument.slug(),
             prompt_attempt = input.prompt_attempt,
             candidate_index = input.candidate_index,
+            request_attempt,
             prompt_elapsed_ms,
             tool_call_count = tool_calls.len(),
             "received prompt model response"
@@ -991,12 +1025,19 @@ async fn request_prompt_model_candidate(
             instrument = input.instrument.slug(),
             prompt_attempt = input.prompt_attempt,
             candidate_index = input.candidate_index,
+            request_attempt,
             prompt_elapsed_ms,
             error,
             "prompt model request failed"
         ),
     }
     response
+}
+
+fn next_prompt_request_backoff_delay_ms(current_delay_ms: u64) -> u64 {
+    let scaled =
+        current_delay_ms.saturating_mul(u64::from(PROMPT_REQUEST_BACKOFF_MULTIPLIER.max(1)));
+    scaled.min(PROMPT_REQUEST_BACKOFF_MAX_DELAY_MS)
 }
 
 async fn prepare_prompt_candidates(
