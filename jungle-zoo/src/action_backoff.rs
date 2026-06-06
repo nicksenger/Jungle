@@ -3,6 +3,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::time::Duration;
+use tracing::warn;
 
 pub trait BackoffAction: Action<Output = Result<Self::Success, Self::Error>> {
     type Success;
@@ -114,6 +115,22 @@ where
 {
     fn project_view(state: &mut Self) -> &mut ExponentialBackoffState<St, A> {
         state
+    }
+}
+
+pub struct BackoffSleepLogEffect;
+#[jungle::effect(id = 930)]
+impl<J> Effect<J> for BackoffSleepLogEffect {
+    type In = u64;
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        delay_ms: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        warn!(delay_ms, "exponential backoff sleeping before retry");
+        std::future::ready(Ok(()))
     }
 }
 
@@ -234,6 +251,29 @@ where
     }
 }
 
+pub struct LogBackoffSleep<St, A>(PhantomData<fn() -> (St, A)>);
+#[jungle::action]
+impl<St, A> Action for LogBackoffSleep<St, A>
+where
+    A: BackoffAction,
+{
+    type Effect = BackoffSleepLogEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &ExponentialBackoffState<St, A>, _input: Self::Input) -> u64 {
+        state.current_delay_ms
+    }
+
+    fn absorb(
+        _state: &mut ExponentialBackoffState<St, A>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("backoff sleep logging should complete"))?;
+        Ok(())
+    }
+}
+
 pub struct SkipBackoffSleep<St, A>(PhantomData<fn() -> (St, A)>);
 #[jungle::action]
 impl<St, A> Action for SkipBackoffSleep<St, A>
@@ -253,6 +293,12 @@ where
         Ok(())
     }
 }
+
+#[derive(Flow)]
+pub struct SleepBackoffBranch<St, Act: BackoffAction>(
+    Step<LogBackoffSleep<St, Act>>,
+    Step<SleepForBackoff<St, Act>>,
+);
 
 pub struct FlattenEither<T, S>(PhantomData<T>, PhantomData<S>);
 #[jungle::action]
@@ -342,7 +388,7 @@ pub struct ExponentialBackoffBody<
     Step<RecordBackoffResult<St, Act>>,
     Conditional<
         BackoffShouldSleep<St, Act>,
-        Step<SleepForBackoff<St, Act>>,
+        SleepBackoffBranch<St, Act>,
         Step<SkipBackoffSleep<St, Act>>,
     >,
     Step<FlattenEither<(), ExponentialBackoffState<St, Act>>>,

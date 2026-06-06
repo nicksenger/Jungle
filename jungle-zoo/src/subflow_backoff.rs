@@ -1,3 +1,4 @@
+use crate::action_backoff::BackoffSleepLogEffect;
 use crate::action_backoff::{ExponentialBackoffInput, ExponentialBackoffPolicy, FlattenEither};
 use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
@@ -153,6 +154,26 @@ impl<St, In, Out> Action for SleepForBackoffFlow<St, In, Out> {
     }
 }
 
+pub struct LogBackoffFlowSleep<St, In, Out>(PhantomData<fn() -> (St, In, Out)>);
+#[jungle::action]
+impl<St, In, Out> Action for LogBackoffFlowSleep<St, In, Out> {
+    type Effect = BackoffSleepLogEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &ExponentialBackoffFlowState<St, In, Out>, _input: Self::Input) -> u64 {
+        state.current_delay_ms
+    }
+
+    fn absorb(
+        _state: &mut ExponentialBackoffFlowState<St, In, Out>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("backoff flow sleep logging should complete"))?;
+        Ok(())
+    }
+}
+
 pub struct SkipBackoffFlowSleep<St, In, Out>(PhantomData<fn() -> (St, In, Out)>);
 #[jungle::action]
 impl<St, In, Out> Action for SkipBackoffFlowSleep<St, In, Out> {
@@ -169,6 +190,12 @@ impl<St, In, Out> Action for SkipBackoffFlowSleep<St, In, Out> {
         Ok(())
     }
 }
+
+#[derive(Flow)]
+pub struct SleepBackoffFlowBranch<St, In, Out>(
+    Step<LogBackoffFlowSleep<St, In, Out>>,
+    Step<SleepForBackoffFlow<St, In, Out>>,
+);
 
 pub struct TakeBackoffFlowSuccess<St, In, Out>(PhantomData<fn() -> (St, In, Out)>);
 #[jungle::action]
@@ -229,7 +256,7 @@ pub struct ExponentialBackoffFlowBody<
     Step<RecordBackoffFlowResult<St, In, Out>>,
     Conditional<
         BackoffFlowShouldSleep<St, In, Out>,
-        Step<SleepForBackoffFlow<St, In, Out>>,
+        SleepBackoffFlowBranch<St, In, Out>,
         Step<SkipBackoffFlowSleep<St, In, Out>>,
     >,
     Step<FlattenEither<(), ExponentialBackoffFlowState<St, In, Out>>>,

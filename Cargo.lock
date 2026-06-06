@@ -3343,6 +3343,7 @@ version = "0.1.0"
 dependencies = [
  "jungle-sdk",
  "serde",
+ "tracing",
 ]
 
 [[package]]
