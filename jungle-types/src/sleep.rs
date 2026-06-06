@@ -2,6 +2,7 @@ use crate::{
     Animal, Aspect, BoundAction, Effect, EffectCompletion, EffectSchema, Failure, Id, Identity,
     StateCarrier,
 };
+use futures::channel::oneshot;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -28,7 +29,14 @@ impl<J> Effect<J> for Sleep {
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
-            std::thread::sleep(input);
+            let (tx, rx) = oneshot::channel();
+            std::thread::spawn(move || {
+                std::thread::sleep(input);
+                let _ = tx.send(());
+            });
+            rx.await.map_err(|_| SleepError {
+                message: "sleep worker dropped before completion".to_string(),
+            })?;
             Ok(())
         }
     }
