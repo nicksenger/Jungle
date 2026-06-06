@@ -936,8 +936,8 @@ fn nested_inline_while_context_executable_propagates_inner_emitted_to_outer_sibl
         .expect("nested context inline while completion should not fail with no pending request");
 }
 
-#[test]
-fn while_conditional_final_tail_with_focused_join_merge_rest_does_not_hang() {
+#[tokio::test]
+async fn while_conditional_final_tail_with_focused_join_merge_rest_does_not_hang() {
     let mut executor = ContextExecutor::<(), RhythmLikeConditionalLoopAnimal>::new(
         Arc::new(()),
         RhythmLikeLoopState {
@@ -950,12 +950,14 @@ fn while_conditional_final_tail_with_focused_join_merge_rest_does_not_hang() {
     let first = executor
         .next_executable_request(())
         .expect("while/conditional final-tail flow should produce an executable request");
-    let completion = futures::executor::block_on(first.run()).expect("first effect should run");
+    let completion = first.run().await.expect("first effect should run");
     let _ = executor
         .complete_serialized(completion)
         .expect("completion should advance while/conditional final-tail flow");
 
-    let _ = futures::executor::block_on(executor.advance_to_end_with(()))
+    let _ = executor
+        .advance_to_end_with(())
+        .await
         .expect("while/conditional final-tail flow should complete");
     assert!(executor.is_complete());
     assert_eq!(executor.state().loops_remaining, 0);

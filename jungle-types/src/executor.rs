@@ -4,7 +4,10 @@ use crate::{
     NodeLifecycle, NodeLifecyclePhase, RunnerOut, Running, Scoped, Select, StateCarrier,
     Transparent, While,
 };
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::channel::{
+    mpsc::{UnboundedReceiver, UnboundedSender},
+    oneshot,
+};
 use futures::StreamExt;
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -1938,6 +1941,106 @@ where
     Ok(trace)
 }
 
+async fn run_select_race_to_completion<State>(
+    left_flow: DynFlow<State>,
+    left_state: State,
+    left_input: Serialized,
+    left_start_node_id: u32,
+    right_flow: DynFlow<State>,
+    right_state: State,
+    right_input: Serialized,
+    right_start_node_id: u32,
+    journey_id: Option<uuid::Uuid>,
+    parent_activation_path: Vec<u64>,
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
+) -> Result<SelectTraceEnvelope, ExecutorError>
+where
+    State: Clone + Send + 'static,
+{
+    let (result_tx, result_rx) = oneshot::channel();
+    std::thread::Builder::new()
+        .name("jungle-select-race".to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(err) => {
+                    let _ = result_tx.send(Err(ExecutorError::ClientTransport(format!(
+                        "select race runtime build failed: {err}"
+                    ))));
+                    return;
+                }
+            };
+
+            let result = runtime.block_on(async move {
+                let left_parent_activation_path = parent_activation_path.clone();
+                let right_parent_activation_path = parent_activation_path;
+                let left_live_history_tx = live_history_tx.clone();
+                let right_live_history_tx = live_history_tx;
+                let left = tokio::spawn(async move {
+                    run_subflow_to_end(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &left_parent_activation_path,
+                        left_live_history_tx,
+                    )
+                    .await
+                });
+                let right = tokio::spawn(async move {
+                    run_subflow_to_end(
+                        right_flow,
+                        right_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &right_parent_activation_path,
+                        right_live_history_tx,
+                    )
+                    .await
+                });
+
+                tokio::pin!(left);
+                tokio::pin!(right);
+
+                tokio::select! {
+                    left_result = &mut left => {
+                        right.abort();
+                        let trace = left_result.map_err(|err| {
+                            ExecutorError::ClientTransport(format!(
+                                "select left task join failed: {err}"
+                            ))
+                        })??;
+                        Ok(SelectTraceEnvelope::Left(trace))
+                    }
+                    right_result = &mut right => {
+                        left.abort();
+                        let trace = right_result.map_err(|err| {
+                            ExecutorError::ClientTransport(format!(
+                                "select right task join failed: {err}"
+                            ))
+                        })??;
+                        Ok(SelectTraceEnvelope::Right(trace))
+                    }
+                }
+            });
+
+            let _ = result_tx.send(result);
+        })
+        .map_err(|err| {
+            ExecutorError::ClientTransport(format!("select race thread spawn failed: {err}"))
+        })?;
+
+    result_rx.await.map_err(|_| {
+        ExecutorError::ClientTransport("select race thread dropped before sending a result".into())
+    })?
+}
+
 fn replay_subflow_trace<State>(
     flow: &mut DynFlow<State>,
     state: State,
@@ -3126,37 +3229,20 @@ where
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = run_subflow_to_end(
+                let envelope = run_select_race_to_completion(
                     left_flow,
                     left_state,
                     left_input,
                     left_start_node_id,
-                    journey_id,
-                    &parent_activation_path,
-                    live_history_tx.clone(),
-                );
-                let right = run_subflow_to_end(
                     right_flow,
                     right_state,
                     right_input,
                     right_start_node_id,
                     journey_id,
-                    &parent_activation_path,
+                    parent_activation_path,
                     live_history_tx,
-                );
-                let selected = futures::future::select(
-                    Box::pin(left) as Pin<Box<_>>,
-                    Box::pin(right) as Pin<Box<_>>,
                 )
-                .await;
-                let envelope = match selected {
-                    futures::future::Either::Left((left_trace, _)) => {
-                        SelectTraceEnvelope::Left(left_trace?)
-                    }
-                    futures::future::Either::Right((right_trace, _)) => {
-                        SelectTraceEnvelope::Right(right_trace?)
-                    }
-                };
+                .await?;
                 let bytes = postcard::to_allocvec(&envelope)
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
                 Ok(Ok(bytes))
@@ -3335,37 +3421,20 @@ where
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = run_subflow_to_end(
+                let envelope = run_select_race_to_completion(
                     left_flow,
                     left_state,
                     left_input,
                     left_start_node_id,
-                    journey_id,
-                    &parent_activation_path,
-                    live_history_tx.clone(),
-                );
-                let right = run_subflow_to_end(
                     right_flow,
                     right_state,
                     right_input,
                     right_start_node_id,
                     journey_id,
-                    &parent_activation_path,
+                    parent_activation_path,
                     live_history_tx,
-                );
-                let selected = futures::future::select(
-                    Box::pin(left) as Pin<Box<_>>,
-                    Box::pin(right) as Pin<Box<_>>,
                 )
-                .await;
-                let envelope = match selected {
-                    futures::future::Either::Left((left_trace, _)) => {
-                        SelectTraceEnvelope::Left(left_trace?)
-                    }
-                    futures::future::Either::Right((right_trace, _)) => {
-                        SelectTraceEnvelope::Right(right_trace?)
-                    }
-                };
+                .await?;
                 let bytes = postcard::to_allocvec(&envelope)
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
                 Ok(Ok(bytes))
