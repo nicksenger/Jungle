@@ -3318,6 +3318,7 @@ dependencies = [
  "postcard",
  "serde",
  "thiserror 2.0.18",
+ "tokio",
  "typosaurus",
  "uuid",
 ]

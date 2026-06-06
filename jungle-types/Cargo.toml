@@ -11,6 +11,7 @@ typosaurus = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
+tokio = { version = "1", features = ["time"] }
 
 [lints]
 workspace = true
