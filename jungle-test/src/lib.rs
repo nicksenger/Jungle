@@ -22,6 +22,7 @@ mod tests {
     mod multi_worker;
     mod no_effect;
     mod optic;
+    mod property;
     mod progression;
     mod replay;
     mod select_join;
