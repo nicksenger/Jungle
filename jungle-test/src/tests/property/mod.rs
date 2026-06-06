@@ -1,1 +1,2 @@
+mod dag;
 mod replay;
