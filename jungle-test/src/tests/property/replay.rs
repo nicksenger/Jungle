@@ -1,8 +1,11 @@
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
+use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
+use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 pub struct ReplayRainforest(Arc<Mutex<ReplayInner>>);
@@ -39,6 +42,10 @@ impl ReplayRainforest {
 pub struct ReplayState {
     color: bool,
     history: String,
+}
+
+impl From<ReplayState> for () {
+    fn from(_value: ReplayState) -> Self {}
 }
 
 pub struct ReplayColorIsTrue;
@@ -148,6 +155,34 @@ impl<const CH: char> Action for Label<CH> {
     }
 }
 
+pub struct FlattenReplayChoice;
+
+#[jungle::action]
+impl Action for FlattenReplayChoice {
+    type Effect = NoEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+    type Carry = Either<(), ()>;
+
+    fn emit(_state: &ReplayState, input: Self::Input) -> ((), Self::Carry) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = {
+            output.map_err(|_err| Failure::from("flatten replay choice should succeed"))?;
+            match carry {
+                Either::Left(()) | Either::Right(()) => (),
+            }
+        };
+        Ok(__absorb_out_3)
+    }
+}
+
 #[derive(Flow)]
 pub struct Depth1LeftBranch(
     Step<Label<'L'>>,
@@ -170,6 +205,7 @@ pub struct Depth1InnerBody(
     Step<Tick>,
     Step<Tick>,
     Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
+    Step<FlattenReplayChoice>,
 );
 
 #[derive(Flow)]
@@ -204,3 +240,164 @@ impl Observe for Depth1 {
 
 #[derive(Animals)]
 pub struct ReplayRainforestAnimals(Depth1);
+
+const REPLAY_TEST_OWNER_LEASE_TTL_MS: i64 = 250;
+const REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
+const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(45);
+const REPLAY_TEST_APPEARANCE_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn replay_rainforest(
+    query: Vec<bool>,
+    end: UnboundedSender<()>,
+    recv: UnboundedReceiver<bool>,
+) -> ReplayRainforest {
+    ReplayRainforest(Arc::new(Mutex::new(ReplayInner { query, end, recv })))
+}
+
+fn spawn_depth1_worker(
+    client: FusedClient,
+    jungle: ReplayRainforest,
+    owner_lease_ttl_ms: i64,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let worker = JungleWorker::new(jungle, client).with_owner_lease_ttl_ms(owner_lease_ttl_ms);
+        let _ = worker.spawn().await;
+    })
+}
+
+async fn current_depth1_history(client: &FusedClient, journey_id: uuid::Uuid) -> String {
+    let Some(appearance_bytes) = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("animal_appearance should succeed")
+    else {
+        return String::new();
+    };
+    postcard::from_bytes::<String>(&appearance_bytes)
+        .expect("depth1 appearance should deserialize as a String")
+}
+
+async fn wait_for_depth1_history_change(
+    client: &FusedClient,
+    journey_id: uuid::Uuid,
+    previous: &str,
+) -> String {
+    tokio::time::timeout(REPLAY_TEST_APPEARANCE_TIMEOUT, async {
+        loop {
+            let history = current_depth1_history(client, journey_id).await;
+            if history != previous {
+                break history;
+            }
+            let _ = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed while waiting for appearance change");
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("depth1 appearance should change before timeout")
+}
+
+async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("depth1-property.redb");
+    let backend = jungle_sdk::Server::builder()
+        .redb_path(db_path)
+        .build()
+        .await
+        .expect("redb backend should build");
+    let client = FusedClient::builder()
+        .backend(backend)
+        .namespace(format!("depth1-property-{}", uuid::Uuid::new_v4()))
+        .build()
+        .await
+        .expect("fused client should build");
+
+    let (end_tx, mut end_rx) = futures::channel::mpsc::unbounded::<()>();
+    let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let replay_query = query.clone();
+    let worker_one = spawn_depth1_worker(
+        client.clone(),
+        replay_rainforest(query, end_tx.clone(), worker_one_resume_rx),
+        REPLAY_TEST_OWNER_LEASE_TTL_MS,
+    );
+
+    let journey_id = client
+        .spawn::<Depth1>(&ReplayState::default())
+        .await
+        .expect("depth1 journey should start")
+        .journey_id;
+
+    tokio::time::timeout(REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT, end_rx.next())
+        .await
+        .expect("first depth1 end signal should arrive before timeout")
+        .expect("first depth1 end signal channel should remain open");
+
+    let killed_worker_history = current_depth1_history(&client, journey_id).await;
+
+    worker_one.abort();
+    let _ = worker_one.await;
+    drop(worker_one_resume_tx);
+
+    let (worker_two_resume_tx, worker_two_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let worker_two = spawn_depth1_worker(
+        client.clone(),
+        replay_rainforest(replay_query, end_tx, worker_two_resume_rx),
+        REPLAY_TEST_OWNER_LEASE_TTL_MS,
+    );
+
+    tokio::time::timeout(REPLAY_TEST_RECLAIM_TIMEOUT, async {
+        loop {
+            tokio::select! {
+                maybe_end = end_rx.next() => {
+                    if maybe_end.is_some() {
+                        break;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(25)) => {
+                    let _ = client
+                        .journey_details(journey_id)
+                        .await
+                        .expect("journey_details should succeed while waiting for replay boundary");
+                }
+            }
+        }
+    })
+    .await
+    .expect("replayed depth1 end signal should arrive before timeout");
+
+    worker_two_resume_tx
+        .unbounded_send(true)
+        .expect("replayed depth1 receiver should accept one bool");
+
+    let replayed_history =
+        wait_for_depth1_history_change(&client, journey_id, &killed_worker_history).await;
+
+    assert!(
+        replayed_history.starts_with(&killed_worker_history),
+        "killed worker history should be a prefix of replayed worker history: old={killed_worker_history:?} new={replayed_history:?}"
+    );
+
+    worker_two.abort();
+    let _ = worker_two.await;
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        // Each case waits for the backend's fixed claimed-step reclaim window.
+        cases: 2,
+        .. ProptestConfig::default()
+    })]
+
+    #[test]
+    fn depth1_replay_history_from_replayed_worker_has_killed_worker_prefix(
+        query in proptest::collection::vec(any::<bool>(), 0..513)
+    ) {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime should build for property test");
+        runtime.block_on(assert_replayed_depth1_history_extends_prefix(query));
+    }
+}
