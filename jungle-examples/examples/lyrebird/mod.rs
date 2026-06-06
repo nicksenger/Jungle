@@ -25,26 +25,18 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, BeginPromptRequestAttemptFocused, BuildOptimizationPromptFocused,
-    CompareIterationCandidateMels, EmitPromptRequestBackoffInputFocused,
-    EnsurePromptRequestSucceededFocused, FlattenEither, FlattenLyrebirdPromptPhase,
-    GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
-    InitializePromptRequestBackoffFocused, InstrumentEnabled, InstrumentEnabledFocused,
-    LogIterationTiming, LyrebirdLoopForever, PreparePromptCandidatesFocused,
-    PromptRequestBackoffPendingFocused, PromptRequestBackoffShouldSleepFocused,
-    RecordPromptRequestBackoffResultFocused, RequestPromptCandidatesFocused, SeedLyrebirdState,
+    BeginIteration, BuildOptimizationPromptFocused, CompareIterationCandidateMels, FlattenEither,
+    FlattenLyrebirdPromptPhase, GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
+    InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
+    PreparePromptCandidatesFocused, RequestPromptCandidatesFocused, SeedLyrebirdState,
     SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
-    SkipInstrumentSubmit, SkipPromptRequestBackoffSleepFocused,
-    SleepForPromptRequestBackoffFocused, SubmitDspBranch, TakePromptRequestBackoffSuccessFocused,
+    SkipInstrumentSubmit, SubmitDspBranch,
 };
 use crate::tokens::{Prompt, Tool};
 
 const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 64;
 const DEFAULT_INSTRUMENT_PARALLELISM: usize = 1;
-const DEFAULT_PROMPT_REQUEST_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
-const DEFAULT_PROMPT_REQUEST_BACKOFF_MULTIPLIER: u32 = 2;
-const DEFAULT_PROMPT_REQUEST_BACKOFF_MAX_DELAY_MS: u64 = 4_000;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
 pub(crate) const DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE: &str =
     "You are an experienced software engineer and an expert in digital signal processing.";
@@ -77,14 +69,6 @@ const DRUMS_SCORE_SPECS: [&str; 5] = [
 
 pub(crate) fn lyrebird_system_prompt_override_text(override_text: Option<&str>) -> &str {
     override_text.unwrap_or(DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE)
-}
-
-pub(crate) fn lyrebird_prompt_request_backoff_policy() -> crate::backoff::ExponentialBackoffPolicy {
-    crate::backoff::ExponentialBackoffPolicy {
-        initial_delay_ms: DEFAULT_PROMPT_REQUEST_BACKOFF_INITIAL_DELAY_MS,
-        multiplier: DEFAULT_PROMPT_REQUEST_BACKOFF_MULTIPLIER,
-        max_delay_ms: DEFAULT_PROMPT_REQUEST_BACKOFF_MAX_DELAY_MS,
-    }
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -504,13 +488,9 @@ impl LyrebirdInstrumentState {
     }
 }
 
-pub type LyrebirdPromptRequestBackoffState =
-    crate::backoff_flow::ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()>;
-
 #[derive(Optic, Clone, Debug, Serialize, Deserialize)]
 pub struct PromptInstrumentState<Marker> {
-    #[jungle(focus)]
-    pub state: LyrebirdPromptRequestBackoffState,
+    pub state: LyrebirdInstrumentState,
     #[serde(skip)]
     marker: std::marker::PhantomData<fn() -> Marker>,
 }
@@ -518,17 +498,9 @@ pub struct PromptInstrumentState<Marker> {
 impl<Marker> PromptInstrumentState<Marker> {
     fn new(state: LyrebirdInstrumentState) -> Self {
         Self {
-            state: LyrebirdPromptRequestBackoffState::new(state),
+            state,
             marker: std::marker::PhantomData,
         }
-    }
-
-    fn instrument_state(&self) -> &LyrebirdInstrumentState {
-        &self.state.st
-    }
-
-    fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState {
-        &mut self.state.st
     }
 }
 
@@ -589,12 +561,12 @@ impl LyrebirdState {
     }
 
     pub fn has_all_instrument_states(&self) -> bool {
-        self.rhythm_guitar.instrument_state().instrument == LyrebirdInstrument::RhythmGuitar
-            && self.vocals.instrument_state().instrument == LyrebirdInstrument::Vocals
-            && self.backup_vocals.instrument_state().instrument == LyrebirdInstrument::BackupVocals
-            && self.bass.instrument_state().instrument == LyrebirdInstrument::Bass
-            && self.guitar_solo.instrument_state().instrument == LyrebirdInstrument::GuitarSolo
-            && self.drums.instrument_state().instrument == LyrebirdInstrument::Drums
+        self.rhythm_guitar.state.instrument == LyrebirdInstrument::RhythmGuitar
+            && self.vocals.state.instrument == LyrebirdInstrument::Vocals
+            && self.backup_vocals.state.instrument == LyrebirdInstrument::BackupVocals
+            && self.bass.state.instrument == LyrebirdInstrument::Bass
+            && self.guitar_solo.state.instrument == LyrebirdInstrument::GuitarSolo
+            && self.drums.state.instrument == LyrebirdInstrument::Drums
     }
 
     pub fn normalized_for_observation(&self) -> Self {
@@ -603,12 +575,12 @@ impl LyrebirdState {
 
     pub fn instrument_state(&self, instrument: LyrebirdInstrument) -> &LyrebirdInstrumentState {
         match instrument {
-            LyrebirdInstrument::RhythmGuitar => self.rhythm_guitar.instrument_state(),
-            LyrebirdInstrument::Vocals => self.vocals.instrument_state(),
-            LyrebirdInstrument::BackupVocals => self.backup_vocals.instrument_state(),
-            LyrebirdInstrument::Bass => self.bass.instrument_state(),
-            LyrebirdInstrument::GuitarSolo => self.guitar_solo.instrument_state(),
-            LyrebirdInstrument::Drums => self.drums.instrument_state(),
+            LyrebirdInstrument::RhythmGuitar => &self.rhythm_guitar.state,
+            LyrebirdInstrument::Vocals => &self.vocals.state,
+            LyrebirdInstrument::BackupVocals => &self.backup_vocals.state,
+            LyrebirdInstrument::Bass => &self.bass.state,
+            LyrebirdInstrument::GuitarSolo => &self.guitar_solo.state,
+            LyrebirdInstrument::Drums => &self.drums.state,
         }
     }
 
@@ -617,12 +589,12 @@ impl LyrebirdState {
         instrument: LyrebirdInstrument,
     ) -> &mut LyrebirdInstrumentState {
         match instrument {
-            LyrebirdInstrument::RhythmGuitar => self.rhythm_guitar.instrument_state_mut(),
-            LyrebirdInstrument::Vocals => self.vocals.instrument_state_mut(),
-            LyrebirdInstrument::BackupVocals => self.backup_vocals.instrument_state_mut(),
-            LyrebirdInstrument::Bass => self.bass.instrument_state_mut(),
-            LyrebirdInstrument::GuitarSolo => self.guitar_solo.instrument_state_mut(),
-            LyrebirdInstrument::Drums => self.drums.instrument_state_mut(),
+            LyrebirdInstrument::RhythmGuitar => &mut self.rhythm_guitar.state,
+            LyrebirdInstrument::Vocals => &mut self.vocals.state,
+            LyrebirdInstrument::BackupVocals => &mut self.backup_vocals.state,
+            LyrebirdInstrument::Bass => &mut self.bass.state,
+            LyrebirdInstrument::GuitarSolo => &mut self.guitar_solo.state,
+            LyrebirdInstrument::Drums => &mut self.drums.state,
         }
     }
 
@@ -810,51 +782,12 @@ impl LyrebirdInstrumentTag for DrumsMarker {
 }
 
 macro_rules! lyrebird_prompt_flow {
-    (
-        $enabled:ident,
-        $disabled:ident,
-        $prompt:ident,
-        $request_subflow:ident,
-        $request_backoff_body:ident,
-        $request_backoff:ident,
-        $marker:ty,
-        $focus:ty
-    ) => {
-        #[derive(Flow)]
-        pub struct $request_subflow(
-            Step<BeginPromptRequestAttemptFocused<$marker, $focus>>,
-            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
-            Step<RequestPromptCandidatesFocused<$marker, $focus>>,
-            Step<EnsurePromptRequestSucceededFocused<$marker, $focus>>,
-        );
-
-        #[derive(Flow)]
-        pub struct $request_backoff_body(
-            Attempt<$request_subflow>,
-            Step<RecordPromptRequestBackoffResultFocused<$focus>>,
-            Conditional<
-                FocusedCondition<PromptRequestBackoffShouldSleepFocused<$focus>, $focus>,
-                Step<SleepForPromptRequestBackoffFocused<$focus>>,
-                Step<SkipPromptRequestBackoffSleepFocused<$focus>>,
-            >,
-            Step<FlattenEither<(), $focus>>,
-        );
-
-        #[derive(Flow)]
-        pub struct $request_backoff(
-            Step<EmitPromptRequestBackoffInputFocused<$marker, $focus>>,
-            Step<InitializePromptRequestBackoffFocused<$focus>>,
-            While<
-                FocusedLoopCondition<PromptRequestBackoffPendingFocused<$focus>, $focus>,
-                $request_backoff_body,
-            >,
-            Step<TakePromptRequestBackoffSuccessFocused<$focus>>,
-        );
-
+    ($enabled:ident, $disabled:ident, $prompt:ident, $marker:ty, $focus:ty) => {
         #[derive(Flow)]
         pub struct $enabled(
             Step<SelectDspBranchFocused<$marker, $focus>>,
-            $request_backoff,
+            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
+            Step<RequestPromptCandidatesFocused<$marker, $focus>>,
             Step<PreparePromptCandidatesFocused<$marker, $focus>>,
         );
 
@@ -878,9 +811,6 @@ lyrebird_prompt_flow!(
     RhythmGuitarPromptEnabled,
     RhythmGuitarPromptDisabled,
     RhythmGuitarPrompt,
-    RhythmGuitarPromptRequestSubflow,
-    RhythmGuitarPromptRequestBackoffBody,
-    RhythmGuitarPromptRequestBackoff,
     RhythmGuitarMarker,
     RhythmGuitarPromptState
 );
@@ -888,9 +818,6 @@ lyrebird_prompt_flow!(
     VocalsPromptEnabled,
     VocalsPromptDisabled,
     VocalsPrompt,
-    VocalsPromptRequestSubflow,
-    VocalsPromptRequestBackoffBody,
-    VocalsPromptRequestBackoff,
     VocalsMarker,
     VocalsPromptState
 );
@@ -898,9 +825,6 @@ lyrebird_prompt_flow!(
     BackupVocalsPromptEnabled,
     BackupVocalsPromptDisabled,
     BackupVocalsPrompt,
-    BackupVocalsPromptRequestSubflow,
-    BackupVocalsPromptRequestBackoffBody,
-    BackupVocalsPromptRequestBackoff,
     BackupVocalsMarker,
     BackupVocalsPromptState
 );
@@ -908,9 +832,6 @@ lyrebird_prompt_flow!(
     BassPromptEnabled,
     BassPromptDisabled,
     BassPrompt,
-    BassPromptRequestSubflow,
-    BassPromptRequestBackoffBody,
-    BassPromptRequestBackoff,
     BassMarker,
     BassPromptState
 );
@@ -918,9 +839,6 @@ lyrebird_prompt_flow!(
     GuitarSoloPromptEnabled,
     GuitarSoloPromptDisabled,
     GuitarSoloPrompt,
-    GuitarSoloPromptRequestSubflow,
-    GuitarSoloPromptRequestBackoffBody,
-    GuitarSoloPromptRequestBackoff,
     GuitarSoloMarker,
     GuitarSoloPromptState
 );
@@ -928,9 +846,6 @@ lyrebird_prompt_flow!(
     DrumsPromptEnabled,
     DrumsPromptDisabled,
     DrumsPrompt,
-    DrumsPromptRequestSubflow,
-    DrumsPromptRequestBackoffBody,
-    DrumsPromptRequestBackoff,
     DrumsMarker,
     DrumsPromptState
 );
@@ -1905,7 +1820,7 @@ mod tests {
                 type Output = i32;
 
                 fn emit(state: &$state, input: Self::Input) -> i32 {
-                    state.state.st.prompt_attempt as i32 + input * $scale
+                    state.state.prompt_attempt as i32 + input * $scale
                 }
 
                 fn absorb(
@@ -1918,7 +1833,7 @@ mod tests {
                             " concurrent prompt should succeed"
                         ))
                     })?;
-                    state.state.st.prompt_attempt = out as u32;
+                    state.state.prompt_attempt = out as u32;
                     Ok(out)
                 }
             }
@@ -2636,10 +2551,10 @@ mod tests {
             iteration: 2,
             ..LyrebirdState::default()
         };
-        state.rhythm_guitar.state.st.disabled = true;
-        state.backup_vocals.state.st.disabled = true;
-        state.guitar_solo.state.st.disabled = true;
-        state.drums.state.st.disabled = true;
+        state.rhythm_guitar.state.disabled = true;
+        state.backup_vocals.state.disabled = true;
+        state.guitar_solo.state.disabled = true;
+        state.drums.state.disabled = true;
 
         assert_eq!(state.enabled_instrument_count(), 2);
         assert_eq!(state.generation_count(), 20);
@@ -2652,8 +2567,8 @@ mod tests {
         runtime.reset(2);
 
         let mut state = LyrebirdState::default();
-        state.rhythm_guitar.state.st.prompt_attempt = 1;
-        state.vocals.state.st.prompt_attempt = 2;
+        state.rhythm_guitar.state.prompt_attempt = 1;
+        state.vocals.state.prompt_attempt = 2;
 
         let mut executor = Executor::<ConcurrentLyrebirdPromptAnimal>::new(state);
         let request = executor
@@ -2671,8 +2586,8 @@ mod tests {
 
         assert_eq!(runtime.max_active.load(Ordering::SeqCst), 2);
         assert_eq!(final_emitted, (4, 32));
-        assert_eq!(executor.state().rhythm_guitar.state.st.prompt_attempt, 4);
-        assert_eq!(executor.state().vocals.state.st.prompt_attempt, 32);
+        assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
+        assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
     }
 
     #[tokio::test]
@@ -2682,8 +2597,8 @@ mod tests {
         runtime.reset(2);
 
         let mut state = LyrebirdState::default();
-        state.rhythm_guitar.state.st.prompt_attempt = 1;
-        state.vocals.state.st.prompt_attempt = 2;
+        state.rhythm_guitar.state.prompt_attempt = 1;
+        state.vocals.state.prompt_attempt = 2;
 
         let mut executor = Executor::<ConcurrentLyrebirdPromptAnimal>::new(state);
         executor.set_journey_id(Uuid::new_v4());

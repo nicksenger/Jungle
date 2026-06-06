@@ -9,14 +9,11 @@ use crate::effect::{
 };
 use crate::mcts::Submission;
 use crate::{
-    backoff::ExponentialBackoffInput, backoff_flow::ExponentialBackoffFlowState,
-    lyrebird_prompt_request_backoff_policy, LyrebirdGeneratedCandidate, LyrebirdInstrument,
-    LyrebirdInstrumentState, LyrebirdInstrumentTag, LyrebirdSeed, LyrebirdState,
-    PromptInstrumentState,
+    LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdInstrumentTag,
+    LyrebirdSeed, LyrebirdState, PromptInstrumentState,
 };
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
-use std::time::Duration;
 use tracing::info;
 
 pub struct SeedState<Seed, State>(PhantomData<Seed>, PhantomData<State>);
@@ -50,79 +47,13 @@ pub trait LyrebirdPromptFocus {
     fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState;
 }
 
-pub trait LyrebirdPromptBackoffFocus: LyrebirdPromptFocus {
-    fn prompt_backoff_state(&self)
-        -> &ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()>;
-    fn prompt_backoff_state_mut(
-        &mut self,
-    ) -> &mut ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()>;
-}
-
-impl LyrebirdPromptFocus for LyrebirdInstrumentState {
-    fn instrument_state(&self) -> &LyrebirdInstrumentState {
-        self
-    }
-
-    fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState {
-        self
-    }
-}
-
 impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker> {
     fn instrument_state(&self) -> &LyrebirdInstrumentState {
-        &self.state.st
-    }
-
-    fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState {
-        &mut self.state.st
-    }
-}
-
-impl<Marker> LyrebirdPromptBackoffFocus for PromptInstrumentState<Marker> {
-    fn prompt_backoff_state(
-        &self,
-    ) -> &ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()> {
         &self.state
     }
 
-    fn prompt_backoff_state_mut(
-        &mut self,
-    ) -> &mut ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()> {
-        &mut self.state
-    }
-}
-
-impl<In, Out> LyrebirdPromptFocus
-    for ExponentialBackoffFlowState<LyrebirdInstrumentState, In, Out>
-{
-    fn instrument_state(&self) -> &LyrebirdInstrumentState {
-        &self.st
-    }
-
     fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState {
-        &mut self.st
-    }
-}
-
-fn summarize_prompt_request_failures(
-    responses: &[crate::effect::PromptCandidateResponse],
-) -> Option<String> {
-    let mut retry_reasons = Vec::new();
-    for response in responses {
-        if let Some(retry_reason) = response.retry_reason.as_ref() {
-            if !retry_reasons
-                .iter()
-                .any(|existing: &String| existing == retry_reason)
-            {
-                retry_reasons.push(retry_reason.clone());
-            }
-        }
-    }
-
-    if retry_reasons.is_empty() {
-        None
-    } else {
-        Some(retry_reasons.join("\n\n"))
+        &mut self.state
     }
 }
 
@@ -406,270 +337,11 @@ where
         state: &mut Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
+        let RequestPromptCandidatesOutcome { responses } = output.map_err(Failure::from)?;
         let instrument_state = state.instrument_state_mut();
-        let RequestPromptCandidatesOutcome { responses } = match output {
-            Ok(outcome) => outcome,
-            Err(err) => {
-                instrument_state.pending_prompt = None;
-                instrument_state.pending_prompt_candidates.clear();
-                instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
-                instrument_state.last_retry_reason = Some(err.clone());
-                return Err(Failure::from(err));
-            }
-        };
         instrument_state.pending_prompt = None;
         instrument_state.pending_prompt_candidates = responses;
         Ok(())
-    }
-}
-
-pub struct BeginPromptRequestAttemptFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
-#[jungle::action]
-impl<Marker, Focus> Action for BeginPromptRequestAttemptFocused<Marker, Focus>
-where
-    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        let instrument_state = state.instrument_state();
-        info!(
-            iteration_id = %instrument_state.iteration_id,
-            instrument = Marker::INSTRUMENT.slug(),
-            prompt_attempt = instrument_state.prompt_attempt.saturating_add(1),
-            "starting lyrebird prompt request attempt"
-        );
-        Ok(())
-    }
-}
-
-pub struct EmitPromptRequestBackoffInputFocused<Marker, Focus>(
-    PhantomData<fn() -> (Marker, Focus)>,
-);
-#[jungle::action]
-impl<Marker, Focus> Action for EmitPromptRequestBackoffInputFocused<Marker, Focus>
-where
-    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ExponentialBackoffInput<()>;
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        _state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        Ok(ExponentialBackoffInput {
-            action_input: (),
-            policy: lyrebird_prompt_request_backoff_policy(),
-        })
-    }
-}
-
-pub struct InitializePromptRequestBackoffFocused<Focus>(PhantomData<fn() -> Focus>);
-#[jungle::action]
-impl<Focus> Action for InitializePromptRequestBackoffFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ExponentialBackoffInput<()>;
-    type Output = ();
-    type Carry = ExponentialBackoffInput<()>;
-
-    fn emit(_state: &Focus, input: Self::Input) -> ((), ExponentialBackoffInput<()>) {
-        ((), input)
-    }
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-        carry: ExponentialBackoffInput<()>,
-    ) -> Result<Self::Output, Failure> {
-        let backoff_state = state.prompt_backoff_state_mut();
-        backoff_state.attempts = 0;
-        backoff_state.current_delay_ms = carry.policy.initial_delay_ms;
-        backoff_state.policy = carry.policy;
-        backoff_state.flow_input = Some(carry.action_input);
-        backoff_state.last_result = None;
-        Ok(())
-    }
-}
-
-pub struct RecordPromptRequestBackoffResultFocused<Focus>(PhantomData<fn() -> Focus>);
-#[jungle::action]
-impl<Focus> Action for RecordPromptRequestBackoffResultFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = Result<(), Failure>;
-    type Output = ();
-    type Carry = Result<(), Failure>;
-
-    fn emit(_state: &Focus, input: Self::Input) -> ((), Result<(), Failure>) {
-        ((), input)
-    }
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-        carry: Result<(), Failure>,
-    ) -> Result<Self::Output, Failure> {
-        let backoff_state = state.prompt_backoff_state_mut();
-        backoff_state.attempts = backoff_state.attempts.saturating_add(1);
-        backoff_state.last_result = Some(carry);
-        Ok(())
-    }
-}
-
-pub struct SleepForPromptRequestBackoffFocused<Focus>(PhantomData<fn() -> Focus>);
-#[jungle::action]
-impl<Focus> Action for SleepForPromptRequestBackoffFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = Sleep;
-    type Input = ();
-    type Output = ();
-
-    fn emit(state: &Focus, _input: Self::Input) -> Duration {
-        Duration::from_millis(state.prompt_backoff_state().current_delay_ms)
-    }
-
-    fn absorb(
-        state: &mut Focus,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        output.map_err(|err| Failure::Message(err.message))?;
-        let backoff_state = state.prompt_backoff_state_mut();
-        backoff_state.current_delay_ms = backoff_state
-            .policy
-            .next_delay_ms(backoff_state.current_delay_ms);
-        Ok(())
-    }
-}
-
-pub struct SkipPromptRequestBackoffSleepFocused<Focus>(PhantomData<fn() -> Focus>);
-#[jungle::action]
-impl<Focus> Action for SkipPromptRequestBackoffSleepFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        _state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        Ok(())
-    }
-}
-
-pub struct TakePromptRequestBackoffSuccessFocused<Focus>(PhantomData<fn() -> Focus>);
-#[jungle::action]
-impl<Focus> Action for TakePromptRequestBackoffSuccessFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        match state.prompt_backoff_state_mut().last_result.take() {
-            Some(Ok(())) => Ok(()),
-            Some(Err(err)) => Err(Failure::from(format!(
-                "prompt request backoff ended with failure instead of success: {err}"
-            ))),
-            None => Err(Failure::from(
-                "prompt request backoff is missing the terminal retry result",
-            )),
-        }
-    }
-}
-
-pub struct PromptRequestBackoffPendingFocused<Focus>(PhantomData<fn() -> Focus>);
-impl<Focus> Predicate<(&Focus, &())> for PromptRequestBackoffPendingFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus,
-{
-    fn eval((state, _): &(&Focus, &())) -> bool {
-        match state.prompt_backoff_state().last_result.as_ref() {
-            None => true,
-            Some(Ok(())) => false,
-            Some(Err(_)) => true,
-        }
-    }
-}
-
-pub struct PromptRequestBackoffShouldSleepFocused<Focus>(PhantomData<fn() -> Focus>);
-impl<Focus> Predicate<(Focus, ())> for PromptRequestBackoffShouldSleepFocused<Focus>
-where
-    Focus: LyrebirdPromptBackoffFocus + Clone,
-{
-    fn eval((state, _): &(Focus, ())) -> bool {
-        matches!(
-            state.prompt_backoff_state().last_result.as_ref(),
-            Some(Err(_))
-        )
-    }
-}
-
-pub struct EnsurePromptRequestSucceededFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
-#[jungle::action]
-impl<Marker, Focus> Action for EnsurePromptRequestSucceededFocused<Marker, Focus>
-where
-    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        let instrument_state = state.instrument_state_mut();
-        if instrument_state
-            .pending_prompt_candidates
-            .iter()
-            .any(|response| response.tool_calls.is_some())
-        {
-            return Ok(());
-        }
-
-        instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
-        let failure_reason =
-            summarize_prompt_request_failures(&instrument_state.pending_prompt_candidates)
-                .unwrap_or_else(|| {
-                    "prompt request returned no successful OpenAI responses".to_owned()
-                });
-        instrument_state.last_retry_reason = Some(failure_reason.clone());
-        Err(Failure::from(failure_reason))
     }
 }
 
