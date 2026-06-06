@@ -93,6 +93,7 @@ pub enum ClusterKind {
     While,
     Join,
     Transparent,
+    Attempt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,6 +120,7 @@ impl ClusterExpansionConfig {
             ClusterKind::While => self.while_clusters,
             ClusterKind::Join => self.transparent_clusters,
             ClusterKind::Transparent => self.transparent_clusters,
+            ClusterKind::Attempt => self.transparent_clusters,
         }
     }
 }
@@ -2319,11 +2321,13 @@ fn node_phase_for_display_with_repairs(
 
 fn cluster_live_from_repaired_states(
     live: &LiveData,
-    cluster: &ClusterInfo,
+    model: &GraphModel,
+    cluster_index: usize,
     repaired_live_states: &HashMap<u32, RuntimeState>,
     runtime_sequence_floors: &HashMap<u32, usize>,
     runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> ClusterLive {
+    let cluster = &model.cluster_info[cluster_index];
     let cluster_state = runtime_state_for_live_data_with_activation_prefixes(
         live,
         cluster.runtime_node_id,
@@ -2348,7 +2352,22 @@ fn cluster_live_from_repaired_states(
                 has_completed = true;
             }
             RuntimeState::Failed => {
-                has_failed = true;
+                let masked_by_attempt_boundary = model
+                    .derived
+                    .nearest_attempt_boundary_cluster_index_by_display_id
+                    .get(node_id)
+                    .copied()
+                    .map(|boundary_index| {
+                        cluster_is_strict_ancestor_of_cluster(
+                            &model.cluster_info,
+                            cluster_index,
+                            boundary_index,
+                        )
+                    })
+                    .unwrap_or(false);
+                if !masked_by_attempt_boundary {
+                    has_failed = true;
+                }
             }
         }
     }
@@ -2362,7 +2381,8 @@ fn cluster_live_from_repaired_states(
 
 fn cluster_phase_for_display(
     live_data: Option<&LiveData>,
-    cluster: &ClusterInfo,
+    model: &GraphModel,
+    cluster_index: usize,
     repaired_live_states: &HashMap<u32, RuntimeState>,
     runtime_sequence_floors: &HashMap<u32, usize>,
     runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
@@ -2372,7 +2392,8 @@ fn cluster_phase_for_display(
     };
     Phase::Live(cluster_live_from_repaired_states(
         live,
-        cluster,
+        model,
+        cluster_index,
         repaired_live_states,
         runtime_sequence_floors,
         runtime_activation_prefixes,
@@ -2519,7 +2540,8 @@ where
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
             phase: cluster_phase_for_display(
                 live_data,
-                cluster,
+                model,
+                index,
                 display_live_states.as_ref(),
                 &runtime_sequence_floors,
                 &runtime_activation_prefixes,
@@ -2626,7 +2648,8 @@ where
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
             phase: cluster_phase_for_display(
                 live_data,
-                cluster,
+                model,
+                index,
                 display_live_states.as_ref(),
                 &runtime_sequence_floors,
                 &runtime_activation_prefixes,
@@ -2680,7 +2703,8 @@ where
             successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
             phase: cluster_phase_for_display(
                 live_data,
-                cluster,
+                model,
+                source_index,
                 display_live_states.as_ref(),
                 &runtime_sequence_floors,
                 &runtime_activation_prefixes,
@@ -2799,7 +2823,8 @@ where
                                 [cluster_index],
                             phase: cluster_phase_for_display(
                                 live_data,
-                                cluster,
+                                model,
+                                cluster_index,
                                 display_live_states_for_cluster_chips.as_ref(),
                                 &runtime_sequence_floors_for_cluster_chips,
                                 &runtime_activation_prefixes_for_cluster_chips,
@@ -2961,7 +2986,8 @@ where
                 successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
                 phase: cluster_phase_for_display(
                     live_data,
-                    cluster,
+                    model,
+                    source_index,
                     display_live_states_for_cluster_overlays.as_ref(),
                     &runtime_sequence_floors_for_cluster_overlays,
                     &runtime_activation_prefixes_for_cluster_overlays,
@@ -3075,6 +3101,7 @@ struct GraphDerived {
     cluster_successor_runtime_ids: Vec<Vec<u32>>,
     cluster_entry_runtime_ids: Vec<Vec<u32>>,
     memberships: HashMap<u32, Vec<(usize, usize)>>,
+    nearest_attempt_boundary_cluster_index_by_display_id: HashMap<u32, usize>,
     max_node_id: u32,
     runtime_by_display_id: HashMap<u32, Option<u32>>,
     proxy_runtime_ids_by_display_id: HashMap<u32, Vec<u32>>,
@@ -3137,6 +3164,23 @@ impl GraphDerived {
             entry.sort_by_key(|(depth, _)| *depth);
         }
 
+        let mut nearest_attempt_boundary_cluster_index_by_display_id = HashMap::<u32, usize>::new();
+        for (index, cluster) in cluster_info.iter().enumerate() {
+            if !matches!(cluster.kind, ClusterKind::Attempt) {
+                continue;
+            }
+            for node_id in &cluster.nodes {
+                let should_replace = nearest_attempt_boundary_cluster_index_by_display_id
+                    .get(node_id)
+                    .copied()
+                    .map(|current_index| cluster_info[current_index].depth < cluster.depth)
+                    .unwrap_or(true);
+                if should_replace {
+                    nearest_attempt_boundary_cluster_index_by_display_id.insert(*node_id, index);
+                }
+            }
+        }
+
         let runtime_by_display_id = node_map
             .iter()
             .map(|(display_id, node)| (*display_id, node.runtime_node_id))
@@ -3157,6 +3201,7 @@ impl GraphDerived {
             ),
             cluster_entry_runtime_ids,
             memberships,
+            nearest_attempt_boundary_cluster_index_by_display_id,
             max_node_id: nodes.iter().map(|node| node.id).max().unwrap_or(0),
             runtime_by_display_id,
             proxy_runtime_ids_by_display_id,
@@ -3526,7 +3571,7 @@ impl GraphBuilder {
                 self.cluster_labels.push(cluster_label.clone());
                 self.cluster_info.push(ClusterInfo {
                     id: cluster_id,
-                    kind: ClusterKind::Transparent,
+                    kind: ClusterKind::Attempt,
                     runtime_node_id: runtime_id,
                     label: cluster_label,
                     metadata: if metadata.trim().is_empty() {
@@ -3852,6 +3897,21 @@ fn compute_cluster_successor_runtime_ids(
     cluster_successors
 }
 
+fn cluster_is_strict_ancestor_of_cluster(
+    cluster_info: &[ClusterInfo],
+    ancestor_index: usize,
+    descendant_index: usize,
+) -> bool {
+    let mut current = cluster_info[descendant_index].parent;
+    while let Some(parent_index) = current {
+        if parent_index == ancestor_index {
+            return true;
+        }
+        current = cluster_info[parent_index].parent;
+    }
+    false
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct DefaultTheme {
     cluster_expansion: ClusterExpansionConfig,
@@ -4085,7 +4145,10 @@ impl DefaultThemeState {
     ) -> bool {
         if !matches!(
             cx.kind,
-            ClusterKind::While | ClusterKind::Join | ClusterKind::Transparent
+            ClusterKind::While
+                | ClusterKind::Join
+                | ClusterKind::Transparent
+                | ClusterKind::Attempt
         ) {
             return false;
         }
@@ -4475,6 +4538,14 @@ mod tests {
         node_by_label(model, label)
             .runtime_node_id
             .unwrap_or_else(|| panic!("missing runtime id for {label}"))
+    }
+
+    fn cluster_index_for_kind(model: &GraphModel, kind: ClusterKind) -> usize {
+        model
+            .cluster_info
+            .iter()
+            .position(|cluster| cluster.kind == kind)
+            .unwrap_or_else(|| panic!("missing cluster for kind {kind:?}"))
     }
 
     #[test]
@@ -5033,7 +5104,8 @@ mod tests {
         );
         let phase = cluster_phase_for_display(
             Some(&live),
-            &model.cluster_info[0],
+            &model,
+            0,
             &repaired,
             &runtime_sequence_floors_for_display(&model, &live),
             &runtime_activation_prefixes_for_display(&model, &live),
@@ -5047,6 +5119,142 @@ mod tests {
                 has_completed: false,
             })
         );
+    }
+
+    #[test]
+    fn attempt_cluster_contains_failure_without_turning_outer_clusters_red() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "OuterLoop",
+            metadata: "",
+            body: Box::new(JourneyAst::Join {
+                label: "OuterJoin",
+                metadata: "",
+                left: Box::new(JourneyAst::Attempt {
+                    label: "Attempt",
+                    metadata: "",
+                    body: Box::new(JourneyAst::Step { label: "FailStep" }),
+                }),
+                right: Box::new(JourneyAst::Step { label: "PassStep" }),
+            }),
+        });
+        let while_index = cluster_index_for_kind(&model, ClusterKind::While);
+        let join_index = cluster_index_for_kind(&model, ClusterKind::Join);
+        let attempt_index = cluster_index_for_kind(&model, ClusterKind::Attempt);
+        let fail_display_id = node_by_label(&model, "FailStep").id;
+        assert!(model.cluster_info[attempt_index]
+            .nodes
+            .contains(&fail_display_id));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[while_index].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[attempt_index].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: runtime_id_for(&model, "PassStep"),
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 4,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id_for(&model, "FailStep"),
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Failed,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 5,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[attempt_index].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Succeeded,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        let repaired = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&fail_display_id).copied(),
+            Some(RuntimeState::Failed)
+        );
+        let runtime_sequence_floors = runtime_sequence_floors_for_display(&model, &live);
+        let runtime_activation_prefixes = runtime_activation_prefixes_for_display(&model, &live);
+
+        let while_phase = cluster_phase_for_display(
+            Some(&live),
+            &model,
+            while_index,
+            &repaired,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
+        let join_phase = cluster_phase_for_display(
+            Some(&live),
+            &model,
+            join_index,
+            &repaired,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
+        let attempt_phase = cluster_phase_for_display(
+            Some(&live),
+            &model,
+            attempt_index,
+            &repaired,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
+
+        assert!(matches!(
+            while_phase,
+            Phase::Live(ClusterLive {
+                has_failed: false,
+                ..
+            })
+        ));
+        assert!(matches!(
+            join_phase,
+            Phase::Live(ClusterLive {
+                has_failed: false,
+                ..
+            })
+        ));
+        assert!(matches!(
+            attempt_phase,
+            Phase::Live(ClusterLive {
+                has_failed: true,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -5153,12 +5361,18 @@ mod tests {
         assert_eq!(join_cluster.label, "join: Join");
         assert_eq!(
             join_cluster.nodes,
-            vec![node_by_label(&model, "JoinL").id, node_by_label(&model, "JoinR").id]
+            vec![
+                node_by_label(&model, "JoinL").id,
+                node_by_label(&model, "JoinR").id
+            ]
         );
         assert_eq!(join_cluster.root_nodes, join_cluster.nodes);
         assert_eq!(
             join_cluster.root_runtime_ids,
-            vec![runtime_id_for(&model, "JoinL"), runtime_id_for(&model, "JoinR")]
+            vec![
+                runtime_id_for(&model, "JoinL"),
+                runtime_id_for(&model, "JoinR")
+            ]
         );
     }
 
