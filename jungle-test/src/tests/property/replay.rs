@@ -48,6 +48,20 @@ pub struct ReplayState {
     history: String,
 }
 
+pub struct ReplayColorIsTrue;
+
+impl Predicate<(&ReplayState, &())> for ReplayColorIsTrue {
+    fn eval((state, _): &(&ReplayState, &())) -> bool {
+        state.color
+    }
+}
+
+impl Predicate<(ReplayState, ())> for ReplayColorIsTrue {
+    fn eval((state, _): &(ReplayState, ())) -> bool {
+        state.color
+    }
+}
+
 trait ReplayTockRuntime {
     fn run_tock(&self) -> impl std::future::Future<Output = bool> + Send;
 }
