@@ -3170,6 +3170,7 @@ dependencies = [
  "image",
  "jungle-sdk",
  "jungle-vision",
+ "jungle-zoo",
  "postcard",
  "redb",
  "reqwest",

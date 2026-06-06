@@ -23,6 +23,7 @@ cron = ["dep:cron", "dep:chrono"]
 [dependencies]
 futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "fusion"] }
+jungle_zoo = { package = "jungle-zoo", path = "../jungle-zoo" }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
 rodio = { version = "0.20", optional = true }
@@ -61,6 +62,10 @@ required-features = ["viewer", "audio"]
 name = "cronfish"
 path = "examples/cronfish/mod.rs"
 required-features = ["cron"]
+
+[[example]]
+name = "backoff"
+path = "examples/backoff/mod.rs"
 
 [[example]]
 name = "lyrebird"

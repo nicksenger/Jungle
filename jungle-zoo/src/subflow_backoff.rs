@@ -1,11 +1,11 @@
 use crate::action_backoff::{ExponentialBackoffInput, ExponentialBackoffPolicy, FlattenEither};
 use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::time::Duration;
 
-#[derive(Optic)]
+#[derive(Optic, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExponentialBackoffFlowState<St, In, Out> {
     pub attempts: u32,
     pub current_delay_ms: u64,
