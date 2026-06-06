@@ -91,6 +91,7 @@ pub enum StepKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusterKind {
     While,
+    Join,
     Transparent,
 }
 
@@ -116,6 +117,7 @@ impl ClusterExpansionConfig {
     fn mode_for(self, kind: ClusterKind) -> ClusterExpansionMode {
         match kind {
             ClusterKind::While => self.while_clusters,
+            ClusterKind::Join => self.transparent_clusters,
             ClusterKind::Transparent => self.transparent_clusters,
         }
     }
@@ -3619,9 +3621,47 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let _ = (label, metadata);
+                let parent_cluster = self.cluster_stack.last().copied();
+                let cluster_index = self.clusters.len();
+                let cluster_id = self.cluster_next_id;
+                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
+                let depth = self.cluster_stack.len();
+                let cluster = Cluster::new(Vec::new()).padding(24.0);
+                let cluster = if let Some(parent) = parent_cluster {
+                    cluster.parent(parent)
+                } else {
+                    cluster
+                };
+                self.clusters.push(cluster);
+
+                let cluster_label = if metadata.trim().is_empty() {
+                    format!("join: {}", short_type_name_str(label))
+                } else {
+                    format!("join: {} :: {}", short_type_name_str(label), metadata)
+                };
+                self.cluster_labels.push(cluster_label.clone());
+                self.cluster_info.push(ClusterInfo {
+                    id: cluster_id,
+                    kind: ClusterKind::Join,
+                    runtime_node_id: runtime_id,
+                    label: cluster_label,
+                    metadata: if metadata.trim().is_empty() {
+                        None
+                    } else {
+                        Some((*metadata).to_string())
+                    },
+                    parent: parent_cluster,
+                    nodes: Vec::new(),
+                    root_nodes: Vec::new(),
+                    member_runtime_ids: Vec::new(),
+                    root_runtime_ids: Vec::new(),
+                    depth,
+                });
+
+                self.cluster_stack.push(cluster_index);
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
+                let _ = self.cluster_stack.pop();
                 let mut roots = left_flow.roots;
                 roots.extend(right_flow.roots.iter().copied());
                 roots = dedup(roots);
@@ -3639,6 +3679,14 @@ impl GraphBuilder {
                 member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
                 member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
                 member_runtime_ids = dedup(member_runtime_ids);
+                let cluster_nodes = dedup(members.clone());
+                if !cluster_nodes.is_empty() {
+                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
+                    self.cluster_info[cluster_index].nodes = cluster_nodes;
+                }
+                self.cluster_info[cluster_index].root_nodes = dedup(roots.clone());
+                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
+                self.cluster_info[cluster_index].root_runtime_ids = dedup(root_runtime_ids.clone());
                 for member_id in &exits {
                     self.mark(*member_id, |node| {
                         if !node.proxy_runtime_ids.contains(&runtime_id) {
@@ -4035,7 +4083,10 @@ impl DefaultThemeState {
         cx: &ClusterViewCtx<'_>,
         now: Instant,
     ) -> bool {
-        if !matches!(cx.kind, ClusterKind::While | ClusterKind::Transparent) {
+        if !matches!(
+            cx.kind,
+            ClusterKind::While | ClusterKind::Join | ClusterKind::Transparent
+        ) {
             return false;
         }
         if matches!(
@@ -5078,6 +5129,37 @@ mod tests {
             .copied()
             .unwrap_or_else(|| panic!("SelL should carry hidden select runtime"));
         assert_eq!(sel_r.proxy_runtime_ids, vec![select_runtime_id]);
+    }
+
+    #[test]
+    fn graph_model_renders_join_as_cluster() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "Start" },
+            JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "JoinL" }),
+                right: Box::new(JourneyAst::Step { label: "JoinR" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+
+        let join_cluster = model
+            .cluster_info
+            .iter()
+            .find(|cluster| matches!(cluster.kind, ClusterKind::Join))
+            .unwrap_or_else(|| panic!("expected join cluster to be emitted"));
+
+        assert_eq!(join_cluster.label, "join: Join");
+        assert_eq!(
+            join_cluster.nodes,
+            vec![node_by_label(&model, "JoinL").id, node_by_label(&model, "JoinR").id]
+        );
+        assert_eq!(join_cluster.root_nodes, join_cluster.nodes);
+        assert_eq!(
+            join_cluster.root_runtime_ids,
+            vec![runtime_id_for(&model, "JoinL"), runtime_id_for(&model, "JoinR")]
+        );
     }
 
     #[test]
