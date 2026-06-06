@@ -1,4 +1,4 @@
-use crate::{BackoffAnimal, BackoffAppearance};
+use crate::{ActionBackoffAppearance, BackoffAnimal, BackoffAppearance, SubflowBackoffAppearance};
 use iced::widget::{column, container, row, text};
 use iced::window;
 use iced::{window::Screenshot, Element, Font, Length, Subscription, Task};
@@ -33,7 +33,7 @@ pub fn run_ui<C>(
 where
     C: JungleClient + Clone + 'static,
 {
-    let title = "Backoff Demo - Always Failing Subflow";
+    let title = "Backoff Demo - Joined Backoff Loops";
     iced::application(
         move || BackoffUi::new(client.clone(), journey_id, image_dump.clone()),
         BackoffUi::update,
@@ -186,57 +186,30 @@ impl BackoffUi {
         let short_journey_id = &journey_id[..8];
 
         let mut body = column![
-            text("Subflow Backoff").size(28),
-            text("A contained subflow retries forever and intentionally fails every attempt.")
+            text("Joined Backoffs").size(28),
+            text("Left arm runs subflow backoff, right arm runs single-action backoff, and both loop forever under a Join.")
                 .size(14),
             text(format!("Journey {short_journey_id}")).size(16),
         ]
         .spacing(10);
 
         if let Some(snapshot) = self.snapshot.as_ref() {
-            body = body.push(text(format!("Attempts completed: {}", snapshot.attempts)).size(16));
-            body = body.push(text(format!("Next delay: {} ms", snapshot.next_delay_ms)).size(16));
             body = body.push(
                 text(format!(
-                    "Policy: start={} ms, multiplier={}, max={} ms",
-                    snapshot.policy.initial_delay_ms,
-                    snapshot.policy.multiplier,
-                    snapshot.policy.max_delay_ms
+                    "Pre-join stub steps completed: {}",
+                    snapshot.before_join_steps_completed
                 ))
                 .size(16),
             );
             body = body.push(
                 text(format!(
-                    "Inner subflows started: {}",
-                    snapshot.demo.started_subflows
+                    "Post-join stub steps completed: {}",
+                    snapshot.after_join_steps_completed
                 ))
                 .size(16),
             );
-            body = body.push(
-                text(format!(
-                    "Inner failures recorded: {}",
-                    snapshot.demo.failed_subflows
-                ))
-                .size(16),
-            );
-            body = body.push(
-                text(format!(
-                    "Last result: {}",
-                    snapshot.last_result.as_deref().unwrap_or("pending")
-                ))
-                .size(16),
-            );
-            body = body.push(
-                text(format!(
-                    "Last inner failure: {}",
-                    snapshot
-                        .demo
-                        .last_failure_message
-                        .as_deref()
-                        .unwrap_or("waiting for first failure")
-                ))
-                .size(16),
-            );
+            body = body.push(branch_panel("Subflow Backoff", &snapshot.subflow));
+            body = body.push(branch_panel("Single-Action Backoff", &snapshot.action));
         } else {
             body = body.push(text("Loading appearance snapshot").size(16));
         }
@@ -246,6 +219,74 @@ impl BackoffUi {
         }
 
         container(body.spacing(12)).into()
+    }
+}
+
+fn branch_panel<'a, Detail>(title: &'static str, detail: &Detail) -> Element<'a, Message>
+where
+    Detail: BackoffBranchSummary,
+{
+    let summary = detail.summary_lines();
+    let mut body = column![text(title).size(20)].spacing(8);
+    for line in summary {
+        body = body.push(text(line).size(16));
+    }
+    container(body).into()
+}
+
+trait BackoffBranchSummary {
+    fn summary_lines(&self) -> Vec<String>;
+}
+
+impl BackoffBranchSummary for SubflowBackoffAppearance {
+    fn summary_lines(&self) -> Vec<String> {
+        vec![
+            format!("Attempts completed: {}", self.attempts),
+            format!("Next delay: {} ms", self.next_delay_ms),
+            format!(
+                "Policy: start={} ms, multiplier={}, max={} ms",
+                self.policy.initial_delay_ms, self.policy.multiplier, self.policy.max_delay_ms
+            ),
+            format!("Attempts started: {}", self.metrics.started_attempts),
+            format!("Failures recorded: {}", self.metrics.failed_attempts),
+            format!(
+                "Last result: {}",
+                self.last_result.as_deref().unwrap_or("pending")
+            ),
+            format!(
+                "Last failure: {}",
+                self.metrics
+                    .last_failure_message
+                    .as_deref()
+                    .unwrap_or("waiting for first failure")
+            ),
+        ]
+    }
+}
+
+impl BackoffBranchSummary for ActionBackoffAppearance {
+    fn summary_lines(&self) -> Vec<String> {
+        vec![
+            format!("Attempts completed: {}", self.attempts),
+            format!("Next delay: {} ms", self.next_delay_ms),
+            format!(
+                "Policy: start={} ms, multiplier={}, max={} ms",
+                self.policy.initial_delay_ms, self.policy.multiplier, self.policy.max_delay_ms
+            ),
+            format!("Attempts started: {}", self.metrics.started_attempts),
+            format!("Failures recorded: {}", self.metrics.failed_attempts),
+            format!(
+                "Last result: {}",
+                self.last_result.as_deref().unwrap_or("pending")
+            ),
+            format!(
+                "Last failure: {}",
+                self.metrics
+                    .last_failure_message
+                    .as_deref()
+                    .unwrap_or("waiting for first failure")
+            ),
+        ]
     }
 }
 
