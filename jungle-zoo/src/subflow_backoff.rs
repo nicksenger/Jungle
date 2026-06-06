@@ -1,5 +1,8 @@
 use crate::action_backoff::BackoffSleepLogEffect;
-use crate::action_backoff::{ExponentialBackoffInput, ExponentialBackoffPolicy, FlattenEither};
+use crate::action_backoff::{
+    BackoffLogKind, BackoffSleepLog, ExponentialBackoffInput, ExponentialBackoffPolicy,
+    FlattenEither,
+};
 use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -161,8 +164,14 @@ impl<St, In, Out> Action for LogBackoffFlowSleep<St, In, Out> {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &ExponentialBackoffFlowState<St, In, Out>, _input: Self::Input) -> u64 {
-        state.current_delay_ms
+    fn emit(
+        state: &ExponentialBackoffFlowState<St, In, Out>,
+        _input: Self::Input,
+    ) -> BackoffSleepLog {
+        BackoffSleepLog {
+            kind: BackoffLogKind::Subflow,
+            delay_ms: state.current_delay_ms,
+        }
     }
 
     fn absorb(

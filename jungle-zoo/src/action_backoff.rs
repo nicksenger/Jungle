@@ -38,6 +38,27 @@ pub struct ExponentialBackoffPolicy {
     pub max_delay_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BackoffLogKind {
+    Action,
+    Subflow,
+}
+
+impl BackoffLogKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Action => "action",
+            Self::Subflow => "subflow",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackoffSleepLog {
+    pub kind: BackoffLogKind,
+    pub delay_ms: u64,
+}
+
 impl ExponentialBackoffPolicy {
     pub(crate) fn next_delay_ms(self, current_delay_ms: u64) -> u64 {
         if current_delay_ms == 0 {
@@ -121,15 +142,19 @@ where
 pub struct BackoffSleepLogEffect;
 #[jungle::effect(id = 930)]
 impl<J> Effect<J> for BackoffSleepLogEffect {
-    type In = u64;
+    type In = BackoffSleepLog;
     type Out = ();
     type Err = ();
 
     fn effect(
         _jungle: &J,
-        delay_ms: Self::In,
+        input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        warn!(delay_ms, "exponential backoff sleeping before retry");
+        warn!(
+            delay_ms = input.delay_ms,
+            "{} backoff sleeping before retry",
+            input.kind.as_str()
+        );
         std::future::ready(Ok(()))
     }
 }
@@ -261,8 +286,11 @@ where
     type Input = ();
     type Output = ();
 
-    fn emit(state: &ExponentialBackoffState<St, A>, _input: Self::Input) -> u64 {
-        state.current_delay_ms
+    fn emit(state: &ExponentialBackoffState<St, A>, _input: Self::Input) -> BackoffSleepLog {
+        BackoffSleepLog {
+            kind: BackoffLogKind::Action,
+            delay_ms: state.current_delay_ms,
+        }
     }
 
     fn absorb(
