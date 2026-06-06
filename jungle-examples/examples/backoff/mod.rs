@@ -3,14 +3,14 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, Server};
 use jungle_zoo::action_backoff::{
-    BackoffPending, BackoffShouldSleep, CloneBackoffInput, ExponentialBackoffInput,
-    ExponentialBackoffPolicy, ExponentialBackoffState, FlattenEither, InitializeBackoff,
-    RecordBackoffResult, SkipBackoffSleep, SleepBackoffBranch, TakeBackoffSuccess,
+    BackoffShouldSleep, CloneBackoffInput, ExponentialBackoffInput, ExponentialBackoffPolicy,
+    ExponentialBackoffState, FlattenEither, InitializeBackoff, RecordBackoffResult,
+    SkipBackoffSleep, SleepBackoffBranch,
 };
 use jungle_zoo::subflow_backoff::{
-    BackoffFlowPending, BackoffFlowShouldSleep, CloneBackoffFlowInput, ExponentialBackoffFlowState,
-    InitializeBackoffFlow, RecordBackoffFlowResult, SkipBackoffFlowSleep, SleepBackoffFlowBranch,
-    TakeBackoffFlowSuccess,
+    BackoffFlowShouldSleep, CloneBackoffFlowInput, ExponentialBackoffFlowState,
+    InitializeBackoffFlow, RecordBackoffFlowResult, SkipBackoffFlowSleep,
+    SleepBackoffFlowBranch,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -154,22 +154,18 @@ struct CountBeforeJoin;
 #[jungle::action]
 impl Action for CountBeforeJoin {
     type Effect = NoEffect;
-    type Input = ExponentialBackoffInput<()>;
-    type Output = ExponentialBackoffInput<()>;
-    type Carry = ExponentialBackoffInput<()>;
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &BackoffJourneyState, input: Self::Input) -> ((), ExponentialBackoffInput<()>) {
-        ((), input)
-    }
+    fn emit(_state: &BackoffJourneyState, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
         state: &mut BackoffJourneyState,
         output: EffectCompletion<Self::Effect>,
-        carry: ExponentialBackoffInput<()>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("pre-join stub step should complete"))?;
         state.before_join_steps_completed = state.before_join_steps_completed.saturating_add(1);
-        Ok(carry)
+        Ok(())
     }
 }
 
@@ -264,22 +260,22 @@ impl Action for AlwaysFailingAction {
     type Input = ();
     type Output = Result<(), Failure>;
 
-    fn emit(_state: &ActionBranchMetrics, _input: Self::Input) -> Duration {
+    fn emit(_state: &ActionBackoffState, _input: Self::Input) -> Duration {
         Duration::from_millis(INNER_ATTEMPT_SLEEP_MS)
     }
 
     fn absorb(
-        state: &mut ActionBranchMetrics,
+        state: &mut ActionBackoffState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(|err| Failure::Message(err.message))?;
-        state.started_attempts = state.started_attempts.saturating_add(1);
-        state.failed_attempts = state.failed_attempts.saturating_add(1);
+        state.st.started_attempts = state.st.started_attempts.saturating_add(1);
+        state.st.failed_attempts = state.st.failed_attempts.saturating_add(1);
         let message = format!(
             "single-action attempt {} failed on purpose",
-            state.started_attempts
+            state.st.started_attempts
         );
-        state.last_failure_message = Some(message.clone());
+        state.st.last_failure_message = Some(message.clone());
         Ok(Err(Failure::from(message)))
     }
 }
@@ -305,6 +301,13 @@ impl Action for FlattenJoinedUnits {
     }
 }
 
+struct BackoffJourneyLoopForever;
+impl Predicate<(&BackoffJourneyState, &())> for BackoffJourneyLoopForever {
+    fn eval((_state, _): &(&BackoffJourneyState, &())) -> bool {
+        true
+    }
+}
+
 #[derive(Flow)]
 struct AlwaysFailingSubflow(
     Step<MarkSubflowAttemptStarted>,
@@ -313,8 +316,7 @@ struct AlwaysFailingSubflow(
 );
 
 #[derive(Flow)]
-#[jungle(focus = SubflowBackoffState)]
-struct ScopedSubflowBackoffBody(
+struct SubflowBackoffTick(
     Step<CloneBackoffFlowInput<SubflowBranchMetrics, (), ()>>,
     Attempt<Scoped<SubflowBranchMetrics, AlwaysFailingSubflow>>,
     Step<RecordBackoffFlowResult<SubflowBranchMetrics, (), ()>>,
@@ -327,21 +329,9 @@ struct ScopedSubflowBackoffBody(
 );
 
 #[derive(Flow)]
-#[jungle(focus = SubflowBackoffState)]
-struct SubflowBackoffBranch(
-    Step<InitializeBackoffFlow<SubflowBranchMetrics, (), ()>>,
-    While<
-        FocusedLoopCondition<BackoffFlowPending<SubflowBranchMetrics, (), ()>, SubflowBackoffState>,
-        ScopedSubflowBackoffBody,
-    >,
-    Step<TakeBackoffFlowSuccess<SubflowBranchMetrics, (), ()>>,
-);
-
-#[derive(Flow)]
-#[jungle(focus = ActionBackoffState)]
-struct ScopedActionBackoffBody(
+struct ActionBackoffTick(
     Step<CloneBackoffInput<ActionBranchMetrics, AlwaysFailingAction>>,
-    Scoped<ActionBranchMetrics, Step<AlwaysFailingAction>>,
+    Step<AlwaysFailingAction>,
     Step<RecordBackoffResult<ActionBranchMetrics, AlwaysFailingAction>>,
     Conditional<
         FocusedCondition<
@@ -355,27 +345,32 @@ struct ScopedActionBackoffBody(
 );
 
 #[derive(Flow)]
-#[jungle(focus = ActionBackoffState)]
-struct ActionBackoffBranch(
-    Step<InitializeBackoff<ActionBranchMetrics, AlwaysFailingAction>>,
-    While<
-        FocusedLoopCondition<
-            BackoffPending<ActionBranchMetrics, AlwaysFailingAction>,
-            ActionBackoffState,
-        >,
-        ScopedActionBackoffBody,
+struct BackoffJourneyIteration(
+    Step<CountBeforeJoin>,
+    Step<CountBeforeJoin>,
+    Join<
+        Scoped<SubflowBackoffState, SubflowBackoffTick>,
+        Scoped<ActionBackoffState, ActionBackoffTick>,
     >,
-    Step<TakeBackoffSuccess<ActionBranchMetrics, AlwaysFailingAction>>,
+    Step<FlattenJoinedUnits>,
+    Step<CountAfterJoin>,
+    Step<CountAfterJoin>,
 );
 
 #[derive(Flow)]
 struct BackoffJourney(
-    Step<CountBeforeJoin>,
-    Step<CountBeforeJoin>,
-    Join<SubflowBackoffBranch, ActionBackoffBranch>,
+    Join<
+        Scoped<
+            SubflowBackoffState,
+            Step<InitializeBackoffFlow<SubflowBranchMetrics, (), ()>>,
+        >,
+        Scoped<
+            ActionBackoffState,
+            Step<InitializeBackoff<ActionBranchMetrics, AlwaysFailingAction>>,
+        >,
+    >,
     Step<FlattenJoinedUnits>,
-    Step<CountAfterJoin>,
-    Step<CountAfterJoin>,
+    While<BackoffJourneyLoopForever, BackoffJourneyIteration>,
 );
 
 struct BackoffAnimal;
@@ -519,6 +514,8 @@ fn init_tracing() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jungle_zoo::action_backoff::{BackoffLogKind, BackoffSleepLog};
+    use tokio::time::{Duration, Instant};
 
     #[test]
     fn parses_non_negative_img_dump_time_secs() {
@@ -529,5 +526,69 @@ mod tests {
     #[test]
     fn rejects_negative_img_dump_time_secs() {
         assert!(parse_img_dump_time_secs("-1").is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn focused_join_runs_both_backoff_arms() {
+        let namespace = format!("{}-{}", BackoffZoo::NAME, Uuid::new_v4());
+        let client = FusedClient::builder()
+            .namespace(namespace)
+            .build()
+            .await
+            .expect("local client should build");
+        let worker = JungleWorker::new(BackoffZoo, client.clone());
+        let worker_handle = tokio::spawn(async move {
+            let _ = worker.spawn().await;
+        });
+
+        let seed = ExponentialBackoffInput {
+            action_input: (),
+            policy: ExponentialBackoffPolicy {
+                initial_delay_ms: INITIAL_DELAY_MS,
+                multiplier: DELAY_MULTIPLIER,
+                max_delay_ms: MAX_DELAY_MS,
+            },
+        };
+
+        let journey_id = client
+            .spawn::<BackoffAnimal>(&seed)
+            .await
+            .expect("backoff journey should start")
+            .journey_id;
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut saw_subflow_sleep = false;
+        let mut saw_action_sleep = false;
+        while Instant::now() < deadline {
+            for event in client
+                .journey_history(journey_id)
+                .await
+                .expect("journey_history should succeed while the demo is running")
+            {
+                let RunnerOut::EffectInput { data, .. } = event else {
+                    continue;
+                };
+                let Ok(log) = postcard::from_bytes::<BackoffSleepLog>(&data) else {
+                    continue;
+                };
+                match log.kind {
+                    BackoffLogKind::Subflow => saw_subflow_sleep = true,
+                    BackoffLogKind::Action => saw_action_sleep = true,
+                }
+            }
+            if saw_subflow_sleep && saw_action_sleep {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        worker_handle.abort();
+
+        assert!(
+            saw_subflow_sleep,
+            "expected subflow backoff arm activity"
+        );
+        assert!(
+            saw_action_sleep,
+            "expected single-action backoff arm activity"
+        );
     }
 }

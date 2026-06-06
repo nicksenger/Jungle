@@ -33,7 +33,7 @@ pub fn run_ui<C>(
 where
     C: JungleClient + Clone + 'static,
 {
-    let title = "Backoff Demo - Joined Backoff Loops";
+    let title = "Backoff Demo - Focused Joined Backoffs";
     iced::application(
         move || BackoffUi::new(client.clone(), journey_id, image_dump.clone()),
         BackoffUi::update,
@@ -187,7 +187,7 @@ impl BackoffUi {
 
         let mut body = column![
             text("Joined Backoffs").size(28),
-            text("Left arm runs subflow backoff, right arm runs single-action backoff, and both loop forever under a Join.")
+            text("Each loop iteration initializes both backoff states once, then runs a focused Join with one subflow-backoff tick on the left and one single-action backoff tick on the right.")
                 .size(14),
             text(format!("Journey {short_journey_id}")).size(16),
         ]
