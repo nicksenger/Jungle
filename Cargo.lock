@@ -3337,6 +3337,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle-zoo"
+version = "0.1.0"
+dependencies = [
+ "jungle-sdk",
+ "serde",
+]
+
+[[package]]
 name = "kamadak-exif"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -361,10 +361,12 @@ pub struct ExponentialBackoffFlow<
     Step<TakeBackoffSuccess<St, Act>>,
 );
 
-pub type ExponentialBackoff<St, Act> = ExponentialBackoffFlow<
+pub type ActionBackoff<St, Act> = ExponentialBackoffFlow<
     St,
     <Act as Action>::Input,
     <Act as BackoffAction>::Success,
     <Act as BackoffAction>::Error,
     Act,
 >;
+
+pub type ExponentialBackoff<St, Act> = ActionBackoff<St, Act>;

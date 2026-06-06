@@ -1,4 +1,4 @@
-use crate::backoff::{ExponentialBackoffInput, ExponentialBackoffPolicy, FlattenEither};
+use crate::action_backoff::{ExponentialBackoffInput, ExponentialBackoffPolicy, FlattenEither};
 use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -246,3 +246,5 @@ pub struct ExponentialBackoffFlow<
     While<BackoffFlowPending<St, In, Out>, ExponentialBackoffFlowBody<St, In, Out, F>>,
     Step<TakeBackoffFlowSuccess<St, In, Out>>,
 );
+
+pub type SubflowBackoff<St, In, Out, F> = ExponentialBackoffFlow<St, In, Out, F>;
