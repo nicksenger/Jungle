@@ -189,11 +189,19 @@ pub struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
 
 pub struct Depth1;
 
-#[jungle::animal(id = 1002, generation = 0)]
+#[jungle::animal(observe, id = 1002, generation = 0)]
 impl Animal for Depth1 {
     type State = ReplayState;
     type Seed = ReplayState;
     type Flow = Depth1Flow;
+}
+
+impl Observe for Depth1 {
+    type Appearance = String;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        state.history.clone()
+    }
 }
 
 #[derive(Animals)]
