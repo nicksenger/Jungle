@@ -203,6 +203,12 @@ pub struct Depth1InnerBody(
 );
 
 #[derive(Flow)]
+pub struct Depth1TailLeftBranch(Step<Label<'A'>>);
+
+#[derive(Flow)]
+pub struct Depth1TailRightBranch(Step<Label<'B'>>);
+
+#[derive(Flow)]
 pub struct Depth1OuterBody(
     Step<Label<'O'>>,
     Step<Tick>,
@@ -211,6 +217,8 @@ pub struct Depth1OuterBody(
     While<ReplayColorIsTrue, Depth1InnerBody>,
     Step<Tick>,
     Step<Tick>,
+    Conditional<ReplayColorIsTrue, Depth1TailLeftBranch, Depth1TailRightBranch>,
+    Step<FlattenReplayChoice>,
 );
 
 #[derive(Flow)]
