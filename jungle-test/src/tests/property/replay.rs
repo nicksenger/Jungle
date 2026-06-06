@@ -368,6 +368,10 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
     let replayed_history =
         wait_for_depth1_history_change(&client, journey_id, &killed_worker_history).await;
 
+    eprintln!(
+        "depth1 replay case: old={killed_worker_history:?} new={replayed_history:?}"
+    );
+
     assert!(
         replayed_history.starts_with(&killed_worker_history),
         "killed worker history should be a prefix of replayed worker history: old={killed_worker_history:?} new={replayed_history:?}"

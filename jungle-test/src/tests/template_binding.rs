@@ -2880,8 +2880,7 @@ impl From<ConditionalJoinMergeState> for () {
     fn from(_value: ConditionalJoinMergeState) -> Self {}
 }
 
-#[tokio::test]
-async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
+async fn run_conditional_join_merge_case(marker: i32) -> ConditionalJoinMergeState {
     let client = jungle_sdk::FusedClient::builder()
         .namespace("conditional-join-merge-local-client-zoo")
         .build()
@@ -2895,7 +2894,7 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
 
     let journey_id = client
         .spawn::<ConditionalJoinMergeAnimal>(&ConditionalJoinMergeState {
-            marker: 1,
+            marker,
             ..ConditionalJoinMergeState::default()
         })
         .await
@@ -2909,15 +2908,22 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
         .await
         .expect("appearance request should succeed")
         .expect("appearance should exist");
-    let appearance: ConditionalJoinMergeState =
+    let appearance =
         postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+
+    appearance
+}
+
+#[tokio::test]
+async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
+    let appearance = run_conditional_join_merge_case(1).await;
 
     assert_eq!(appearance.left_join_hits + appearance.right_join_hits, 2);
     assert_eq!(appearance.join_merge_hits, 1);
     assert_eq!(appearance.terminal_merge_hits, 1);
-
-    worker_handle.abort();
-    let _ = worker_handle.await;
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

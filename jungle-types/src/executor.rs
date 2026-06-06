@@ -1043,6 +1043,7 @@ where
     choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     active_branch: Option<ActiveBranch>,
     cursor: usize,
+    deferred_emitted: Option<Serialized>,
 }
 
 impl<State, In> ConditionalErasedFlow<State, In>
@@ -1062,6 +1063,7 @@ where
             choose_left,
             active_branch: None,
             cursor: 0,
+            deferred_emitted: None,
         }
     }
 
@@ -1095,12 +1097,12 @@ where
         &mut self,
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.active_branch.is_some() && self.cursor >= self.branch_len() {
+            self.lifecycle.succeed();
+            return Ok((state, self.deferred_emitted.take(), true));
+        }
         if self.active_branch.is_none() {
             return Ok((state, None, false));
-        }
-        if self.cursor >= self.branch_len() {
-            self.lifecycle.succeed();
-            return Ok((state, None, true));
         }
 
         let parent_path = self
@@ -1134,6 +1136,7 @@ where
                 .active_branch
                 .expect("active branch is present while conditional is executing");
             let emitted = emitted.map(|bytes| encode_conditional_emitted(active_branch, bytes));
+            self.deferred_emitted = emitted.clone();
             self.lifecycle.succeed();
             return Ok((state, emitted, true));
         }
@@ -1234,8 +1237,10 @@ where
             let active_branch = self
                 .active_branch
                 .expect("active branch is present while conditional is executing");
+            let emitted = encode_conditional_emitted(active_branch, emitted);
+            self.deferred_emitted = Some(emitted.clone());
             self.lifecycle.succeed();
-            return Ok((state, encode_conditional_emitted(active_branch, emitted)));
+            return Ok((state, emitted));
         }
         Ok((state, emitted))
     }
@@ -4961,6 +4966,7 @@ where
     choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     active_branch: Option<ActiveContextBranch>,
     cursor: usize,
+    deferred_emitted: Option<Serialized>,
 }
 
 impl<State, In> ConditionalContextErasedFlow<State, In>
@@ -4980,6 +4986,7 @@ where
             choose_left,
             active_branch: None,
             cursor: 0,
+            deferred_emitted: None,
         }
     }
 
@@ -5013,12 +5020,12 @@ where
         &mut self,
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.active_branch.is_some() && self.cursor >= self.branch_len() {
+            self.lifecycle.succeed();
+            return Ok((state, self.deferred_emitted.take(), true));
+        }
         if self.active_branch.is_none() {
             return Ok((state, None, false));
-        }
-        if self.cursor >= self.branch_len() {
-            self.lifecycle.succeed();
-            return Ok((state, None, true));
         }
 
         let parent_path = self
@@ -5053,6 +5060,7 @@ where
                 .expect("active branch is present while conditional is executing");
             let emitted =
                 emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
+            self.deferred_emitted = emitted.clone();
             self.lifecycle.succeed();
             return Ok((state, emitted, true));
         }
@@ -5153,11 +5161,10 @@ where
             let active_branch = self
                 .active_branch
                 .expect("active branch is present while conditional is executing");
+            let emitted = encode_conditional_context_emitted(active_branch, emitted);
+            self.deferred_emitted = Some(emitted.clone());
             self.lifecycle.succeed();
-            return Ok((
-                state,
-                encode_conditional_context_emitted(active_branch, emitted),
-            ));
+            return Ok((state, emitted));
         }
         Ok((state, emitted))
     }
