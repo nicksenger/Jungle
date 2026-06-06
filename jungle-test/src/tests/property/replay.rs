@@ -153,6 +153,30 @@ impl<const CH: char> Action for Label<CH> {
     }
 }
 
+pub struct MaybeFail;
+
+#[jungle::action]
+impl Action for MaybeFail {
+    type Effect = NoEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = {
+            output.map_err(|_err| Failure::from("maybe fail should complete without effect"))?;
+            if !state.color {
+                return Err(Failure::from("maybe fail should fail when replay color is false"));
+            }
+        };
+        Ok(__absorb_out_3)
+    }
+}
+
 pub struct FlattenReplayChoice;
 
 #[jungle::action]
@@ -171,13 +195,13 @@ impl Action for FlattenReplayChoice {
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = {
+        let __absorb_out_4 = {
             output.map_err(|_err| Failure::from("flatten replay choice should succeed"))?;
             match carry {
                 Either::Left(()) | Either::Right(()) => (),
             }
         };
-        Ok(__absorb_out_3)
+        Ok(__absorb_out_4)
     }
 }
 
@@ -222,7 +246,7 @@ pub struct Depth1OuterBody(
 );
 
 #[derive(Flow)]
-pub struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
+pub struct Depth1Flow(While<ReplayAlwaysTrue, Attempt<Depth1OuterBody>>);
 
 pub struct Depth1;
 
