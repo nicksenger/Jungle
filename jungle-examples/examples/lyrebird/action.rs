@@ -104,28 +104,6 @@ impl<In, Out> LyrebirdPromptFocus
     }
 }
 
-fn summarize_prompt_request_failures(
-    responses: &[crate::effect::PromptCandidateResponse],
-) -> Option<String> {
-    let mut retry_reasons = Vec::new();
-    for response in responses {
-        if let Some(retry_reason) = response.retry_reason.as_ref() {
-            if !retry_reasons
-                .iter()
-                .any(|existing: &String| existing == retry_reason)
-            {
-                retry_reasons.push(retry_reason.clone());
-            }
-        }
-    }
-
-    if retry_reasons.is_empty() {
-        None
-    } else {
-        Some(retry_reasons.join("\n\n"))
-    }
-}
-
 pub type LyrebirdPromptPhaseJoinOutput = ((((), ()), ((), ())), ((), ()));
 
 pub struct FlattenLyrebirdPromptPhase<S>(PhantomData<S>);
@@ -633,43 +611,6 @@ where
             state.prompt_backoff_state().last_result.as_ref(),
             Some(Err(_))
         )
-    }
-}
-
-pub struct EnsurePromptRequestSucceededFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
-#[jungle::action]
-impl<Marker, Focus> Action for EnsurePromptRequestSucceededFocused<Marker, Focus>
-where
-    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        let instrument_state = state.instrument_state_mut();
-        if instrument_state
-            .pending_prompt_candidates
-            .iter()
-            .any(|response| response.tool_calls.is_some())
-        {
-            return Ok(());
-        }
-
-        instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
-        let failure_reason =
-            summarize_prompt_request_failures(&instrument_state.pending_prompt_candidates)
-                .unwrap_or_else(|| {
-                    "prompt request returned no successful OpenAI responses".to_owned()
-                });
-        instrument_state.last_retry_reason = Some(failure_reason.clone());
-        Err(Failure::from(failure_reason))
     }
 }
 

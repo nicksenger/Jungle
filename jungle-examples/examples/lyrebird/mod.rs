@@ -26,9 +26,8 @@ mod ui;
 
 use crate::action::{
     BeginIteration, BeginPromptRequestAttemptFocused, BuildOptimizationPromptFocused,
-    CompareIterationCandidateMels, EmitPromptRequestBackoffInputFocused,
-    EnsurePromptRequestSucceededFocused, FlattenEither, FlattenLyrebirdPromptPhase,
-    GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
+    CompareIterationCandidateMels, EmitPromptRequestBackoffInputFocused, FlattenEither,
+    FlattenLyrebirdPromptPhase, GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
     InitializePromptRequestBackoffFocused, InstrumentEnabled, InstrumentEnabledFocused,
     LogIterationTiming, LyrebirdLoopForever, PreparePromptCandidatesFocused,
     PromptRequestBackoffPendingFocused, PromptRequestBackoffShouldSleepFocused,
@@ -825,7 +824,6 @@ macro_rules! lyrebird_prompt_flow {
             Step<BeginPromptRequestAttemptFocused<$marker, $focus>>,
             Step<BuildOptimizationPromptFocused<$marker, $focus>>,
             Step<RequestPromptCandidatesFocused<$marker, $focus>>,
-            Step<EnsurePromptRequestSucceededFocused<$marker, $focus>>,
         );
 
         #[derive(Flow)]
