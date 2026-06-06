@@ -241,7 +241,7 @@ const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
 const REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_APPEARANCE_TIMEOUT: Duration = Duration::from_secs(10);
-const REPLAY_TEST_RESUME_TICKS_TO_NEXT_LABEL: usize = 6;
+const REPLAY_TEST_RESUME_SEND_INTERVAL: Duration = Duration::from_millis(10);
 
 fn replay_rainforest(
     query: Vec<bool>,
@@ -356,11 +356,14 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
     .await
     .expect("replayed depth1 end signal should arrive before timeout");
 
-    for _ in 0..REPLAY_TEST_RESUME_TICKS_TO_NEXT_LABEL {
-        worker_two_resume_tx
-            .unbounded_send(true)
-            .expect("replayed depth1 receiver should accept replay bools");
-    }
+    let replay_sender = tokio::spawn(async move {
+        loop {
+            if worker_two_resume_tx.unbounded_send(true).is_err() {
+                break;
+            }
+            tokio::time::sleep(REPLAY_TEST_RESUME_SEND_INTERVAL).await;
+        }
+    });
 
     let replayed_history =
         wait_for_depth1_history_change(&client, journey_id, &killed_worker_history).await;
@@ -372,6 +375,7 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
 
     worker_two.abort();
     let _ = worker_two.await;
+    let _ = replay_sender.await;
 }
 
 proptest! {
