@@ -123,10 +123,8 @@ impl Action for Tick {
             let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
             if tocked {
                 state.color = true;
-                state.history.push('1');
             } else {
                 state.color = false;
-                state.history.push('0');
             }
         };
         Ok(__absorb_out_1)
@@ -197,6 +195,7 @@ pub struct Depth1RightBranch(
 
 #[derive(Flow)]
 pub struct Depth1InnerBody(
+    Step<Label<'I'>>,
     Step<Tick>,
     Step<Tick>,
     Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
@@ -205,6 +204,7 @@ pub struct Depth1InnerBody(
 
 #[derive(Flow)]
 pub struct Depth1OuterBody(
+    Step<Label<'O'>>,
     Step<Tick>,
     Step<Tick>,
     Step<Tick>,
@@ -241,6 +241,7 @@ const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
 const REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_APPEARANCE_TIMEOUT: Duration = Duration::from_secs(10);
+const REPLAY_TEST_RESUME_TICKS_TO_NEXT_LABEL: usize = 6;
 
 fn replay_rainforest(
     query: Vec<bool>,
@@ -355,9 +356,11 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
     .await
     .expect("replayed depth1 end signal should arrive before timeout");
 
-    worker_two_resume_tx
-        .unbounded_send(true)
-        .expect("replayed depth1 receiver should accept one bool");
+    for _ in 0..REPLAY_TEST_RESUME_TICKS_TO_NEXT_LABEL {
+        worker_two_resume_tx
+            .unbounded_send(true)
+            .expect("replayed depth1 receiver should accept replay bools");
+    }
 
     let replayed_history =
         wait_for_depth1_history_change(&client, journey_id, &killed_worker_history).await;
