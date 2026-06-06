@@ -986,15 +986,18 @@ async fn request_prompt_model_candidate(
             tool_call_count = tool_calls.len(),
             "received prompt model response"
         ),
-        Err(error) => info!(
-            iteration_id = %input.iteration_id,
-            instrument = input.instrument.slug(),
-            prompt_attempt = input.prompt_attempt,
-            candidate_index = input.candidate_index,
-            prompt_elapsed_ms,
-            error,
-            "prompt model request failed"
-        ),
+        Err(error) => {
+            info!(
+                iteration_id = %input.iteration_id,
+                instrument = input.instrument.slug(),
+                prompt_attempt = input.prompt_attempt,
+                candidate_index = input.candidate_index,
+                prompt_elapsed_ms,
+                error,
+                "prompt model request failed"
+            );
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
     }
     response
 }
