@@ -233,6 +233,48 @@ impl Observe for Depth1 {
     }
 }
 
+#[derive(Flow)]
+struct ConditionalProbeLeft(Step<Label<'L'>>, Step<Tick>);
+
+#[derive(Flow)]
+struct ConditionalProbeRight(Step<Label<'R'>>, Step<Tick>);
+
+#[derive(Flow)]
+struct ConditionalProbeFlow(
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+    Conditional<ReplayColorIsTrue, ConditionalProbeLeft, ConditionalProbeRight>,
+);
+
+struct ConditionalProbe;
+
+#[jungle::animal(id = 1003, generation = 0)]
+impl Animal for ConditionalProbe {
+    type State = ReplayState;
+    type Seed = ReplayState;
+    type Flow = ConditionalProbeFlow;
+}
+
+#[derive(Flow)]
+struct ConditionalCompleteProbeFlow(
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+    Conditional<ReplayColorIsTrue, Step<Label<'L'>>, Step<Label<'R'>>>,
+    Step<FlattenReplayChoice>,
+    Step<Tick>,
+);
+
+struct ConditionalCompleteProbe;
+
+#[jungle::animal(id = 1004, generation = 0)]
+impl Animal for ConditionalCompleteProbe {
+    type State = ReplayState;
+    type Seed = ReplayState;
+    type Flow = ConditionalCompleteProbeFlow;
+}
+
 #[derive(Animals)]
 pub struct ReplayRainforestAnimals(Depth1);
 
@@ -398,4 +440,81 @@ proptest! {
             .expect("tokio runtime should build for property test");
         runtime.block_on(assert_replayed_depth1_history_extends_prefix(query));
     }
+}
+
+#[tokio::test]
+async fn depth1_fixed_trace_applies_right_branch_label_before_next_effect_request() {
+    let (end_tx, _end_rx) = futures::channel::mpsc::unbounded::<()>();
+    let (_resume_tx, resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let jungle = replay_rainforest(vec![false, false, true, false, false], end_tx, resume_rx);
+    let mut executor =
+        ContextExecutor::<ReplayRainforest, Depth1>::new(Arc::new(jungle), ReplayState::default());
+
+    for _ in 0..5 {
+        let _ = executor
+            .next_and_complete_with(())
+            .await
+            .expect("fixed replay step should complete");
+    }
+
+    let request = executor
+        .next_executable_request(())
+        .expect("fixed replay should reach the next executable request");
+
+    assert_eq!(executor.state().history, "OIR");
+    assert_eq!(
+        request.effect_type(),
+        std::any::type_name::<Tock>(),
+        "right branch label should be absorbed before the next Tick request"
+    );
+}
+
+#[tokio::test]
+async fn conditional_probe_applies_right_branch_label_before_next_effect_request() {
+    let (end_tx, _end_rx) = futures::channel::mpsc::unbounded::<()>();
+    let (_resume_tx, resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let jungle = replay_rainforest(vec![false, false, false], end_tx, resume_rx);
+    let mut executor = ContextExecutor::<ReplayRainforest, ConditionalProbe>::new(
+        Arc::new(jungle),
+        ReplayState::default(),
+    );
+
+    for _ in 0..3 {
+        let _ = executor
+            .next_and_complete_with(())
+            .await
+            .expect("probe ticks should complete");
+    }
+
+    let request = executor
+        .next_executable_request(())
+        .expect("probe should reach the next executable request");
+
+    assert_eq!(executor.state().history, "R");
+    assert_eq!(request.effect_type(), std::any::type_name::<Tock>());
+}
+
+#[tokio::test]
+async fn conditional_probe_wraps_completed_right_branch_output_before_following_step() {
+    let (end_tx, _end_rx) = futures::channel::mpsc::unbounded::<()>();
+    let (_resume_tx, resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let jungle = replay_rainforest(vec![false, false, false, true], end_tx, resume_rx);
+    let mut executor = ContextExecutor::<ReplayRainforest, ConditionalCompleteProbe>::new(
+        Arc::new(jungle),
+        ReplayState::default(),
+    );
+
+    for _ in 0..3 {
+        let _ = executor
+            .next_and_complete_with(())
+            .await
+            .expect("probe ticks should complete");
+    }
+
+    let request = executor
+        .next_executable_request(())
+        .expect("completed conditional branch should feed the next Tick");
+
+    assert_eq!(executor.state().history, "R");
+    assert_eq!(request.effect_type(), std::any::type_name::<Tock>());
 }

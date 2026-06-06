@@ -1089,7 +1089,7 @@ where
     }
 }
 
-impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
+impl<State: Clone, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
@@ -1181,25 +1181,60 @@ where
             Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
         };
 
-        if self.cursor >= self.branch_len() {
-            return Err((state, ExecutorError::Complete));
-        }
-
-        let parent_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        let node = self
-            .active_node_mut()
-            .expect("cursor was checked against active branch length");
-        node.set_parent_activation_path(&parent_path);
-        match node.request(state, branch_input) {
-            Err((state, ExecutorError::ActionFailure(failure))) => {
-                self.lifecycle.fail();
-                Err((state, ExecutorError::ActionFailure(failure)))
+        let mut state = state;
+        let mut branch_input = branch_input;
+        loop {
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
             }
-            other => other,
+
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
+            match node.request(state, branch_input.clone()) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    let (next_state, emitted, completed) =
+                        match node.try_complete_without_progress(next_state.clone()) {
+                            Ok(result) => result,
+                            Err(ExecutorError::ActionFailure(failure)) => {
+                                self.lifecycle.fail();
+                                return Err((next_state, ExecutorError::ActionFailure(failure)));
+                            }
+                            Err(err) => return Err((next_state, err)),
+                        };
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        branch_input = emitted;
+                    }
+                    if completed {
+                        self.cursor += 1;
+                        if self.cursor >= self.branch_len() {
+                            let active_branch = self
+                                .active_branch
+                                .expect("active branch is present while conditional is executing");
+                            let emitted =
+                                encode_conditional_emitted(active_branch, branch_input.clone());
+                            self.deferred_emitted = Some(emitted);
+                            self.lifecycle.succeed();
+                            return Err((state, ExecutorError::Complete));
+                        }
+                        continue;
+                    }
+                    return Err((state, ExecutorError::Complete));
+                }
+                Err((state, ExecutorError::ActionFailure(failure))) => {
+                    self.lifecycle.fail();
+                    return Err((state, ExecutorError::ActionFailure(failure)));
+                }
+                Err((state, err)) => return Err((state, err)),
+            }
         }
     }
 
@@ -1286,25 +1321,60 @@ where
             Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
         };
 
-        if self.cursor >= self.branch_len() {
-            return Err((state, ExecutorError::Complete));
-        }
-
-        let parent_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        let node = self
-            .active_node_mut()
-            .expect("cursor was checked against active branch length");
-        node.set_parent_activation_path(&parent_path);
-        match node.request_executable(state, branch_input) {
-            Err((state, ExecutorError::ActionFailure(failure))) => {
-                self.lifecycle.fail();
-                Err((state, ExecutorError::ActionFailure(failure)))
+        let mut state = state;
+        let mut branch_input = branch_input;
+        loop {
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
             }
-            other => other,
+
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
+            match node.request_executable(state, branch_input.clone()) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    let (next_state, emitted, completed) =
+                        match node.try_complete_without_progress(next_state.clone()) {
+                            Ok(result) => result,
+                            Err(ExecutorError::ActionFailure(failure)) => {
+                                self.lifecycle.fail();
+                                return Err((next_state, ExecutorError::ActionFailure(failure)));
+                            }
+                            Err(err) => return Err((next_state, err)),
+                        };
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        branch_input = emitted;
+                    }
+                    if completed {
+                        self.cursor += 1;
+                        if self.cursor >= self.branch_len() {
+                            let active_branch = self
+                                .active_branch
+                                .expect("active branch is present while conditional is executing");
+                            let emitted =
+                                encode_conditional_emitted(active_branch, branch_input.clone());
+                            self.deferred_emitted = Some(emitted);
+                            self.lifecycle.succeed();
+                            return Err((state, ExecutorError::Complete));
+                        }
+                        continue;
+                    }
+                    return Err((state, ExecutorError::Complete));
+                }
+                Err((state, ExecutorError::ActionFailure(failure))) => {
+                    self.lifecycle.fail();
+                    return Err((state, ExecutorError::ActionFailure(failure)));
+                }
+                Err((state, err)) => return Err((state, err)),
+            }
         }
     }
 
@@ -3971,43 +4041,41 @@ where
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let mut state = state;
-        let body_input = input;
+        let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
-            let control_input = self
-                .active_control_input
-                .get_or_insert_with(|| body_input.clone())
-                .clone();
-            let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&control_input, |carry| {
-                    (self.should_continue)(&state, carry)
-                }) {
-                    Ok(pair) => pair,
-                    Err(err) => return Err((state, err)),
-                };
-            if !should_continue {
-                self.complete = true;
-                self.deferred_state = Some(state);
-                self.active_control_input = None;
-                self.lifecycle.succeed();
-                let state = self
-                    .deferred_state
-                    .take()
-                    .expect("deferred state was just set");
-                return Err((state, ExecutorError::Complete));
-            }
-            let branch_input = if self.active_body.is_empty() {
-                match postcard::to_allocvec(&branch_input) {
+            if self.active_body.is_empty() {
+                let control_input = self
+                    .active_control_input
+                    .get_or_insert_with(|| body_input.clone())
+                    .clone();
+                let (should_continue, branch_input) =
+                    match decode_loop_input::<In, _>(&control_input, |carry| {
+                        (self.should_continue)(&state, carry)
+                    }) {
+                        Ok(pair) => pair,
+                        Err(err) => return Err((state, err)),
+                    };
+                if !should_continue {
+                    self.complete = true;
+                    self.deferred_state = Some(state);
+                    self.active_control_input = None;
+                    self.lifecycle.succeed();
+                    let state = self
+                        .deferred_state
+                        .take()
+                        .expect("deferred state was just set");
+                    return Err((state, ExecutorError::Complete));
+                }
+                body_input = match postcard::to_allocvec(&branch_input) {
                     Ok(branch_input) => branch_input,
                     Err(err) => {
                         return Err((state, ExecutorError::InputSerialize(err.to_string())));
                     }
-                }
-            } else {
-                body_input.clone()
-            };
+                };
+            }
 
             self.lifecycle.enter();
             self.ensure_iteration_ready();
@@ -4022,7 +4090,7 @@ where
                 .get_mut(self.body_cursor)
                 .expect("body cursor always points to an active body node");
             node.set_parent_activation_path(&parent_path);
-            match node.request(state, branch_input) {
+            match node.request(state, body_input.clone()) {
                 Ok((next_state, request)) => return Ok((next_state, request)),
                 Err((next_state, ExecutorError::Complete)) => {
                     if node.is_complete() {
@@ -4094,38 +4162,36 @@ where
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
-            let control_input = self
-                .active_control_input
-                .get_or_insert_with(|| body_input.clone())
-                .clone();
-            let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&control_input, |carry| {
-                    (self.should_continue)(&state, carry)
-                }) {
-                    Ok(pair) => pair,
-                    Err(err) => return Err((state, err)),
-                };
-            if !should_continue {
-                self.complete = true;
-                self.deferred_state = Some(state);
-                self.active_control_input = None;
-                self.lifecycle.succeed();
-                let state = self
-                    .deferred_state
-                    .take()
-                    .expect("deferred state was just set");
-                return Err((state, ExecutorError::Complete));
-            }
-            let branch_input = if self.active_body.is_empty() {
-                match postcard::to_allocvec(&branch_input) {
+            if self.active_body.is_empty() {
+                let control_input = self
+                    .active_control_input
+                    .get_or_insert_with(|| body_input.clone())
+                    .clone();
+                let (should_continue, branch_input) =
+                    match decode_loop_input::<In, _>(&control_input, |carry| {
+                        (self.should_continue)(&state, carry)
+                    }) {
+                        Ok(pair) => pair,
+                        Err(err) => return Err((state, err)),
+                    };
+                if !should_continue {
+                    self.complete = true;
+                    self.deferred_state = Some(state);
+                    self.active_control_input = None;
+                    self.lifecycle.succeed();
+                    let state = self
+                        .deferred_state
+                        .take()
+                        .expect("deferred state was just set");
+                    return Err((state, ExecutorError::Complete));
+                }
+                body_input = match postcard::to_allocvec(&branch_input) {
                     Ok(branch_input) => branch_input,
                     Err(err) => {
                         return Err((state, ExecutorError::InputSerialize(err.to_string())));
                     }
-                }
-            } else {
-                body_input.clone()
-            };
+                };
+            }
 
             self.lifecycle.enter();
             self.ensure_iteration_ready();
@@ -4147,7 +4213,7 @@ where
                     .get_mut(self.body_cursor)
                     .expect("body cursor always points to an active body node");
                 node.set_parent_activation_path(&parent_path);
-                match node.request_executable(state, branch_input) {
+                match node.request_executable(state, body_input.clone()) {
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
@@ -5012,7 +5078,7 @@ where
     }
 }
 
-impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
+impl<State: Clone, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
@@ -5105,25 +5171,62 @@ where
             Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
         };
 
-        if self.cursor >= self.branch_len() {
-            return Err((state, ExecutorError::Complete));
-        }
-
-        let parent_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        let node = self
-            .active_node_mut()
-            .expect("cursor was checked against active branch length");
-        node.set_parent_activation_path(&parent_path);
-        match node.request(state, branch_input) {
-            Err((state, ExecutorError::ActionFailure(failure))) => {
-                self.lifecycle.fail();
-                Err((state, ExecutorError::ActionFailure(failure)))
+        let mut state = state;
+        let mut branch_input = branch_input;
+        loop {
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
             }
-            other => other,
+
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
+            match node.request(state, branch_input.clone()) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    let (next_state, emitted, completed) =
+                        match node.try_complete_without_progress(next_state.clone()) {
+                            Ok(result) => result,
+                            Err(ExecutorError::ActionFailure(failure)) => {
+                                self.lifecycle.fail();
+                                return Err((next_state, ExecutorError::ActionFailure(failure)));
+                            }
+                            Err(err) => return Err((next_state, err)),
+                        };
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        branch_input = emitted;
+                    }
+                    if completed {
+                        self.cursor += 1;
+                        if self.cursor >= self.branch_len() {
+                            let active_branch = self.active_branch.expect(
+                                "active branch is present while conditional context is executing",
+                            );
+                            let emitted = encode_conditional_context_emitted(
+                                active_branch,
+                                branch_input.clone(),
+                            );
+                            self.deferred_emitted = Some(emitted);
+                            self.lifecycle.succeed();
+                            return Err((state, ExecutorError::Complete));
+                        }
+                        continue;
+                    }
+                    return Err((state, ExecutorError::Complete));
+                }
+                Err((state, ExecutorError::ActionFailure(failure))) => {
+                    self.lifecycle.fail();
+                    return Err((state, ExecutorError::ActionFailure(failure)));
+                }
+                Err((state, err)) => return Err((state, err)),
+            }
         }
     }
 
@@ -5210,25 +5313,62 @@ where
             Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
         };
 
-        if self.cursor >= self.branch_len() {
-            return Err((state, ExecutorError::Complete));
-        }
-
-        let parent_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        let node = self
-            .active_node_mut()
-            .expect("cursor was checked against active branch length");
-        node.set_parent_activation_path(&parent_path);
-        match node.request_executable(state, branch_input) {
-            Err((state, ExecutorError::ActionFailure(failure))) => {
-                self.lifecycle.fail();
-                Err((state, ExecutorError::ActionFailure(failure)))
+        let mut state = state;
+        let mut branch_input = branch_input;
+        loop {
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
             }
-            other => other,
+
+            let parent_path = self
+                .lifecycle
+                .current_activation_path()
+                .unwrap_or(&[])
+                .to_vec();
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            node.set_parent_activation_path(&parent_path);
+            match node.request_executable(state, branch_input.clone()) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    let (next_state, emitted, completed) =
+                        match node.try_complete_without_progress(next_state.clone()) {
+                            Ok(result) => result,
+                            Err(ExecutorError::ActionFailure(failure)) => {
+                                self.lifecycle.fail();
+                                return Err((next_state, ExecutorError::ActionFailure(failure)));
+                            }
+                            Err(err) => return Err((next_state, err)),
+                        };
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        branch_input = emitted;
+                    }
+                    if completed {
+                        self.cursor += 1;
+                        if self.cursor >= self.branch_len() {
+                            let active_branch = self.active_branch.expect(
+                                "active branch is present while conditional context is executing",
+                            );
+                            let emitted = encode_conditional_context_emitted(
+                                active_branch,
+                                branch_input.clone(),
+                            );
+                            self.deferred_emitted = Some(emitted);
+                            self.lifecycle.succeed();
+                            return Err((state, ExecutorError::Complete));
+                        }
+                        continue;
+                    }
+                    return Err((state, ExecutorError::Complete));
+                }
+                Err((state, ExecutorError::ActionFailure(failure))) => {
+                    self.lifecycle.fail();
+                    return Err((state, ExecutorError::ActionFailure(failure)));
+                }
+                Err((state, err)) => return Err((state, err)),
+            }
         }
     }
 
@@ -5403,43 +5543,41 @@ where
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let mut state = state;
-        let body_input = input;
+        let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
-            let control_input = self
-                .active_control_input
-                .get_or_insert_with(|| body_input.clone())
-                .clone();
-            let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&control_input, |carry| {
-                    (self.should_continue)(&state, carry)
-                }) {
-                    Ok(pair) => pair,
-                    Err(err) => return Err((state, err)),
-                };
-            if !should_continue {
-                self.complete = true;
-                self.deferred_state = Some(state);
-                self.active_control_input = None;
-                self.lifecycle.succeed();
-                let state = self
-                    .deferred_state
-                    .take()
-                    .expect("deferred state was just set");
-                return Err((state, ExecutorError::Complete));
-            }
-            let branch_input = if self.active_body.is_empty() {
-                match postcard::to_allocvec(&branch_input) {
+            if self.active_body.is_empty() {
+                let control_input = self
+                    .active_control_input
+                    .get_or_insert_with(|| body_input.clone())
+                    .clone();
+                let (should_continue, branch_input) =
+                    match decode_loop_input::<In, _>(&control_input, |carry| {
+                        (self.should_continue)(&state, carry)
+                    }) {
+                        Ok(pair) => pair,
+                        Err(err) => return Err((state, err)),
+                    };
+                if !should_continue {
+                    self.complete = true;
+                    self.deferred_state = Some(state);
+                    self.active_control_input = None;
+                    self.lifecycle.succeed();
+                    let state = self
+                        .deferred_state
+                        .take()
+                        .expect("deferred state was just set");
+                    return Err((state, ExecutorError::Complete));
+                }
+                body_input = match postcard::to_allocvec(&branch_input) {
                     Ok(branch_input) => branch_input,
                     Err(err) => {
                         return Err((state, ExecutorError::InputSerialize(err.to_string())));
                     }
-                }
-            } else {
-                body_input.clone()
-            };
+                };
+            }
 
             self.lifecycle.enter();
             self.ensure_iteration_ready();
@@ -5454,7 +5592,7 @@ where
                 .get_mut(self.body_cursor)
                 .expect("body cursor always points to an active body node");
             node.set_parent_activation_path(&parent_path);
-            match node.request(state, branch_input) {
+            match node.request(state, body_input.clone()) {
                 Ok((next_state, request)) => return Ok((next_state, request)),
                 Err((next_state, ExecutorError::Complete)) => {
                     if node.is_complete() {
@@ -5526,38 +5664,36 @@ where
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
-            let control_input = self
-                .active_control_input
-                .get_or_insert_with(|| body_input.clone())
-                .clone();
-            let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&control_input, |carry| {
-                    (self.should_continue)(&state, carry)
-                }) {
-                    Ok(pair) => pair,
-                    Err(err) => return Err((state, err)),
-                };
-            if !should_continue {
-                self.complete = true;
-                self.deferred_state = Some(state);
-                self.active_control_input = None;
-                self.lifecycle.succeed();
-                let state = self
-                    .deferred_state
-                    .take()
-                    .expect("deferred state was just set");
-                return Err((state, ExecutorError::Complete));
-            }
-            let branch_input = if self.active_body.is_empty() {
-                match postcard::to_allocvec(&branch_input) {
+            if self.active_body.is_empty() {
+                let control_input = self
+                    .active_control_input
+                    .get_or_insert_with(|| body_input.clone())
+                    .clone();
+                let (should_continue, branch_input) =
+                    match decode_loop_input::<In, _>(&control_input, |carry| {
+                        (self.should_continue)(&state, carry)
+                    }) {
+                        Ok(pair) => pair,
+                        Err(err) => return Err((state, err)),
+                    };
+                if !should_continue {
+                    self.complete = true;
+                    self.deferred_state = Some(state);
+                    self.active_control_input = None;
+                    self.lifecycle.succeed();
+                    let state = self
+                        .deferred_state
+                        .take()
+                        .expect("deferred state was just set");
+                    return Err((state, ExecutorError::Complete));
+                }
+                body_input = match postcard::to_allocvec(&branch_input) {
                     Ok(branch_input) => branch_input,
                     Err(err) => {
                         return Err((state, ExecutorError::InputSerialize(err.to_string())));
                     }
-                }
-            } else {
-                body_input.clone()
-            };
+                };
+            }
 
             self.lifecycle.enter();
             self.ensure_iteration_ready();
@@ -5579,7 +5715,7 @@ where
                     .get_mut(self.body_cursor)
                     .expect("body cursor always points to an active body node");
                 node.set_parent_activation_path(&parent_path);
-                match node.request_executable(state, branch_input) {
+                match node.request_executable(state, body_input.clone()) {
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
