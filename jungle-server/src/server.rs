@@ -62,6 +62,11 @@ pub struct ServerBuilder {
 
 #[cfg(any(feature = "postgres", feature = "redb"))]
 impl ServerBuilder {
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.db = self.db.claimed_work_ttl_ms(value);
+        self
+    }
+
     #[cfg(feature = "postgres")]
     pub fn postgres(mut self, builder: jungle_persist::pg::PgStoreBuilder) -> Self {
         self.db = self.db.kind(Kind::Postgres(builder));

@@ -24,6 +24,7 @@ static PG_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone)]
 pub struct PgStore {
     pool: sqlx::PgPool,
+    claimed_work_ttl_ms: i64,
 }
 
 impl PgStore {
@@ -46,6 +47,7 @@ impl PgStore {
 pub struct PgStoreBuilder {
     connection_string: Option<String>,
     max_connections: u32,
+    claimed_work_ttl_ms: i64,
 }
 
 impl Default for PgStoreBuilder {
@@ -53,6 +55,7 @@ impl Default for PgStoreBuilder {
         Self {
             connection_string: None,
             max_connections: 10,
+            claimed_work_ttl_ms: crate::DEFAULT_CLAIMED_WORK_TTL_MS,
         }
     }
 }
@@ -68,6 +71,11 @@ impl PgStoreBuilder {
         self
     }
 
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.claimed_work_ttl_ms = value.max(0);
+        self
+    }
+
     pub async fn build(self) -> Result<PgStore> {
         let connection_string = self
             .connection_string
@@ -77,7 +85,10 @@ impl PgStoreBuilder {
             .connect(&connection_string)
             .await
             .map_err(crate::PersistenceError::PostgresConnect)?;
-        Ok(PgStore { pool })
+        Ok(PgStore {
+            pool,
+            claimed_work_ttl_ms: self.claimed_work_ttl_ms,
+        })
     }
 }
 
@@ -819,7 +830,7 @@ impl JungleStore for PgStore {
             claimed AS (
                 UPDATE work_items wi
                 SET status = $5,
-                    expiry = NOW() + INTERVAL '30 seconds'
+                    expiry = NOW() + ($8 * INTERVAL '1 millisecond')
                 FROM candidate c
                 WHERE wi.id = c.id
                 RETURNING wi.journey_id, wi.kind
@@ -836,6 +847,7 @@ impl JungleStore for PgStore {
         .bind(1_i16)
         .bind(encode_journey_status(JourneyStatus::Created))
         .bind(encode_journey_status(JourneyStatus::Alive))
+        .bind(self.claimed_work_ttl_ms)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;

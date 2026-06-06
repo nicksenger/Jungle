@@ -184,12 +184,7 @@ impl Action for FlattenReplayChoice {
 }
 
 #[derive(Flow)]
-pub struct Depth1LeftBranch(
-    Step<Label<'L'>>,
-    Step<Tick>,
-    Step<Tick>,
-    Step<Tick>,
-);
+pub struct Depth1LeftBranch(Step<Label<'L'>>, Step<Tick>, Step<Tick>, Step<Tick>);
 
 #[derive(Flow)]
 pub struct Depth1RightBranch(
@@ -242,8 +237,9 @@ impl Observe for Depth1 {
 pub struct ReplayRainforestAnimals(Depth1);
 
 const REPLAY_TEST_OWNER_LEASE_TTL_MS: i64 = 250;
+const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
 const REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
-const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(45);
+const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_APPEARANCE_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn replay_rainforest(
@@ -300,15 +296,8 @@ async fn wait_for_depth1_history_change(
 }
 
 async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
-    let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("depth1-property.redb");
-    let backend = jungle_sdk::Server::builder()
-        .redb_path(db_path)
-        .build()
-        .await
-        .expect("redb backend should build");
     let client = FusedClient::builder()
-        .backend(backend)
+        .claimed_work_ttl_ms(REPLAY_TEST_CLAIMED_WORK_TTL_MS)
         .namespace(format!("depth1-property-{}", uuid::Uuid::new_v4()))
         .build()
         .await
@@ -385,8 +374,7 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
 
 proptest! {
     #![proptest_config(ProptestConfig {
-        // Each case waits for the backend's fixed claimed-step reclaim window.
-        cases: 2,
+        cases: 16,
         .. ProptestConfig::default()
     })]
 

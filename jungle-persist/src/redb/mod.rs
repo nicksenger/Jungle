@@ -62,6 +62,7 @@ static REDB_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone)]
 pub struct RedbStore {
     db: Arc<redb::Database>,
+    claimed_work_ttl_ms: i64,
 }
 
 impl RedbStore {
@@ -70,10 +71,17 @@ impl RedbStore {
     }
 
     pub fn in_memory() -> Result<RedbStore> {
+        Self::in_memory_with_claimed_work_ttl_ms(crate::DEFAULT_CLAIMED_WORK_TTL_MS)
+    }
+
+    pub fn in_memory_with_claimed_work_ttl_ms(claimed_work_ttl_ms: i64) -> Result<RedbStore> {
         let db = redb::Database::builder()
             .create_with_backend(redb::backends::InMemoryBackend::new())
             .map_err(crate::PersistenceError::RedbOpen)?;
-        Ok(RedbStore { db: Arc::new(db) })
+        Ok(RedbStore {
+            db: Arc::new(db),
+            claimed_work_ttl_ms: claimed_work_ttl_ms.max(0),
+        })
     }
 
     fn update_journey_status(
@@ -140,9 +148,19 @@ impl RedbStore {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RedbStoreBuilder {
     path: Option<PathBuf>,
+    claimed_work_ttl_ms: i64,
+}
+
+impl Default for RedbStoreBuilder {
+    fn default() -> Self {
+        Self {
+            path: None,
+            claimed_work_ttl_ms: crate::DEFAULT_CLAIMED_WORK_TTL_MS,
+        }
+    }
 }
 
 impl RedbStoreBuilder {
@@ -151,10 +169,18 @@ impl RedbStoreBuilder {
         self
     }
 
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.claimed_work_ttl_ms = value.max(0);
+        self
+    }
+
     pub fn build(self) -> Result<RedbStore> {
         let path = self.path.ok_or(crate::PersistenceError::MissingRedbPath)?;
         let db = redb::Database::create(path).map_err(crate::PersistenceError::RedbOpen)?;
-        Ok(RedbStore { db: Arc::new(db) })
+        Ok(RedbStore {
+            db: Arc::new(db),
+            claimed_work_ttl_ms: self.claimed_work_ttl_ms,
+        })
     }
 }
 
@@ -943,7 +969,7 @@ impl JungleStore for RedbStore {
         })?;
         let now = Utc::now();
         let now_millis = now_unix_ms();
-        let lease_until = now + chrono::Duration::seconds(30);
+        let lease_until = now + chrono::Duration::milliseconds(self.claimed_work_ttl_ms);
 
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
