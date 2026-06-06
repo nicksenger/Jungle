@@ -305,6 +305,56 @@ impl Action for FlattenJoinedUnits {
     }
 }
 
+struct EnterSubflowJoinArm;
+#[jungle::action]
+impl Action for EnterSubflowJoinArm {
+    type Effect = NoEffect;
+    type Input = ExponentialBackoffInput<()>;
+    type Output = ExponentialBackoffInput<()>;
+    type Carry = ExponentialBackoffInput<()>;
+
+    fn emit(
+        _state: &BackoffJourneyState,
+        input: Self::Input,
+    ) -> ((), ExponentialBackoffInput<()>) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut BackoffJourneyState,
+        output: EffectCompletion<Self::Effect>,
+        carry: ExponentialBackoffInput<()>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("subflow join arm stub should complete"))?;
+        Ok(carry)
+    }
+}
+
+struct EnterActionJoinArm;
+#[jungle::action]
+impl Action for EnterActionJoinArm {
+    type Effect = NoEffect;
+    type Input = ExponentialBackoffInput<()>;
+    type Output = ExponentialBackoffInput<()>;
+    type Carry = ExponentialBackoffInput<()>;
+
+    fn emit(
+        _state: &BackoffJourneyState,
+        input: Self::Input,
+    ) -> ((), ExponentialBackoffInput<()>) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut BackoffJourneyState,
+        output: EffectCompletion<Self::Effect>,
+        carry: ExponentialBackoffInput<()>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("action join arm stub should complete"))?;
+        Ok(carry)
+    }
+}
+
 #[derive(Flow)]
 struct AlwaysFailingSubflow(
     Step<MarkSubflowAttemptStarted>,
@@ -369,10 +419,16 @@ struct ActionBackoffBranch(
 );
 
 #[derive(Flow)]
+struct SubflowJoinArm(Step<EnterSubflowJoinArm>, SubflowBackoffBranch);
+
+#[derive(Flow)]
+struct ActionJoinArm(Step<EnterActionJoinArm>, ActionBackoffBranch);
+
+#[derive(Flow)]
 struct BackoffJourney(
     Step<CountBeforeJoin>,
     Step<CountBeforeJoin>,
-    Join<SubflowBackoffBranch, ActionBackoffBranch>,
+    Join<SubflowJoinArm, ActionJoinArm>,
     Step<FlattenJoinedUnits>,
     Step<CountAfterJoin>,
     Step<CountAfterJoin>,
