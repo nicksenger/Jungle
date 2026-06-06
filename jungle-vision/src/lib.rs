@@ -5153,18 +5153,12 @@ mod tests {
         assert_eq!(join_cluster.label, "join: Join");
         assert_eq!(
             join_cluster.nodes,
-            vec![
-                node_by_label(&model, "JoinL").id,
-                node_by_label(&model, "JoinR").id
-            ]
+            vec![node_by_label(&model, "JoinL").id, node_by_label(&model, "JoinR").id]
         );
         assert_eq!(join_cluster.root_nodes, join_cluster.nodes);
         assert_eq!(
             join_cluster.root_runtime_ids,
-            vec![
-                runtime_id_for(&model, "JoinL"),
-                runtime_id_for(&model, "JoinR")
-            ]
+            vec![runtime_id_for(&model, "JoinL"), runtime_id_for(&model, "JoinR")]
         );
     }
 
