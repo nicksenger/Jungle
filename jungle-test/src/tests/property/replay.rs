@@ -1,6 +1,7 @@
+use futures::channel::mpsc::UnboundedReceiver;
+use futures::StreamExt;
 use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::future::pending;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
 
@@ -9,6 +10,7 @@ pub struct ReplayRainforest(Arc<Mutex<ReplayInner>>);
 struct ReplayInner {
     query: Vec<bool>,
     end: oneshot::Sender<()>,
+    recv: UnboundedReceiver<bool>,
 }
 
 pub struct ReplayRainforestAnimals;
@@ -29,9 +31,12 @@ impl ReplayRainforest {
             None => {
                 let (replacement_end, _replacement_rx) = oneshot::channel();
                 let end = std::mem::replace(&mut inner.end, replacement_end);
-                drop(inner);
                 let _ = end.send(());
-                pending::<bool>().await
+                inner
+                    .recv
+                    .next()
+                    .await
+                    .expect("replay receiver should yield a bool after query exhaustion")
             }
         }
     }
