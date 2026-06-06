@@ -124,3 +124,25 @@ impl Action for Tick {
         Ok(__absorb_out_1)
     }
 }
+
+pub struct Label<const CH: char>;
+
+#[jungle::action]
+impl<const CH: char> Action for Label<CH> {
+    type Effect = NoEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = {
+            output.map_err(|_err| Failure::from("label should complete without effect"))?;
+            state.history.push(CH);
+        };
+        Ok(__absorb_out_2)
+    }
+}
