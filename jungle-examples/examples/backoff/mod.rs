@@ -314,14 +314,14 @@ impl Action for EnterSubflowJoinArm {
     type Carry = ExponentialBackoffInput<()>;
 
     fn emit(
-        _state: &BackoffJourneyState,
+        _state: &SubflowBackoffState,
         input: Self::Input,
     ) -> ((), ExponentialBackoffInput<()>) {
         ((), input)
     }
 
     fn absorb(
-        _state: &mut BackoffJourneyState,
+        _state: &mut SubflowBackoffState,
         output: EffectCompletion<Self::Effect>,
         carry: ExponentialBackoffInput<()>,
     ) -> Result<Self::Output, Failure> {
@@ -339,14 +339,14 @@ impl Action for EnterActionJoinArm {
     type Carry = ExponentialBackoffInput<()>;
 
     fn emit(
-        _state: &BackoffJourneyState,
+        _state: &ActionBackoffState,
         input: Self::Input,
     ) -> ((), ExponentialBackoffInput<()>) {
         ((), input)
     }
 
     fn absorb(
-        _state: &mut BackoffJourneyState,
+        _state: &mut ActionBackoffState,
         output: EffectCompletion<Self::Effect>,
         carry: ExponentialBackoffInput<()>,
     ) -> Result<Self::Output, Failure> {
@@ -419,9 +419,11 @@ struct ActionBackoffBranch(
 );
 
 #[derive(Flow)]
+#[jungle(focus = SubflowBackoffState)]
 struct SubflowJoinArm(Step<EnterSubflowJoinArm>, SubflowBackoffBranch);
 
 #[derive(Flow)]
+#[jungle(focus = ActionBackoffState)]
 struct ActionJoinArm(Step<EnterActionJoinArm>, ActionBackoffBranch);
 
 #[derive(Flow)]
