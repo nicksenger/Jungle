@@ -16,6 +16,7 @@ use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 mod action;
+pub mod backoff;
 mod effect;
 pub mod mcts;
 pub mod tokens;
