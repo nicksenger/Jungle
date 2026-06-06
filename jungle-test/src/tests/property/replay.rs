@@ -1,15 +1,15 @@
-use futures::channel::mpsc::UnboundedReceiver;
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
 use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::Mutex;
 
 pub struct ReplayRainforest(Arc<Mutex<ReplayInner>>);
 
 struct ReplayInner {
     query: Vec<bool>,
-    end: oneshot::Sender<()>,
+    end: UnboundedSender<()>,
     recv: UnboundedReceiver<bool>,
 }
 
@@ -24,9 +24,7 @@ impl ReplayRainforest {
         match inner.query.pop() {
             Some(value) => value,
             None => {
-                let (replacement_end, _replacement_rx) = oneshot::channel();
-                let end = std::mem::replace(&mut inner.end, replacement_end);
-                let _ = end.send(());
+                let _ = inner.end.unbounded_send(());
                 inner
                     .recv
                     .next()
