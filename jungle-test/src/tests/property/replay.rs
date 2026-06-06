@@ -305,7 +305,6 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
 
     let (end_tx, mut end_rx) = futures::channel::mpsc::unbounded::<()>();
     let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
-    let replay_query = query.clone();
     let worker_one = spawn_depth1_worker(
         client.clone(),
         replay_rainforest(query, end_tx.clone(), worker_one_resume_rx),
@@ -332,7 +331,7 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
     let (worker_two_resume_tx, worker_two_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
     let worker_two = spawn_depth1_worker(
         client.clone(),
-        replay_rainforest(replay_query, end_tx, worker_two_resume_rx),
+        replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
         REPLAY_TEST_OWNER_LEASE_TTL_MS,
     );
 
