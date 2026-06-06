@@ -9,7 +9,7 @@ use crate::effect::{
 };
 use crate::mcts::Submission;
 use crate::{
-    backoff::ExponentialBackoffInput, backoff_flow::ExponentialBackoffFlowState,
+    backoff::{BackoffAction, ExponentialBackoffInput, ExponentialBackoffState},
     lyrebird_prompt_request_backoff_policy, LyrebirdGeneratedCandidate, LyrebirdInstrument,
     LyrebirdInstrumentState, LyrebirdInstrumentTag, LyrebirdSeed, LyrebirdState,
     PromptInstrumentState,
@@ -50,12 +50,16 @@ pub trait LyrebirdPromptFocus {
     fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState;
 }
 
-pub trait LyrebirdPromptBackoffFocus: LyrebirdPromptFocus {
-    fn prompt_backoff_state(&self)
-        -> &ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()>;
+pub trait LyrebirdPromptRequestBackoffFocus<Marker>: LyrebirdPromptFocus
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    fn prompt_backoff_state(
+        &self,
+    ) -> &ExponentialBackoffState<LyrebirdInstrumentState, RequestPromptCandidatesBackoff<Marker>>;
     fn prompt_backoff_state_mut(
         &mut self,
-    ) -> &mut ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()>;
+    ) -> &mut ExponentialBackoffState<LyrebirdInstrumentState, RequestPromptCandidatesBackoff<Marker>>;
 }
 
 impl LyrebirdPromptFocus for LyrebirdInstrumentState {
@@ -68,7 +72,10 @@ impl LyrebirdPromptFocus for LyrebirdInstrumentState {
     }
 }
 
-impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker> {
+impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
     fn instrument_state(&self) -> &LyrebirdInstrumentState {
         &self.state.st
     }
@@ -78,22 +85,28 @@ impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker> {
     }
 }
 
-impl<Marker> LyrebirdPromptBackoffFocus for PromptInstrumentState<Marker> {
+impl<Marker> LyrebirdPromptRequestBackoffFocus<Marker> for PromptInstrumentState<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
     fn prompt_backoff_state(
         &self,
-    ) -> &ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()> {
+    ) -> &ExponentialBackoffState<LyrebirdInstrumentState, RequestPromptCandidatesBackoff<Marker>>
+    {
         &self.state
     }
 
     fn prompt_backoff_state_mut(
         &mut self,
-    ) -> &mut ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()> {
+    ) -> &mut ExponentialBackoffState<LyrebirdInstrumentState, RequestPromptCandidatesBackoff<Marker>>
+    {
         &mut self.state
     }
 }
 
-impl<In, Out> LyrebirdPromptFocus
-    for ExponentialBackoffFlowState<LyrebirdInstrumentState, In, Out>
+impl<A> LyrebirdPromptFocus for ExponentialBackoffState<LyrebirdInstrumentState, A>
+where
+    A: BackoffAction,
 {
     fn instrument_state(&self) -> &LyrebirdInstrumentState {
         &self.st
@@ -355,6 +368,72 @@ where
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestPromptCandidatesBackoff<Marker>(PhantomData<fn() -> Marker>);
+impl<Marker> RequestPromptCandidatesBackoff<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    fn request_input(state: &LyrebirdInstrumentState) -> RequestPromptCandidatesInput {
+        info!(
+            iteration_id = %state.iteration_id,
+            instrument = Marker::INSTRUMENT.slug(),
+            prompt_attempt = state.prompt_attempt.saturating_add(1),
+            "starting lyrebird prompt request attempt"
+        );
+
+        RequestPromptCandidatesInput {
+            prompt: state
+                .pending_prompt
+                .clone()
+                .expect("lyrebird prompt request step requires a prepared prompt"),
+            iteration_id: state.iteration_id.clone(),
+            instrument: Marker::INSTRUMENT,
+            prompt_attempt: state.prompt_attempt.saturating_add(1),
+            instrument_parallelism: state.instrument_parallelism,
+        }
+    }
+
+    fn absorb_result(
+        state: &mut LyrebirdInstrumentState,
+        output: EffectCompletion<RequestPromptCandidates>,
+    ) -> Result<Result<(), String>, Failure> {
+        let RequestPromptCandidatesOutcome { responses } = match output {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                state.pending_prompt = None;
+                state.pending_prompt_candidates.clear();
+                state.prompt_attempt = state.prompt_attempt.saturating_add(1);
+                state.last_retry_reason = Some(err.clone());
+                return Ok(Err(err));
+            }
+        };
+        state.pending_prompt = None;
+        state.pending_prompt_candidates = responses;
+        Ok(Ok(()))
+    }
+}
+#[jungle::action]
+impl<Marker> Action for RequestPromptCandidatesBackoff<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type Effect = RequestPromptCandidates;
+    type Input = ();
+    type Output = Result<(), String>;
+
+    fn emit(state: &LyrebirdInstrumentState, _input: Self::Input) -> RequestPromptCandidatesInput {
+        RequestPromptCandidatesBackoff::<Marker>::request_input(state)
+    }
+
+    fn absorb(
+        state: &mut LyrebirdInstrumentState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        RequestPromptCandidatesBackoff::<Marker>::absorb_result(state, output)
+    }
+}
+
 pub struct RequestPromptCandidatesFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
 #[jungle::action]
 impl<Marker, Focus> Action for RequestPromptCandidatesFocused<Marker, Focus>
@@ -364,68 +443,20 @@ where
 {
     type Effect = RequestPromptCandidates;
     type Input = ();
-    type Output = ();
+    type Output = Result<(), String>;
 
     fn emit(state: &Focus, _input: Self::Input) -> RequestPromptCandidatesInput {
-        let instrument_state = state.instrument_state();
-        RequestPromptCandidatesInput {
-            prompt: instrument_state
-                .pending_prompt
-                .clone()
-                .expect("lyrebird prompt request step requires a prepared prompt"),
-            iteration_id: instrument_state.iteration_id.clone(),
-            instrument: Marker::INSTRUMENT,
-            prompt_attempt: instrument_state.prompt_attempt.saturating_add(1),
-            instrument_parallelism: instrument_state.instrument_parallelism,
-        }
+        RequestPromptCandidatesBackoff::<Marker>::request_input(state.instrument_state())
     }
 
     fn absorb(
         state: &mut Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let instrument_state = state.instrument_state_mut();
-        let RequestPromptCandidatesOutcome { responses } = match output {
-            Ok(outcome) => outcome,
-            Err(err) => {
-                instrument_state.pending_prompt = None;
-                instrument_state.pending_prompt_candidates.clear();
-                instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
-                instrument_state.last_retry_reason = Some(err.clone());
-                return Err(Failure::from(err));
-            }
-        };
-        instrument_state.pending_prompt = None;
-        instrument_state.pending_prompt_candidates = responses;
-        Ok(())
-    }
-}
-
-pub struct BeginPromptRequestAttemptFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
-#[jungle::action]
-impl<Marker, Focus> Action for BeginPromptRequestAttemptFocused<Marker, Focus>
-where
-    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
-{
-    type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &Focus, _input: Self::Input) {}
-
-    fn absorb(
-        state: &mut Focus,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        let instrument_state = state.instrument_state();
-        info!(
-            iteration_id = %instrument_state.iteration_id,
-            instrument = Marker::INSTRUMENT.slug(),
-            prompt_attempt = instrument_state.prompt_attempt.saturating_add(1),
-            "starting lyrebird prompt request attempt"
-        );
-        Ok(())
+        RequestPromptCandidatesBackoff::<Marker>::absorb_result(
+            state.instrument_state_mut(),
+            output,
+        )
     }
 }
 
@@ -455,11 +486,14 @@ where
     }
 }
 
-pub struct InitializePromptRequestBackoffFocused<Focus>(PhantomData<fn() -> Focus>);
+pub struct InitializePromptRequestBackoffFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
 #[jungle::action]
-impl<Focus> Action for InitializePromptRequestBackoffFocused<Focus>
+impl<Marker, Focus> Action for InitializePromptRequestBackoffFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker> + Clone + Send + Sync + 'static,
 {
     type Effect = NoEffect;
     type Input = ExponentialBackoffInput<()>;
@@ -479,31 +513,34 @@ where
         backoff_state.attempts = 0;
         backoff_state.current_delay_ms = carry.policy.initial_delay_ms;
         backoff_state.policy = carry.policy;
-        backoff_state.flow_input = Some(carry.action_input);
+        backoff_state.action_input = Some(carry.action_input);
         backoff_state.last_result = None;
         Ok(())
     }
 }
 
-pub struct RecordPromptRequestBackoffResultFocused<Focus>(PhantomData<fn() -> Focus>);
+pub struct RecordPromptRequestBackoffResultFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
 #[jungle::action]
-impl<Focus> Action for RecordPromptRequestBackoffResultFocused<Focus>
+impl<Marker, Focus> Action for RecordPromptRequestBackoffResultFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker> + Clone + Send + Sync + 'static,
 {
     type Effect = NoEffect;
-    type Input = Result<(), Failure>;
+    type Input = Result<(), String>;
     type Output = ();
-    type Carry = Result<(), Failure>;
+    type Carry = Result<(), String>;
 
-    fn emit(_state: &Focus, input: Self::Input) -> ((), Result<(), Failure>) {
+    fn emit(_state: &Focus, input: Self::Input) -> ((), Result<(), String>) {
         ((), input)
     }
 
     fn absorb(
         state: &mut Focus,
         _output: EffectCompletion<Self::Effect>,
-        carry: Result<(), Failure>,
+        carry: Result<(), String>,
     ) -> Result<Self::Output, Failure> {
         let backoff_state = state.prompt_backoff_state_mut();
         backoff_state.attempts = backoff_state.attempts.saturating_add(1);
@@ -512,11 +549,12 @@ where
     }
 }
 
-pub struct SleepForPromptRequestBackoffFocused<Focus>(PhantomData<fn() -> Focus>);
+pub struct SleepForPromptRequestBackoffFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
 #[jungle::action]
-impl<Focus> Action for SleepForPromptRequestBackoffFocused<Focus>
+impl<Marker, Focus> Action for SleepForPromptRequestBackoffFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker> + Clone + Send + Sync + 'static,
 {
     type Effect = Sleep;
     type Input = ();
@@ -539,11 +577,14 @@ where
     }
 }
 
-pub struct SkipPromptRequestBackoffSleepFocused<Focus>(PhantomData<fn() -> Focus>);
+pub struct SkipPromptRequestBackoffSleepFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
 #[jungle::action]
-impl<Focus> Action for SkipPromptRequestBackoffSleepFocused<Focus>
+impl<Marker, Focus> Action for SkipPromptRequestBackoffSleepFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker> + Clone + Send + Sync + 'static,
 {
     type Effect = NoEffect;
     type Input = ();
@@ -559,11 +600,14 @@ where
     }
 }
 
-pub struct TakePromptRequestBackoffSuccessFocused<Focus>(PhantomData<fn() -> Focus>);
+pub struct TakePromptRequestBackoffSuccessFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
 #[jungle::action]
-impl<Focus> Action for TakePromptRequestBackoffSuccessFocused<Focus>
+impl<Marker, Focus> Action for TakePromptRequestBackoffSuccessFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus + Clone + Send + Sync + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker> + Clone + Send + Sync + 'static,
 {
     type Effect = NoEffect;
     type Input = ();
@@ -587,10 +631,11 @@ where
     }
 }
 
-pub struct PromptRequestBackoffPendingFocused<Focus>(PhantomData<fn() -> Focus>);
-impl<Focus> Predicate<(&Focus, &())> for PromptRequestBackoffPendingFocused<Focus>
+pub struct PromptRequestBackoffPendingFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
+impl<Marker, Focus> Predicate<(&Focus, &())> for PromptRequestBackoffPendingFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker>,
 {
     fn eval((state, _): &(&Focus, &())) -> bool {
         match state.prompt_backoff_state().last_result.as_ref() {
@@ -601,10 +646,13 @@ where
     }
 }
 
-pub struct PromptRequestBackoffShouldSleepFocused<Focus>(PhantomData<fn() -> Focus>);
-impl<Focus> Predicate<(Focus, ())> for PromptRequestBackoffShouldSleepFocused<Focus>
+pub struct PromptRequestBackoffShouldSleepFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
+impl<Marker, Focus> Predicate<(Focus, ())> for PromptRequestBackoffShouldSleepFocused<Marker, Focus>
 where
-    Focus: LyrebirdPromptBackoffFocus + Clone,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptRequestBackoffFocus<Marker> + Clone,
 {
     fn eval((state, _): &(Focus, ())) -> bool {
         matches!(

@@ -25,9 +25,9 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, BeginPromptRequestAttemptFocused, BuildOptimizationPromptFocused,
-    CompareIterationCandidateMels, EmitPromptRequestBackoffInputFocused, FlattenEither,
-    FlattenLyrebirdPromptPhase, GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
+    BeginIteration, BuildOptimizationPromptFocused, CompareIterationCandidateMels,
+    EmitPromptRequestBackoffInputFocused, FlattenEither, FlattenLyrebirdPromptPhase,
+    GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
     InitializePromptRequestBackoffFocused, InstrumentEnabled, InstrumentEnabledFocused,
     LogIterationTiming, LyrebirdLoopForever, PreparePromptCandidatesFocused,
     PromptRequestBackoffPendingFocused, PromptRequestBackoffShouldSleepFocused,
@@ -503,21 +503,30 @@ impl LyrebirdInstrumentState {
     }
 }
 
-pub type LyrebirdPromptRequestBackoffState =
-    crate::backoff_flow::ExponentialBackoffFlowState<LyrebirdInstrumentState, (), ()>;
+pub type LyrebirdPromptRequestBackoffState<Marker> = crate::backoff::ExponentialBackoffState<
+    LyrebirdInstrumentState,
+    crate::action::RequestPromptCandidatesBackoff<Marker>,
+>;
 
 #[derive(Optic, Clone, Debug, Serialize, Deserialize)]
-pub struct PromptInstrumentState<Marker> {
+#[serde(bound(
+    serialize = "LyrebirdPromptRequestBackoffState<Marker>: Serialize",
+    deserialize = "LyrebirdPromptRequestBackoffState<Marker>: Deserialize<'de>"
+))]
+pub struct PromptInstrumentState<Marker: LyrebirdInstrumentTag + Send + Sync + 'static> {
     #[jungle(focus)]
-    pub state: LyrebirdPromptRequestBackoffState,
+    pub state: LyrebirdPromptRequestBackoffState<Marker>,
     #[serde(skip)]
     marker: std::marker::PhantomData<fn() -> Marker>,
 }
 
-impl<Marker> PromptInstrumentState<Marker> {
+impl<Marker> PromptInstrumentState<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
     fn new(state: LyrebirdInstrumentState) -> Self {
         Self {
-            state: LyrebirdPromptRequestBackoffState::new(state),
+            state: LyrebirdPromptRequestBackoffState::<Marker>::new(state),
             marker: std::marker::PhantomData,
         }
     }
@@ -533,7 +542,7 @@ impl<Marker> PromptInstrumentState<Marker> {
 
 impl<Marker> Default for PromptInstrumentState<Marker>
 where
-    Marker: LyrebirdInstrumentTag,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
 {
     fn default() -> Self {
         Self::new(LyrebirdInstrumentState::observation_placeholder(
@@ -813,27 +822,19 @@ macro_rules! lyrebird_prompt_flow {
         $enabled:ident,
         $disabled:ident,
         $prompt:ident,
-        $request_subflow:ident,
         $request_backoff_body:ident,
         $request_backoff:ident,
         $marker:ty,
         $focus:ty
     ) => {
         #[derive(Flow)]
-        pub struct $request_subflow(
-            Step<BeginPromptRequestAttemptFocused<$marker, $focus>>,
-            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
-            Step<RequestPromptCandidatesFocused<$marker, $focus>>,
-        );
-
-        #[derive(Flow)]
         pub struct $request_backoff_body(
-            Attempt<$request_subflow>,
-            Step<RecordPromptRequestBackoffResultFocused<$focus>>,
+            Step<RequestPromptCandidatesFocused<$marker, $focus>>,
+            Step<RecordPromptRequestBackoffResultFocused<$marker, $focus>>,
             Conditional<
-                FocusedCondition<PromptRequestBackoffShouldSleepFocused<$focus>, $focus>,
-                Step<SleepForPromptRequestBackoffFocused<$focus>>,
-                Step<SkipPromptRequestBackoffSleepFocused<$focus>>,
+                FocusedCondition<PromptRequestBackoffShouldSleepFocused<$marker, $focus>, $focus>,
+                Step<SleepForPromptRequestBackoffFocused<$marker, $focus>>,
+                Step<SkipPromptRequestBackoffSleepFocused<$marker, $focus>>,
             >,
             Step<FlattenEither<(), $focus>>,
         );
@@ -841,17 +842,18 @@ macro_rules! lyrebird_prompt_flow {
         #[derive(Flow)]
         pub struct $request_backoff(
             Step<EmitPromptRequestBackoffInputFocused<$marker, $focus>>,
-            Step<InitializePromptRequestBackoffFocused<$focus>>,
+            Step<InitializePromptRequestBackoffFocused<$marker, $focus>>,
             While<
-                FocusedLoopCondition<PromptRequestBackoffPendingFocused<$focus>, $focus>,
+                FocusedLoopCondition<PromptRequestBackoffPendingFocused<$marker, $focus>, $focus>,
                 $request_backoff_body,
             >,
-            Step<TakePromptRequestBackoffSuccessFocused<$focus>>,
+            Step<TakePromptRequestBackoffSuccessFocused<$marker, $focus>>,
         );
 
         #[derive(Flow)]
         pub struct $enabled(
             Step<SelectDspBranchFocused<$marker, $focus>>,
+            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
             $request_backoff,
             Step<PreparePromptCandidatesFocused<$marker, $focus>>,
         );
@@ -876,7 +878,6 @@ lyrebird_prompt_flow!(
     RhythmGuitarPromptEnabled,
     RhythmGuitarPromptDisabled,
     RhythmGuitarPrompt,
-    RhythmGuitarPromptRequestSubflow,
     RhythmGuitarPromptRequestBackoffBody,
     RhythmGuitarPromptRequestBackoff,
     RhythmGuitarMarker,
@@ -886,7 +887,6 @@ lyrebird_prompt_flow!(
     VocalsPromptEnabled,
     VocalsPromptDisabled,
     VocalsPrompt,
-    VocalsPromptRequestSubflow,
     VocalsPromptRequestBackoffBody,
     VocalsPromptRequestBackoff,
     VocalsMarker,
@@ -896,7 +896,6 @@ lyrebird_prompt_flow!(
     BackupVocalsPromptEnabled,
     BackupVocalsPromptDisabled,
     BackupVocalsPrompt,
-    BackupVocalsPromptRequestSubflow,
     BackupVocalsPromptRequestBackoffBody,
     BackupVocalsPromptRequestBackoff,
     BackupVocalsMarker,
@@ -906,7 +905,6 @@ lyrebird_prompt_flow!(
     BassPromptEnabled,
     BassPromptDisabled,
     BassPrompt,
-    BassPromptRequestSubflow,
     BassPromptRequestBackoffBody,
     BassPromptRequestBackoff,
     BassMarker,
@@ -916,7 +914,6 @@ lyrebird_prompt_flow!(
     GuitarSoloPromptEnabled,
     GuitarSoloPromptDisabled,
     GuitarSoloPrompt,
-    GuitarSoloPromptRequestSubflow,
     GuitarSoloPromptRequestBackoffBody,
     GuitarSoloPromptRequestBackoff,
     GuitarSoloMarker,
@@ -926,7 +923,6 @@ lyrebird_prompt_flow!(
     DrumsPromptEnabled,
     DrumsPromptDisabled,
     DrumsPrompt,
-    DrumsPromptRequestSubflow,
     DrumsPromptRequestBackoffBody,
     DrumsPromptRequestBackoff,
     DrumsMarker,
