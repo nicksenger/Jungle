@@ -13,11 +13,6 @@ struct ReplayInner {
     recv: UnboundedReceiver<bool>,
 }
 
-pub struct ReplayRainforestAnimals;
-impl Animals for ReplayRainforestAnimals {
-    type List = jungle_sdk::typosaurus::collections::list::Empty;
-}
-
 impl Ecosystem for ReplayRainforest {
     const NAME: &'static str = "replay-rainforest";
     type Animals = ReplayRainforestAnimals;
@@ -59,6 +54,14 @@ impl Predicate<(&ReplayState, &())> for ReplayColorIsTrue {
 impl Predicate<(ReplayState, ())> for ReplayColorIsTrue {
     fn eval((state, _): &(ReplayState, ())) -> bool {
         state.color
+    }
+}
+
+pub struct ReplayAlwaysTrue;
+
+impl Predicate<(&ReplayState, &())> for ReplayAlwaysTrue {
+    fn eval((_state, _): &(&ReplayState, &())) -> bool {
+        true
     }
 }
 
@@ -146,3 +149,52 @@ impl<const CH: char> Action for Label<CH> {
         Ok(__absorb_out_2)
     }
 }
+
+#[derive(Flow)]
+pub struct Depth1LeftBranch(
+    Step<Label<'L'>>,
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+);
+
+#[derive(Flow)]
+pub struct Depth1RightBranch(
+    Step<Label<'R'>>,
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+);
+
+#[derive(Flow)]
+pub struct Depth1InnerBody(
+    Step<Tick>,
+    Step<Tick>,
+    Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
+);
+
+#[derive(Flow)]
+pub struct Depth1OuterBody(
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+    While<ReplayColorIsTrue, Depth1InnerBody>,
+    Step<Tick>,
+    Step<Tick>,
+);
+
+#[derive(Flow)]
+pub struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
+
+pub struct Depth1;
+
+#[jungle::animal(id = 1002, generation = 0)]
+impl Animal for Depth1 {
+    type State = ReplayState;
+    type Seed = ReplayState;
+    type Flow = Depth1Flow;
+}
+
+#[derive(Animals)]
+pub struct ReplayRainforestAnimals(Depth1);
