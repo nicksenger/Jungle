@@ -1,11 +1,11 @@
 use crate::backoff::{ExponentialBackoffInput, ExponentialBackoffPolicy, FlattenEither};
 use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::time::Duration;
 
-#[derive(Optic)]
+#[derive(Optic, Clone, Debug, Serialize, Deserialize)]
 pub struct ExponentialBackoffFlowState<St, In, Out> {
     pub attempts: u32,
     pub current_delay_ms: u64,
@@ -225,10 +225,13 @@ pub struct ExponentialBackoffFlowBody<
     F: TraverseFlow,
 >(
     Step<CloneBackoffFlowInput<St, In, Out>>,
-    Attempt<Scoped<St, F>>,
+    Attempt<F>,
     Step<RecordBackoffFlowResult<St, In, Out>>,
     Conditional<
-        BackoffFlowShouldSleep<St, In, Out>,
+        FocusedCondition<
+            BackoffFlowShouldSleep<St, In, Out>,
+            ExponentialBackoffFlowState<St, In, Out>,
+        >,
         Step<SleepForBackoffFlow<St, In, Out>>,
         Step<SkipBackoffFlowSleep<St, In, Out>>,
     >,
@@ -236,6 +239,7 @@ pub struct ExponentialBackoffFlowBody<
 );
 
 #[derive(Flow)]
+#[jungle(focus = ExponentialBackoffFlowState<St, In, Out>)]
 pub struct ExponentialBackoffFlow<
     St,
     In: Clone + Serialize + DeserializeOwned,
@@ -243,6 +247,12 @@ pub struct ExponentialBackoffFlow<
     F: TraverseFlow,
 >(
     Step<InitializeBackoffFlow<St, In, Out>>,
-    While<BackoffFlowPending<St, In, Out>, ExponentialBackoffFlowBody<St, In, Out, F>>,
+    While<
+        FocusedLoopCondition<
+            BackoffFlowPending<St, In, Out>,
+            ExponentialBackoffFlowState<St, In, Out>,
+        >,
+        ExponentialBackoffFlowBody<St, In, Out, F>,
+    >,
     Step<TakeBackoffFlowSuccess<St, In, Out>>,
 );
