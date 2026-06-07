@@ -82,10 +82,16 @@ struct ReplayInner {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Left;
+pub struct DoubleFlowLeftLeft;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Right;
+pub struct DoubleFlowLeftRight;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoubleFlowRightLeft;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoubleFlowRightRight;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplayFrame<L, R> {
@@ -95,9 +101,14 @@ pub struct ReplayFrame<L, R> {
     right: R,
 }
 
-pub type Depth2LeftState = ReplayFrame<Left, ()>;
-pub type Depth2RightState = ReplayFrame<(), Right>;
-pub type ReplayState = ReplayFrame<Depth2LeftState, Depth2RightState>;
+pub type DoubleFlowLeftInnerLeftState = ReplayFrame<DoubleFlowLeftLeft, ()>;
+pub type DoubleFlowLeftInnerRightState = ReplayFrame<(), DoubleFlowLeftRight>;
+pub type DoubleFlowLeftState = ReplayFrame<DoubleFlowLeftInnerLeftState, DoubleFlowLeftInnerRightState>;
+pub type DoubleFlowRightInnerLeftState = ReplayFrame<DoubleFlowRightLeft, ()>;
+pub type DoubleFlowRightInnerRightState = ReplayFrame<(), DoubleFlowRightRight>;
+pub type DoubleFlowRightState =
+    ReplayFrame<DoubleFlowRightInnerLeftState, DoubleFlowRightInnerRightState>;
+pub type ReplayState = ReplayFrame<DoubleFlowLeftState, DoubleFlowRightState>;
 
 impl<L, R> From<ReplayFrame<L, R>> for () {
     fn from(_value: ReplayFrame<L, R>) -> Self {}
@@ -134,7 +145,12 @@ macro_rules! impl_empty_replay_appearance {
     };
 }
 
-impl_empty_replay_appearance!(Left, Right);
+impl_empty_replay_appearance!(
+    DoubleFlowLeftLeft,
+    DoubleFlowLeftRight,
+    DoubleFlowRightLeft,
+    DoubleFlowRightRight,
+);
 
 impl<L, R> ReplayAppearance for ReplayFrame<L, R>
 where
@@ -191,8 +207,8 @@ pub trait ReplayBranchHostState: ReplayNodeState {
 }
 
 impl ReplayBranchHostState for ReplayState {
-    type LeftBranch = Depth2LeftState;
-    type RightBranch = Depth2RightState;
+    type LeftBranch = DoubleFlowLeftState;
+    type RightBranch = DoubleFlowRightState;
 
     fn replay_left(&self) -> &Self::LeftBranch {
         &self.left
@@ -211,14 +227,80 @@ impl ReplayBranchHostState for ReplayState {
     }
 }
 
-impl ViewProject<Depth2LeftState> for ReplayState {
-    fn project_view(state: &mut Self) -> &mut Depth2LeftState {
+impl ReplayBranchHostState for DoubleFlowLeftState {
+    type LeftBranch = DoubleFlowLeftInnerLeftState;
+    type RightBranch = DoubleFlowLeftInnerRightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
+    }
+}
+
+impl ReplayBranchHostState for DoubleFlowRightState {
+    type LeftBranch = DoubleFlowRightInnerLeftState;
+    type RightBranch = DoubleFlowRightInnerRightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
+    }
+}
+
+impl ViewProject<DoubleFlowLeftState> for ReplayState {
+    fn project_view(state: &mut Self) -> &mut DoubleFlowLeftState {
         &mut state.left
     }
 }
 
-impl ViewProject<Depth2RightState> for ReplayState {
-    fn project_view(state: &mut Self) -> &mut Depth2RightState {
+impl ViewProject<DoubleFlowRightState> for ReplayState {
+    fn project_view(state: &mut Self) -> &mut DoubleFlowRightState {
+        &mut state.right
+    }
+}
+
+impl ViewProject<DoubleFlowLeftInnerLeftState> for DoubleFlowLeftState {
+    fn project_view(state: &mut Self) -> &mut DoubleFlowLeftInnerLeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<DoubleFlowLeftInnerRightState> for DoubleFlowLeftState {
+    fn project_view(state: &mut Self) -> &mut DoubleFlowLeftInnerRightState {
+        &mut state.right
+    }
+}
+
+impl ViewProject<DoubleFlowRightInnerLeftState> for DoubleFlowRightState {
+    fn project_view(state: &mut Self) -> &mut DoubleFlowRightInnerLeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<DoubleFlowRightInnerRightState> for DoubleFlowRightState {
+    fn project_view(state: &mut Self) -> &mut DoubleFlowRightInnerRightState {
         &mut state.right
     }
 }
@@ -483,123 +565,217 @@ impl<St, const T: u64> Action for SleepMillis<St, T> {
 }
 
 #[derive(Flow)]
-struct ReplayHeadLeftBranch(
-    Step<Label<ReplayState, 'O'>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
+struct ReplayHeadLeftBranch<St: ReplayNodeState>(
+    Step<Label<St, 'O'>>,
+    Step<SleepMillis<St, 100>>,
+    Step<Tick<St>>,
+    Step<SleepMillis<St, 100>>,
 );
 
 #[derive(Flow)]
-struct ReplayHeadRightBranch(
-    Step<Label<ReplayState, 'Q'>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
+struct ReplayHeadRightBranch<St: ReplayNodeState>(
+    Step<Label<St, 'Q'>>,
+    Step<SleepMillis<St, 100>>,
+    Step<Tick<St>>,
+    Step<SleepMillis<St, 100>>,
 );
 
 #[derive(Flow)]
-#[jungle(focus = Depth2LeftState)]
-struct ReplayInnerLeftFlow(
-    Step<Label<Depth2LeftState, '2'>>,
-    Step<SleepMillis<Depth2LeftState, 100>>,
-    Step<Tick<Depth2LeftState>>,
-    Step<SleepMillis<Depth2LeftState, 100>>,
-    Step<Tick<Depth2LeftState>>,
+struct ReplayTailLeftBranch<St: ReplayNodeState>(
+    Step<Label<St, 'A'>>,
+    Step<SleepMillis<St, 100>>,
+    Step<Tick<St>>,
 );
 
 #[derive(Flow)]
-#[jungle(focus = Depth2RightState)]
-struct ReplayInnerRightFlow(
-    Step<Label<Depth2RightState, 'R'>>,
-    Step<SleepMillis<Depth2RightState, 100>>,
-    Step<Tick<Depth2RightState>>,
-    Step<SleepMillis<Depth2RightState, 100>>,
-    Step<Tick<Depth2RightState>>,
+struct ReplayTailRightBranch<St: ReplayNodeState>(
+    Step<Label<St, 'B'>>,
+    Step<SleepMillis<St, 100>>,
+    Step<Tick<St>>,
 );
 
 #[derive(Flow)]
-struct ReplayJoinedInnerBody(
-    Join<ReplayInnerLeftFlow, ReplayInnerRightFlow>,
-    Step<MergeReplayJoin<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
+#[jungle(focus = DoubleFlowLeftInnerLeftState)]
+struct DoubleFlowLeftInnerLeftFlow(
+    Step<Label<DoubleFlowLeftInnerLeftState, '2'>>,
+    Step<SleepMillis<DoubleFlowLeftInnerLeftState, 100>>,
+    Step<Tick<DoubleFlowLeftInnerLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftInnerLeftState, 100>>,
+    Step<Tick<DoubleFlowLeftInnerLeftState>>,
 );
 
 #[derive(Flow)]
-struct ReplayTailLeftBranch(
-    Step<Label<ReplayState, 'A'>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Tick<ReplayState>>,
+#[jungle(focus = DoubleFlowLeftInnerRightState)]
+struct DoubleFlowLeftInnerRightFlow(
+    Step<Label<DoubleFlowLeftInnerRightState, 'R'>>,
+    Step<SleepMillis<DoubleFlowLeftInnerRightState, 100>>,
+    Step<Tick<DoubleFlowLeftInnerRightState>>,
+    Step<SleepMillis<DoubleFlowLeftInnerRightState, 100>>,
+    Step<Tick<DoubleFlowLeftInnerRightState>>,
 );
 
 #[derive(Flow)]
-struct ReplayTailRightBranch(
-    Step<Label<ReplayState, 'B'>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Tick<ReplayState>>,
+struct DoubleFlowLeftJoinedInnerBody(
+    Join<DoubleFlowLeftInnerLeftFlow, DoubleFlowLeftInnerRightFlow>,
+    Step<MergeReplayJoin<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
 );
 
 #[derive(Flow)]
-struct ReplayOuterBody(
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Conditional<ReplayColorIsTrue, ReplayHeadLeftBranch, ReplayHeadRightBranch>,
-    Step<FlattenReplayChoice<ReplayState>>,
-    Step<SeedReplayBranches<ReplayState>>,
-    While<ReplayColorIsTrue, ReplayJoinedInnerBody>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Conditional<ReplayColorIsTrue, ReplayTailLeftBranch, ReplayTailRightBranch>,
-    Step<FlattenReplayChoice<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
+struct DoubleFlowLeftOuterBody(
+    Step<Tick<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Conditional<
+        ReplayColorIsTrue,
+        ReplayHeadLeftBranch<DoubleFlowLeftState>,
+        ReplayHeadRightBranch<DoubleFlowLeftState>,
+    >,
+    Step<FlattenReplayChoice<DoubleFlowLeftState>>,
+    Step<SeedReplayBranches<DoubleFlowLeftState>>,
+    While<ReplayColorIsTrue, DoubleFlowLeftJoinedInnerBody>,
+    Step<Tick<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Conditional<
+        ReplayColorIsTrue,
+        ReplayTailLeftBranch<DoubleFlowLeftState>,
+        ReplayTailRightBranch<DoubleFlowLeftState>,
+    >,
+    Step<FlattenReplayChoice<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
 );
 
 #[derive(Flow)]
-struct ReplayOuterLeft(
-    Step<Label<ReplayState, 'T'>>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Label<ReplayState, 'L'>>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    ReplayOuterBody,
-    Step<SleepMillis<ReplayState, 100>>,
-);
-#[derive(Flow)]
-struct ReplayOuterRight(
-    Step<Label<ReplayState, 'T'>>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Label<ReplayState, 'R'>>,
-    Step<Tick<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    ReplayOuterBody,
-    Step<SleepMillis<ReplayState, 100>>,
+struct DoubleFlowLeftOuterLeft(
+    Step<Label<DoubleFlowLeftState, 'T'>>,
+    Step<Tick<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<Label<DoubleFlowLeftState, 'L'>>,
+    Step<Tick<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    DoubleFlowLeftOuterBody,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
 );
 
 #[derive(Flow)]
+struct DoubleFlowLeftOuterRight(
+    Step<Label<DoubleFlowLeftState, 'T'>>,
+    Step<Tick<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<Label<DoubleFlowLeftState, 'R'>>,
+    Step<Tick<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    DoubleFlowLeftOuterBody,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = DoubleFlowLeftState)]
 struct DoubleFlowLeft(
-    Step<Label<ReplayState, 'D'>>,
-    Step<Label<ReplayState, 'L'>>,
-    Conditional<ReplayColorIsTrue, ReplayOuterLeft, ReplayOuterRight>,
-    Step<FlattenReplayChoice<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Tick<ReplayState>>,
+    Step<Label<DoubleFlowLeftState, 'D'>>,
+    Step<Label<DoubleFlowLeftState, 'L'>>,
+    Conditional<
+        ReplayColorIsTrue,
+        DoubleFlowLeftOuterLeft,
+        DoubleFlowLeftOuterRight,
+    >,
+    Step<FlattenReplayChoice<DoubleFlowLeftState>>,
+    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<Tick<DoubleFlowLeftState>>,
 );
+
 #[derive(Flow)]
+#[jungle(focus = DoubleFlowRightInnerLeftState)]
+struct DoubleFlowRightInnerLeftFlow(
+    Step<Label<DoubleFlowRightInnerLeftState, '2'>>,
+    Step<SleepMillis<DoubleFlowRightInnerLeftState, 100>>,
+    Step<Tick<DoubleFlowRightInnerLeftState>>,
+    Step<SleepMillis<DoubleFlowRightInnerLeftState, 100>>,
+    Step<Tick<DoubleFlowRightInnerLeftState>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = DoubleFlowRightInnerRightState)]
+struct DoubleFlowRightInnerRightFlow(
+    Step<Label<DoubleFlowRightInnerRightState, 'R'>>,
+    Step<SleepMillis<DoubleFlowRightInnerRightState, 100>>,
+    Step<Tick<DoubleFlowRightInnerRightState>>,
+    Step<SleepMillis<DoubleFlowRightInnerRightState, 100>>,
+    Step<Tick<DoubleFlowRightInnerRightState>>,
+);
+
+#[derive(Flow)]
+struct DoubleFlowRightJoinedInnerBody(
+    Join<DoubleFlowRightInnerLeftFlow, DoubleFlowRightInnerRightFlow>,
+    Step<MergeReplayJoin<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+);
+
+#[derive(Flow)]
+struct DoubleFlowRightOuterBody(
+    Step<Tick<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Conditional<
+        ReplayColorIsTrue,
+        ReplayHeadLeftBranch<DoubleFlowRightState>,
+        ReplayHeadRightBranch<DoubleFlowRightState>,
+    >,
+    Step<FlattenReplayChoice<DoubleFlowRightState>>,
+    Step<SeedReplayBranches<DoubleFlowRightState>>,
+    While<ReplayColorIsTrue, DoubleFlowRightJoinedInnerBody>,
+    Step<Tick<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Conditional<
+        ReplayColorIsTrue,
+        ReplayTailLeftBranch<DoubleFlowRightState>,
+        ReplayTailRightBranch<DoubleFlowRightState>,
+    >,
+    Step<FlattenReplayChoice<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+);
+
+#[derive(Flow)]
+struct DoubleFlowRightOuterLeft(
+    Step<Label<DoubleFlowRightState, 'T'>>,
+    Step<Tick<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<Label<DoubleFlowRightState, 'L'>>,
+    Step<Tick<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    DoubleFlowRightOuterBody,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+);
+
+#[derive(Flow)]
+struct DoubleFlowRightOuterRight(
+    Step<Label<DoubleFlowRightState, 'T'>>,
+    Step<Tick<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<Label<DoubleFlowRightState, 'R'>>,
+    Step<Tick<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    DoubleFlowRightOuterBody,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = DoubleFlowRightState)]
 struct DoubleFlowRight(
-    Step<Label<ReplayState, 'D'>>,
-    Step<Label<ReplayState, 'R'>>,
-    Conditional<ReplayColorIsTrue, ReplayOuterLeft, ReplayOuterRight>,
-    Step<FlattenReplayChoice<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
-    Step<Tick<ReplayState>>,
+    Step<Label<DoubleFlowRightState, 'D'>>,
+    Step<Label<DoubleFlowRightState, 'R'>>,
+    Conditional<
+        ReplayColorIsTrue,
+        DoubleFlowRightOuterLeft,
+        DoubleFlowRightOuterRight,
+    >,
+    Step<FlattenReplayChoice<DoubleFlowRightState>>,
+    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<Tick<DoubleFlowRightState>>,
 );
 
 #[derive(Flow)]
 struct QuadFlow(
-    Conditional<ReplayColorIsTrue, DoubleFlowLeft, DoubleFlowRight>,
-    Step<FlattenReplayChoice<ReplayState>>,
+    Join<DoubleFlowLeft, DoubleFlowRight>,
+    Step<MergeReplayJoin<ReplayState>>,
     Step<SleepMillis<ReplayState, 100>>,
     Step<Tick<ReplayState>>,
 );
