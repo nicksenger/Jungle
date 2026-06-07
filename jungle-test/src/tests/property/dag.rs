@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 struct ReplayRainforest(Arc<Mutex<ReplayInner>>);
 
@@ -251,7 +252,9 @@ struct RenderedDag {
 const REPLAY_TEST_OWNER_LEASE_TTL_MS: i64 = 250;
 const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
 const DAG_TEST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
+const DAG_TEST_END_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const DAG_TEST_STREAM_SETTLE_TIMEOUT: Duration = Duration::from_millis(100);
+const DAG_TEST_TRUE_PUBLISH_INTERVAL: Duration = Duration::from_millis(10);
 
 fn replay_rainforest(
     query: Vec<bool>,
@@ -265,11 +268,37 @@ fn spawn_depth1_worker(
     client: FusedClient,
     jungle: ReplayRainforest,
     owner_lease_ttl_ms: i64,
-) -> tokio::task::JoinHandle<()> {
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         let worker = JungleWorker::new(jungle, client).with_owner_lease_ttl_ms(owner_lease_ttl_ms);
         let _ = worker.spawn().await;
     })
+}
+
+struct UpdateCollector {
+    stop_tx: tokio::sync::oneshot::Sender<()>,
+    join: JoinHandle<Vec<JourneyUpdateEvent>>,
+}
+
+impl UpdateCollector {
+    async fn finish(self) -> Vec<JourneyUpdateEvent> {
+        let _ = self.stop_tx.send(());
+        self.join
+            .await
+            .expect("journey update collector task should complete cleanly")
+    }
+}
+
+struct TruePublisher {
+    stop_tx: tokio::sync::oneshot::Sender<()>,
+    join: JoinHandle<()>,
+}
+
+impl TruePublisher {
+    async fn stop(self) {
+        let _ = self.stop_tx.send(());
+        let _ = self.join.await;
+    }
 }
 
 fn rendered_graph_from_updates(
@@ -311,45 +340,94 @@ fn rendered_graph_from_updates(
     }
 }
 
-async fn collect_updates_until_boundary(
+async fn spawn_update_collector(
     client: &FusedClient,
     journey_id: uuid::Uuid,
-    end_rx: &mut UnboundedReceiver<()>,
-) -> Vec<JourneyUpdateEvent> {
+) -> UpdateCollector {
     let mut subscription = client
         .subscribe_step_updates(journey_id, None)
         .await
         .expect("subscribe_step_updates should succeed");
-    let mut updates = Vec::new();
+    let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let join = tokio::spawn(async move {
+        let mut updates = Vec::new();
 
-    tokio::time::timeout(DAG_TEST_BOUNDARY_TIMEOUT, async {
         loop {
             tokio::select! {
-                maybe_end = end_rx.next() => {
-                    maybe_end.expect("end signal channel should remain open until boundary");
-                    break;
-                }
+                _ = &mut stop_rx => break,
                 maybe_update = subscription.next() => {
                     let update = maybe_update
-                        .expect("journey update stream should remain open until boundary")
+                        .expect("journey update stream should remain open until collector stop")
                         .expect("streamed journey update should succeed");
                     updates.push(update);
                 }
             }
         }
+
+        loop {
+            match tokio::time::timeout(DAG_TEST_STREAM_SETTLE_TIMEOUT, subscription.next()).await {
+                Ok(Some(Ok(update))) => updates.push(update),
+                Ok(Some(Err(err))) => panic!("streamed journey update should succeed: {err}"),
+                Ok(None) | Err(_) => break,
+            }
+        }
+
+        updates
+    });
+
+    UpdateCollector { stop_tx, join }
+}
+
+fn spawn_true_publisher(sender: UnboundedSender<bool>) -> TruePublisher {
+    let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let join = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut stop_rx => break,
+                _ = tokio::time::sleep(DAG_TEST_TRUE_PUBLISH_INTERVAL) => {
+                    if sender.unbounded_send(true).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    TruePublisher { stop_tx, join }
+}
+
+async fn wait_for_end_signal(end_rx: &mut UnboundedReceiver<()>, label: &str) {
+    tokio::time::timeout(DAG_TEST_BOUNDARY_TIMEOUT, end_rx.next())
+        .await
+        .unwrap_or_else(|_| panic!("{label} end signal should arrive before timeout"))
+        .unwrap_or_else(|| panic!("{label} end signal channel should remain open"));
+}
+
+async fn wait_for_quiescent_end_signal(
+    client: &FusedClient,
+    journey_id: uuid::Uuid,
+    end_rx: &mut UnboundedReceiver<()>,
+) {
+    tokio::time::timeout(DAG_TEST_BOUNDARY_TIMEOUT, async {
+        let mut saw_end = false;
+
+        loop {
+            match tokio::time::timeout(DAG_TEST_STREAM_SETTLE_TIMEOUT, end_rx.next()).await {
+                Ok(Some(())) => saw_end = true,
+                Ok(None) => panic!("end signal channel should remain open while waiting for quiescence"),
+                Err(_) if saw_end => break,
+                Err(_) => {
+                    let _ = client
+                        .journey_details(journey_id)
+                        .await
+                        .expect("journey_details should succeed while waiting for replay quiescence");
+                    tokio::time::sleep(DAG_TEST_END_POLL_INTERVAL).await;
+                }
+            }
+        }
     })
     .await
-    .expect("boundary should arrive before timeout");
-
-    loop {
-        match tokio::time::timeout(DAG_TEST_STREAM_SETTLE_TIMEOUT, subscription.next()).await {
-            Ok(Some(Ok(update))) => updates.push(update),
-            Ok(Some(Err(err))) => panic!("streamed journey update should succeed: {err}"),
-            Ok(None) | Err(_) => break,
-        }
-    }
-
-    updates
+    .expect("replayed journey should reach a quiescent end signal before timeout");
 }
 
 async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
@@ -374,24 +452,28 @@ async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
         .expect("depth1 journey should start")
         .journey_id;
 
-    let live_graph = rendered_graph_from_updates(
-        collect_updates_until_boundary(&client, journey_id, &mut end_rx).await,
-    );
+    let live_collector = spawn_update_collector(&client, journey_id).await;
+
+    wait_for_end_signal(&mut end_rx, "initial").await;
 
     worker_one.abort();
     let _ = worker_one.await;
     drop(worker_one_resume_tx);
 
     let (worker_two_resume_tx, worker_two_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let true_publisher = spawn_true_publisher(worker_two_resume_tx.clone());
     let worker_two = spawn_depth1_worker(
         client.clone(),
         replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
         REPLAY_TEST_OWNER_LEASE_TTL_MS,
     );
+    let replay_collector = spawn_update_collector(&client, journey_id).await;
 
-    let replay_graph = rendered_graph_from_updates(
-        collect_updates_until_boundary(&client, journey_id, &mut end_rx).await,
-    );
+    true_publisher.stop().await;
+    wait_for_quiescent_end_signal(&client, journey_id, &mut end_rx).await;
+
+    let live_graph = rendered_graph_from_updates(live_collector.finish().await);
+    let replay_graph = rendered_graph_from_updates(replay_collector.finish().await);
 
     assert_eq!(
         live_graph, replay_graph,
