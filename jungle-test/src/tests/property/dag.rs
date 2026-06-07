@@ -1,10 +1,14 @@
-use super::ecosystem::{replay_rainforest, Depth1, Depth1Flow, ReplayRainforest, ReplayState};
+use super::ecosystem::{
+    replay_rainforest, Depth1, Depth1Flow, Depth2, Depth2Flow, Depth2State, Depth3, Depth3Flow,
+    Depth3State, ReplayRainforest, ReplayState,
+};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
 use jungle_sdk::core::dag::{ClusterKind, Dag, DagSnapshot, LiveDagState, Phase, RuntimeState};
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use proptest::prelude::*;
+use serde::Serialize;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
@@ -40,7 +44,7 @@ const DAG_TEST_END_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const DAG_TEST_STREAM_SETTLE_TIMEOUT: Duration = Duration::from_millis(100);
 const DAG_TEST_TRUE_PUBLISH_INTERVAL: Duration = Duration::from_millis(10);
 
-fn spawn_depth1_worker(
+fn spawn_replay_worker(
     client: FusedClient,
     jungle: ReplayRainforest,
     owner_lease_ttl_ms: i64,
@@ -77,10 +81,13 @@ impl TruePublisher {
     }
 }
 
-fn rendered_graph_from_updates(
+fn rendered_graph_from_updates<F>(
     updates: impl IntoIterator<Item = JourneyUpdateEvent>,
-) -> RenderedDag {
-    let dag = Dag::from_ast(<Depth1Flow as JourneyAstSource>::journey_ast());
+) -> RenderedDag
+where
+    F: JourneyAstSource,
+{
+    let dag = Dag::from_ast(<F as JourneyAstSource>::journey_ast());
     let mut live = LiveDagState::default();
     live.bind_model(&dag);
     for update in updates {
@@ -204,26 +211,33 @@ async fn wait_for_quiescent_end_signal(
     .expect("replayed journey should reach a quiescent end signal before timeout");
 }
 
-async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
+async fn assert_replayed_graph_matches_live<A, S, F>(query: Vec<bool>, namespace: &str, seed: S)
+where
+    A: Animal<State = S, Seed = S, Flow = F>,
+    A::Id: AnimalIdValue,
+    A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+    S: Serialize + Sync,
+    F: JourneyAstSource,
+{
     let client = FusedClient::builder()
         .claimed_work_ttl_ms(REPLAY_TEST_CLAIMED_WORK_TTL_MS)
-        .namespace(format!("depth1-dag-property-{}", uuid::Uuid::new_v4()))
+        .namespace(format!("{namespace}-dag-property-{}", uuid::Uuid::new_v4()))
         .build()
         .await
         .expect("fused client should build");
 
     let (end_tx, mut end_rx) = futures::channel::mpsc::unbounded::<()>();
     let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
-    let worker_one = spawn_depth1_worker(
+    let worker_one = spawn_replay_worker(
         client.clone(),
         replay_rainforest(query, end_tx.clone(), worker_one_resume_rx),
         REPLAY_TEST_OWNER_LEASE_TTL_MS,
     );
 
     let journey_id = client
-        .spawn::<Depth1>(&ReplayState::default())
+        .spawn::<A>(&seed)
         .await
-        .expect("depth1 journey should start")
+        .expect("replay journey should start")
         .journey_id;
 
     let live_collector = spawn_update_collector(&client, journey_id).await;
@@ -236,7 +250,7 @@ async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
 
     let (worker_two_resume_tx, worker_two_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
     let true_publisher = spawn_true_publisher(worker_two_resume_tx.clone());
-    let worker_two = spawn_depth1_worker(
+    let worker_two = spawn_replay_worker(
         client.clone(),
         replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
         REPLAY_TEST_OWNER_LEASE_TTL_MS,
@@ -246,8 +260,8 @@ async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
     true_publisher.stop().await;
     wait_for_quiescent_end_signal(&client, journey_id, &mut end_rx).await;
 
-    let live_graph = rendered_graph_from_updates(live_collector.finish().await);
-    let replay_graph = rendered_graph_from_updates(replay_collector.finish().await);
+    let live_graph = rendered_graph_from_updates::<F>(live_collector.finish().await);
+    let replay_graph = rendered_graph_from_updates::<F>(replay_collector.finish().await);
 
     assert_eq!(
         live_graph, replay_graph,
@@ -257,6 +271,33 @@ async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
     worker_two.abort();
     let _ = worker_two.await;
     drop(worker_two_resume_tx);
+}
+
+async fn assert_replayed_depth1_graph_matches_live(query: Vec<bool>) {
+    assert_replayed_graph_matches_live::<Depth1, ReplayState, Depth1Flow>(
+        query,
+        "depth1",
+        ReplayState::default(),
+    )
+    .await;
+}
+
+async fn assert_replayed_depth2_graph_matches_live(query: Vec<bool>) {
+    assert_replayed_graph_matches_live::<Depth2, Depth2State, Depth2Flow>(
+        query,
+        "depth2",
+        Depth2State::default(),
+    )
+    .await;
+}
+
+async fn assert_replayed_depth3_graph_matches_live(query: Vec<bool>) {
+    assert_replayed_graph_matches_live::<Depth3, Depth3State, Depth3Flow>(
+        query,
+        "depth3",
+        Depth3State::default(),
+    )
+    .await;
 }
 
 proptest! {
@@ -274,5 +315,27 @@ proptest! {
             .build()
             .expect("tokio runtime should build for property test");
         runtime.block_on(assert_replayed_depth1_graph_matches_live(query));
+    }
+
+    #[test]
+    fn depth2_replay_graph_matches_live_graph(
+        query in proptest::collection::vec(any::<bool>(), 0..513)
+    ) {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime should build for property test");
+        runtime.block_on(assert_replayed_depth2_graph_matches_live(query));
+    }
+
+    #[test]
+    fn depth3_replay_graph_matches_live_graph(
+        query in proptest::collection::vec(any::<bool>(), 0..513)
+    ) {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime should build for property test");
+        runtime.block_on(assert_replayed_depth3_graph_matches_live(query));
     }
 }
