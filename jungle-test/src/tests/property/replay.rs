@@ -246,7 +246,7 @@ pub struct Depth1OuterBody(
 );
 
 #[derive(Flow)]
-pub struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
+pub struct Depth1Flow(While<ReplayAlwaysTrue, Attempt<Depth1OuterBody>>);
 
 pub struct Depth1;
 
