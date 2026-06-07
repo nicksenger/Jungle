@@ -3765,26 +3765,50 @@ where
         }
 
         let side = if self.focused_merge {
-            match completion {
-                Ok(bytes) => match postcard::from_bytes::<JoinCompletionEnvelope>(&bytes)
-                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?
-                {
-                    JoinCompletionEnvelope::Left(child_completion) => {
-                        completion = child_completion;
-                        self.left_request_in_flight = false;
-                        JoinSide::Left
+            match &completion {
+                Ok(bytes) => {
+                    if let Ok(envelope) = postcard::from_bytes::<JoinCompletionEnvelope>(bytes) {
+                        match envelope {
+                            JoinCompletionEnvelope::Left(child_completion) => {
+                                completion = child_completion;
+                                self.left_request_in_flight = false;
+                                JoinSide::Left
+                            }
+                            JoinCompletionEnvelope::Right(child_completion) => {
+                                completion = child_completion;
+                                self.right_request_in_flight = false;
+                                JoinSide::Right
+                            }
+                        }
+                    } else if self.left_request_in_flight ^ self.right_request_in_flight {
+                        if self.left_request_in_flight {
+                            self.left_request_in_flight = false;
+                            JoinSide::Left
+                        } else {
+                            self.right_request_in_flight = false;
+                            JoinSide::Right
+                        }
+                    } else {
+                        return Err(ExecutorError::OutputDeserialize(
+                            "focused join completion envelope failed".to_string(),
+                        ));
                     }
-                    JoinCompletionEnvelope::Right(child_completion) => {
-                        completion = child_completion;
-                        self.right_request_in_flight = false;
-                        JoinSide::Right
-                    }
-                },
+                }
                 Err(bytes) => {
-                    return Err(ExecutorError::ErrorDeserialize(format!(
-                        "join completion envelope failed: {}",
-                        String::from_utf8_lossy(&bytes)
-                    )))
+                    if self.left_request_in_flight ^ self.right_request_in_flight {
+                        if self.left_request_in_flight {
+                            self.left_request_in_flight = false;
+                            JoinSide::Left
+                        } else {
+                            self.right_request_in_flight = false;
+                            JoinSide::Right
+                        }
+                    } else {
+                        return Err(ExecutorError::ErrorDeserialize(format!(
+                            "join completion envelope failed: {}",
+                            String::from_utf8_lossy(bytes)
+                        )));
+                    }
                 }
             }
         } else {

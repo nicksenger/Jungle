@@ -122,13 +122,24 @@ where
     {
         let sleep_effect_type = core::any::type_name::<Sleep>();
         let mut in_flight = FuturesUnordered::new();
-        while !executor.is_complete() || !in_flight.is_empty() {
-            if in_flight.is_empty() {
+        let mut pending_sleep: Option<(i64, u32)> = None;
+        while !executor.is_complete() || !in_flight.is_empty() || pending_sleep.is_some() {
+            if pending_sleep.is_some() && in_flight.is_empty() {
+                let (wake_at_unix_ms, node_id) = pending_sleep
+                    .take()
+                    .expect("pending sleep should be present when suspending");
+                return Ok(RunnerAdvance::SuspendedSleep {
+                    wake_at_unix_ms,
+                    node_id,
+                });
+            }
+
+            if in_flight.is_empty() && pending_sleep.is_none() {
                 process_perturbations(executor, journey_id, tx).await?;
             }
 
             let mut newly_dispatched = Vec::new();
-            loop {
+            while pending_sleep.is_none() {
                 let request = match executor.next_executable_request(initial_input.clone()) {
                     Ok(request) => request,
                     Err(ExecutorError::Complete) => {
@@ -139,6 +150,15 @@ where
                     Err(err) => return Err(err),
                 };
                 send_lifecycle_updates(executor, tx).await?;
+                if request.effect_type() == sleep_effect_type {
+                    let duration: std::time::Duration = request.deserialize_request()?;
+                    let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
+                    let wake_at_unix_ms = chrono::Utc::now()
+                        .timestamp_millis()
+                        .saturating_add(duration_millis);
+                    pending_sleep = Some((wake_at_unix_ms, request.node_id()));
+                    break;
+                }
                 let node_id = request.node_id();
                 send_history(
                     tx,
@@ -152,25 +172,6 @@ where
                 newly_dispatched.push(request);
             }
 
-            if newly_dispatched.len() == 1
-                && in_flight.is_empty()
-                && newly_dispatched[0].effect_type() == sleep_effect_type
-            {
-                let request = newly_dispatched
-                    .pop()
-                    .expect("single dispatched sleep request should exist");
-                let node_id = request.node_id();
-                let duration: std::time::Duration = request.deserialize_request()?;
-                let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
-                let wake_at_unix_ms = chrono::Utc::now()
-                    .timestamp_millis()
-                    .saturating_add(duration_millis);
-                return Ok(RunnerAdvance::SuspendedSleep {
-                    wake_at_unix_ms,
-                    node_id,
-                });
-            }
-
             for request in newly_dispatched {
                 let node_id = request.node_id();
                 let tx_clone = tx.clone();
@@ -178,6 +179,10 @@ where
                     let completion = run_request_with_live_history_owned(tx_clone, request).await;
                     (node_id, completion)
                 });
+            }
+
+            if in_flight.is_empty() {
+                continue;
             }
 
             let Some((node_id, completion)) = in_flight.next().await else {

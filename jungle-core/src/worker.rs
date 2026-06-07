@@ -1320,6 +1320,11 @@ async fn recover_oldest_replay_completion(
         let Some(request) = pending.remove(&node_id) else {
             continue;
         };
+        if request.effect_type == core::any::type_name::<Sleep>() {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay reached Sleep without a backend wake event (journey={journey_id}, node_id={node_id})"
+            )));
+        }
         let completion = request.request.run().await?;
         send_recovered_completion(tx, journey_id, node_id, &completion).await?;
         return Ok(Some((node_id, completion)));
