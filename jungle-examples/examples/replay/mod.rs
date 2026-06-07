@@ -280,9 +280,7 @@ impl ReplayRainforest {
         };
 
         let mut recv = recv.lock().await;
-        recv.next()
-            .await
-            .expect("replay receiver should yield a bool after query exhaustion")
+        recv.next().await.expect("All done.")
     }
 }
 
@@ -339,7 +337,9 @@ where
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
-        state.replay_history_mut().push(if tocked { '1' } else { '0' });
+        state
+            .replay_history_mut()
+            .push(if tocked { '1' } else { '0' });
         *state.replay_color_mut() = tocked;
         Ok(())
     }
@@ -555,7 +555,57 @@ struct ReplayOuterBody(
 );
 
 #[derive(Flow)]
-struct ReplayFlow(While<ReplayAlwaysTrue, ReplayOuterBody>);
+struct ReplayOuterLeft(
+    Step<Label<ReplayState, 'T'>>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Label<ReplayState, 'L'>>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    ReplayOuterBody,
+    Step<SleepMillis<ReplayState, 100>>,
+);
+#[derive(Flow)]
+struct ReplayOuterRight(
+    Step<Label<ReplayState, 'T'>>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Label<ReplayState, 'R'>>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    ReplayOuterBody,
+    Step<SleepMillis<ReplayState, 100>>,
+);
+
+#[derive(Flow)]
+struct DoubleFlowLeft(
+    Step<Label<ReplayState, 'D'>>,
+    Step<Label<ReplayState, 'L'>>,
+    Conditional<ReplayColorIsTrue, ReplayOuterLeft, ReplayOuterRight>,
+    Step<FlattenReplayChoice<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+);
+#[derive(Flow)]
+struct DoubleFlowRight(
+    Step<Label<ReplayState, 'D'>>,
+    Step<Label<ReplayState, 'R'>>,
+    Conditional<ReplayColorIsTrue, ReplayOuterLeft, ReplayOuterRight>,
+    Step<FlattenReplayChoice<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+);
+
+#[derive(Flow)]
+struct QuadFlow(
+    Conditional<ReplayColorIsTrue, DoubleFlowLeft, DoubleFlowRight>,
+    Step<FlattenReplayChoice<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+);
+
+#[derive(Flow)]
+struct ReplayFlow(While<ReplayAlwaysTrue, QuadFlow>);
 
 pub(crate) struct Depth2;
 
