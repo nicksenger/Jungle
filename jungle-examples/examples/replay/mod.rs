@@ -5,8 +5,10 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::FusedClient;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -14,12 +16,25 @@ use uuid::Uuid;
 mod ui;
 
 const DEFAULT_LOG_FILTER: &str = "warn,replay=info,jungle_vision=info";
+const REPLAY_VIEWER_LINGER_AFTER_END: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Parser)]
 #[command(name = "replay")]
 struct Cli {
     #[arg(long, value_parser = parse_query_bits)]
     query: Vec<bool>,
+    #[arg(
+        long = "img-dump",
+        help = "Capture the replay UI to this PNG path and then exit"
+    )]
+    img_dump: Option<PathBuf>,
+    #[arg(
+        long = "img-dump-time-secs",
+        requires = "img_dump",
+        value_parser = parse_img_dump_time_secs,
+        help = "Seconds to wait after the UI starts before capturing --img-dump"
+    )]
+    img_dump_time_secs: Option<f64>,
 }
 
 fn parse_query_bits(input: &str) -> Result<Vec<bool>, String> {
@@ -36,6 +51,16 @@ fn parse_query_bits(input: &str) -> Result<Vec<bool>, String> {
     }
 
     Ok(input.chars().rev().map(|ch| ch == '1').collect())
+}
+
+fn parse_img_dump_time_secs(value: &str) -> Result<f64, String> {
+    let secs = value
+        .parse::<f64>()
+        .map_err(|err| format!("invalid img dump time `{value}`: {err}"))?;
+    if secs.is_sign_negative() {
+        return Err("img dump time must be non-negative".to_owned());
+    }
+    Ok(secs)
 }
 
 fn init_tracing() {
@@ -323,6 +348,12 @@ impl RestartFlag {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
+    let image_dump = cli.img_dump.map(|output_path| {
+        ui::ImageDumpConfig::new(
+            output_path,
+            Duration::from_secs_f64(cli.img_dump_time_secs.unwrap_or(0.0)),
+        )
+    });
 
     let client = FusedClient::builder()
         .namespace(format!("{}-{}", ReplayRainforest::NAME, Uuid::new_v4()))
@@ -349,6 +380,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("initial execution hit replay boundary; restarting worker and viewer");
             worker_one_abort.abort();
             restart_on_boundary.request_restart();
+            tokio::time::sleep(REPLAY_VIEWER_LINGER_AFTER_END).await;
             shutdown_on_boundary.request_shutdown();
         }
     });
@@ -359,6 +391,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             journey_id,
             first_shutdown,
             "Replay Example - Initial Execution",
+            image_dump,
         )
     })?;
 
@@ -389,6 +422,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             journey_id,
             second_shutdown,
             "Replay Example - Replayed Worker",
+            None,
         )
     });
 
@@ -397,4 +431,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     ui_result?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_non_negative_img_dump_time_secs() {
+        assert_eq!(parse_img_dump_time_secs("0").unwrap(), 0.0);
+        assert_eq!(parse_img_dump_time_secs("30.5").unwrap(), 30.5);
+    }
+
+    #[test]
+    fn rejects_negative_img_dump_time_secs() {
+        assert!(parse_img_dump_time_secs("-1").is_err());
+    }
 }
