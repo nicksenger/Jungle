@@ -1,4 +1,4 @@
-use crate::{Depth1, ShutdownFlag};
+use crate::{Depth1, ReplayLifecycle};
 use iced::widget::container;
 use iced::window;
 use iced::{window::Screenshot, Element, Font, Length, Subscription, Task};
@@ -27,19 +27,25 @@ impl ImageDumpConfig {
 pub fn run_ui<C>(
     client: C,
     journey_id: Uuid,
-    shutdown: ShutdownFlag,
-    title: &'static str,
+    lifecycle: ReplayLifecycle,
     image_dump: Option<ImageDumpConfig>,
 ) -> Result<(), iced::Error>
 where
     C: JungleClient + Clone + 'static,
 {
     iced::application(
-        move || ReplayUi::new(client.clone(), journey_id, shutdown.clone(), image_dump.clone()),
+        move || {
+            ReplayUi::new(
+                client.clone(),
+                journey_id,
+                lifecycle.clone(),
+                image_dump.clone(),
+            )
+        },
         ReplayUi::update,
         ReplayUi::view,
     )
-    .title(move |_app: &ReplayUi| title.to_string())
+    .title(ReplayUi::<C>::title)
     .subscription(ReplayUi::subscription)
     .window_size((WINDOW_WIDTH, WINDOW_HEIGHT))
     .default_font(Font::with_name("Iosevka"))
@@ -57,23 +63,56 @@ enum Message {
     ViewSaved(Result<PathBuf, String>),
 }
 
-struct ReplayUi {
-    shutdown: ShutdownFlag,
+struct ReplayUi<C>
+where
+    C: JungleClient + Clone + 'static,
+{
+    client: C,
+    journey_id: Uuid,
+    lifecycle: ReplayLifecycle,
+    replayed: bool,
     viewer: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     image_dump: Option<ImageDumpConfig>,
 }
 
-impl ReplayUi {
-    fn new<C>(
+impl<C> ReplayUi<C>
+where
+    C: JungleClient + Clone + 'static,
+{
+    fn new(
         client: C,
         journey_id: Uuid,
-        shutdown: ShutdownFlag,
+        lifecycle: ReplayLifecycle,
         image_dump: Option<ImageDumpConfig>,
-    ) -> (Self, Task<Message>)
-    where
-        C: JungleClient + Clone + 'static,
-    {
-        let viewer = jungle_vision::JungleViewerBuilder::new()
+    ) -> (Self, Task<Message>) {
+        let viewer = Self::build_viewer(client.clone(), journey_id);
+
+        (
+            Self {
+                client,
+                journey_id,
+                lifecycle,
+                replayed: false,
+                viewer,
+                image_dump,
+            },
+            Task::done(Message::AppStarted),
+        )
+    }
+
+    fn title(&self) -> String {
+        if self.replayed {
+            "Replay Example - Replayed Worker".to_owned()
+        } else {
+            "Replay Example - Initial Execution".to_owned()
+        }
+    }
+
+    fn build_viewer(
+        client: C,
+        journey_id: Uuid,
+    ) -> jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal> {
+        jungle_vision::JungleViewerBuilder::new()
             .title("Replay Journey")
             .eject_live_animal_with_theme::<Depth1, _, _, jungle_vision::AnyAnimal>(
                 client,
@@ -85,23 +124,15 @@ impl ReplayUi {
                             jungle_vision::ClusterExpansionMode::AlwaysExpanded,
                     },
                 ),
-            );
-
-        (
-            Self {
-                shutdown,
-                viewer,
-                image_dump,
-            },
-            Task::done(Message::AppStarted),
-        )
+            )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Tick => {
-                if self.shutdown.should_shutdown() {
-                    return iced::exit();
+                if self.lifecycle.take_replay_viewer_request() {
+                    self.viewer = Self::build_viewer(self.client.clone(), self.journey_id);
+                    self.replayed = true;
                 }
                 Task::none()
             }

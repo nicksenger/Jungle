@@ -6,7 +6,7 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::FusedClient;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn};
@@ -311,36 +311,29 @@ fn spawn_depth1_worker(
 }
 
 #[derive(Clone)]
-struct ShutdownFlag(Arc<AtomicBool>);
+struct ReplayLifecycle(Arc<AtomicU8>);
 
-impl ShutdownFlag {
+impl ReplayLifecycle {
+    const INITIAL: u8 = 0;
+    const REPLAY_READY: u8 = 1;
+
     fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
+        Self(Arc::new(AtomicU8::new(Self::INITIAL)))
     }
 
-    fn request_shutdown(&self) {
-        self.0.store(true, Ordering::Relaxed);
+    fn request_replay_viewer(&self) {
+        self.0.store(Self::REPLAY_READY, Ordering::Relaxed);
     }
 
-    fn should_shutdown(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
-}
-
-#[derive(Clone)]
-struct RestartFlag(Arc<AtomicBool>);
-
-impl RestartFlag {
-    fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
-    }
-
-    fn request_restart(&self) {
-        self.0.store(true, Ordering::Relaxed);
-    }
-
-    fn should_restart(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
+    fn take_replay_viewer_request(&self) -> bool {
+        self.0
+            .compare_exchange(
+                Self::REPLAY_READY,
+                Self::INITIAL,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+            .is_ok()
     }
 }
 
@@ -373,63 +366,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let journey_id = client.spawn::<Depth1>(&ReplayState::default()).await?.journey_id;
     info!(%journey_id, "started replay example journey");
 
-    let first_shutdown = ShutdownFlag::new();
-    let restart_requested = RestartFlag::new();
-    let shutdown_on_boundary = first_shutdown.clone();
-    let restart_on_boundary = restart_requested.clone();
+    let lifecycle = ReplayLifecycle::new();
+    let lifecycle_on_boundary = lifecycle.clone();
+    let worker_two_slot = Arc::new(tokio::sync::Mutex::new(None));
+    let worker_two_slot_on_boundary = worker_two_slot.clone();
+    let replay_client = client.clone();
     let boundary_task = tokio::spawn(async move {
         if end_rx.next().await.is_some() {
             info!("initial execution hit replay boundary; restarting worker and viewer");
             worker_one_abort.abort();
-            restart_on_boundary.request_restart();
             tokio::time::sleep(REPLAY_VIEWER_LINGER_AFTER_END).await;
-            shutdown_on_boundary.request_shutdown();
+
+            let (_worker_two_resume_tx, worker_two_resume_rx) =
+                futures::channel::mpsc::unbounded::<bool>();
+            let worker_two = spawn_depth1_worker(
+                replay_client.clone(),
+                replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
+            );
+            *worker_two_slot_on_boundary.lock().await = Some(worker_two);
+            lifecycle_on_boundary.request_replay_viewer();
         }
     });
 
-    tokio::task::block_in_place(|| {
-        ui::run_ui(
-            client.clone(),
-            journey_id,
-            first_shutdown,
-            "Replay Example - Initial Execution",
-            image_dump,
-        )
-    })?;
+    let ui_result = tokio::task::block_in_place(|| {
+        ui::run_ui(client.clone(), journey_id, lifecycle, image_dump)
+    });
+
+    boundary_task.abort();
+    let _ = boundary_task.await;
 
     worker_one.abort();
     let _ = worker_one.await;
     drop(worker_one_resume_tx);
 
-    if !restart_requested.should_restart() {
-        boundary_task.abort();
-        let _ = boundary_task.await;
-        info!("initial viewer closed before replay boundary; exiting");
-        return Ok(());
+    if let Some(worker_two) = worker_two_slot.lock().await.take() {
+        worker_two.abort();
+        let _ = worker_two.await;
     }
-    let _ = boundary_task.await;
-
-    let (_worker_two_resume_tx, worker_two_resume_rx) =
-        futures::channel::mpsc::unbounded::<bool>();
-    let worker_two = spawn_depth1_worker(
-        client.clone(),
-        replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
-    );
-
-    info!("replay worker started; launching replacement viewer");
-    let second_shutdown = ShutdownFlag::new();
-    let ui_result = tokio::task::block_in_place(|| {
-        ui::run_ui(
-            client.clone(),
-            journey_id,
-            second_shutdown,
-            "Replay Example - Replayed Worker",
-            None,
-        )
-    });
-
-    worker_two.abort();
-    let _ = worker_two.await;
 
     ui_result?;
     Ok(())
