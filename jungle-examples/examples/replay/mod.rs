@@ -64,8 +64,8 @@ fn parse_img_dump_time_secs(value: &str) -> Result<f64, String> {
 }
 
 fn init_tracing() {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
     let _ = tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .with_target(false)
@@ -241,33 +241,73 @@ impl Action for FlattenReplayChoice {
     }
 }
 
+pub struct SleepMillis<const T: u64>;
+#[jungle::action]
+impl<const T: u64> Action for SleepMillis<T> {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayState, input: Self::Input) -> Duration {
+        Duration::from_millis(T)
+    }
+    fn absorb(
+        _state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        Ok(())
+    }
+}
+
 #[derive(Flow)]
-struct Depth1LeftBranch(Step<Label<'L'>>, Step<Tick>, Step<Tick>, Step<Tick>);
+struct Depth1LeftBranch(
+    Step<Label<'L'>>,
+    Step<SleepMillis<100>>,
+    Step<Tick>,
+    Step<SleepMillis<100>>,
+    Step<Tick>,
+    Step<SleepMillis<100>>,
+    Step<Tick>,
+);
 
 #[derive(Flow)]
 struct Depth1RightBranch(
+    Step<SleepMillis<100>>,
     Step<Label<'R'>>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
 );
 
 #[derive(Flow)]
 struct Depth1InnerBody(
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
     Step<FlattenReplayChoice>,
+    Step<SleepMillis<100>>,
 );
 
 #[derive(Flow)]
 struct Depth1OuterBody(
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     While<ReplayColorIsTrue, Depth1InnerBody>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
+    Step<SleepMillis<100>>,
     Step<Tick>,
 );
 
@@ -363,7 +403,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let worker_one_abort = worker_one.abort_handle();
 
-    let journey_id = client.spawn::<Depth1>(&ReplayState::default()).await?.journey_id;
+    let journey_id = client
+        .spawn::<Depth1>(&ReplayState::default())
+        .await?
+        .journey_id;
     info!(%journey_id, "started replay example journey");
 
     let lifecycle = ReplayLifecycle::new();
@@ -415,7 +458,10 @@ mod tests {
     #[test]
     fn parses_query_bits() {
         assert_eq!(parse_query_bits("").unwrap(), Vec::<bool>::new());
-        assert_eq!(parse_query_bits("0101").unwrap(), vec![true, false, true, false]);
+        assert_eq!(
+            parse_query_bits("0101").unwrap(),
+            vec![true, false, true, false]
+        );
     }
 
     #[test]
