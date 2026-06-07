@@ -62,6 +62,26 @@ pub type Depth2LeftState = ReplayFrame<Left, ()>;
 pub type Depth2RightState = ReplayFrame<(), Right>;
 pub type Depth2State = ReplayFrame<Depth2LeftState, Depth2RightState>;
 
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Depth3LeftLeft;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Depth3LeftRight;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Depth3RightLeft;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Depth3RightRight;
+
+pub type Depth3LeftLeftState = ReplayFrame<Depth3LeftLeft, ()>;
+pub type Depth3LeftRightState = ReplayFrame<(), Depth3LeftRight>;
+pub type Depth3LeftState = ReplayFrame<Depth3LeftLeftState, Depth3LeftRightState>;
+pub type Depth3RightLeftState = ReplayFrame<Depth3RightLeft, ()>;
+pub type Depth3RightRightState = ReplayFrame<(), Depth3RightRight>;
+pub type Depth3RightState = ReplayFrame<Depth3RightLeftState, Depth3RightRightState>;
+pub type Depth3State = ReplayFrame<Depth3LeftState, Depth3RightState>;
+
 impl ViewProject<Depth2LeftState> for Depth2State {
     fn project_view(state: &mut Self) -> &mut Depth2LeftState {
         &mut state.left
@@ -70,6 +90,42 @@ impl ViewProject<Depth2LeftState> for Depth2State {
 
 impl ViewProject<Depth2RightState> for Depth2State {
     fn project_view(state: &mut Self) -> &mut Depth2RightState {
+        &mut state.right
+    }
+}
+
+impl ViewProject<Depth3LeftState> for Depth3State {
+    fn project_view(state: &mut Self) -> &mut Depth3LeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<Depth3RightState> for Depth3State {
+    fn project_view(state: &mut Self) -> &mut Depth3RightState {
+        &mut state.right
+    }
+}
+
+impl ViewProject<Depth3LeftLeftState> for Depth3LeftState {
+    fn project_view(state: &mut Self) -> &mut Depth3LeftLeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<Depth3LeftRightState> for Depth3LeftState {
+    fn project_view(state: &mut Self) -> &mut Depth3LeftRightState {
+        &mut state.right
+    }
+}
+
+impl ViewProject<Depth3RightLeftState> for Depth3RightState {
+    fn project_view(state: &mut Self) -> &mut Depth3RightLeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<Depth3RightRightState> for Depth3RightState {
+    fn project_view(state: &mut Self) -> &mut Depth3RightRightState {
         &mut state.right
     }
 }
@@ -100,6 +156,100 @@ impl<L, R> ReplayNodeState for ReplayFrame<L, R> {
 
     fn replay_history_mut(&mut self) -> &mut String {
         &mut self.history
+    }
+}
+
+pub trait ReplayBranchHostState: ReplayNodeState {
+    type LeftBranch: ReplayNodeState;
+    type RightBranch: ReplayNodeState;
+
+    fn replay_left(&self) -> &Self::LeftBranch;
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch;
+    fn replay_right(&self) -> &Self::RightBranch;
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch;
+}
+
+impl ReplayBranchHostState for Depth2State {
+    type LeftBranch = Depth2LeftState;
+    type RightBranch = Depth2RightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
+    }
+}
+
+impl ReplayBranchHostState for Depth3LeftState {
+    type LeftBranch = Depth3LeftLeftState;
+    type RightBranch = Depth3LeftRightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
+    }
+}
+
+impl ReplayBranchHostState for Depth3RightState {
+    type LeftBranch = Depth3RightLeftState;
+    type RightBranch = Depth3RightRightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
+    }
+}
+
+impl ReplayBranchHostState for Depth3State {
+    type LeftBranch = Depth3LeftState;
+    type RightBranch = Depth3RightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
     }
 }
 
@@ -240,7 +390,9 @@ where
         let __absorb_out_3 = {
             output.map_err(|_err| Failure::from("maybe fail should complete without effect"))?;
             if !state.replay_color() {
-                return Err(Failure::from("maybe fail should fail when replay color is false"));
+                return Err(Failure::from(
+                    "maybe fail should fail when replay color is false",
+                ));
             }
         };
         Ok(__absorb_out_3)
@@ -349,55 +501,72 @@ impl Observe for Depth1 {
     }
 }
 
-pub struct SeedReplayBranches;
+pub struct SeedReplayBranches<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for SeedReplayBranches {
+impl<St> Action for SeedReplayBranches<St>
+where
+    St: ReplayBranchHostState,
+{
     type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &Depth2State, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
-        state: &mut Depth2State,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_5 = {
             output.map_err(|_err| Failure::from("seed replay branches should succeed"))?;
-            state.left.color = state.color;
-            state.right.color = state.color;
-            state.left.history.clear();
-            state.right.history.clear();
+            let color = state.replay_color();
+            {
+                let left = state.replay_left_mut();
+                *left.replay_color_mut() = color;
+                left.replay_history_mut().clear();
+            }
+            {
+                let right = state.replay_right_mut();
+                *right.replay_color_mut() = color;
+                right.replay_history_mut().clear();
+            }
         };
         Ok(__absorb_out_5)
     }
 }
 
-pub struct MergeReplayJoin;
+pub struct MergeReplayJoin<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for MergeReplayJoin {
+impl<St> Action for MergeReplayJoin<St>
+where
+    St: ReplayBranchHostState,
+{
     type Effect = NoEffect;
     type Input = ((), ());
     type Output = ();
 
-    fn emit(_state: &Depth2State, _input: Self::Input) {}
+    fn emit(_state: &St, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut Depth2State,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_6 = {
             output.map_err(|_err| Failure::from("merge replay join should succeed"))?;
-            state.history.push('(');
-            state.history.push_str(&state.left.history);
-            state.history.push('|');
-            state.history.push_str(&state.right.history);
-            state.history.push(')');
-            state.color = state.left.color || state.right.color;
-            state.left.history.clear();
-            state.right.history.clear();
+            let left_history = state.replay_left().replay_history().to_string();
+            let right_history = state.replay_right().replay_history().to_string();
+            let next_color =
+                state.replay_left().replay_color() || state.replay_right().replay_color();
+            state.replay_history_mut().push('(');
+            state.replay_history_mut().push_str(&left_history);
+            state.replay_history_mut().push('|');
+            state.replay_history_mut().push_str(&right_history);
+            state.replay_history_mut().push(')');
+            *state.replay_color_mut() = next_color;
+            state.replay_left_mut().replay_history_mut().clear();
+            state.replay_right_mut().replay_history_mut().clear();
         };
         Ok(__absorb_out_6)
     }
@@ -414,7 +583,7 @@ pub struct Depth2RightInnerFlow(Depth1InnerBody<Depth2RightState>);
 #[derive(Flow)]
 pub struct Depth2JoinedInnerBody(
     Join<Depth2LeftInnerFlow, Depth2RightInnerFlow>,
-    Step<MergeReplayJoin>,
+    Step<MergeReplayJoin<Depth2State>>,
 );
 
 #[derive(Flow)]
@@ -423,7 +592,7 @@ pub struct Depth2OuterBody(
     Step<Tick<Depth2State>>,
     Step<Tick<Depth2State>>,
     Step<Tick<Depth2State>>,
-    Step<SeedReplayBranches>,
+    Step<SeedReplayBranches<Depth2State>>,
     While<ReplayColorIsTrue, Depth2JoinedInnerBody>,
     Step<Tick<Depth2State>>,
     Step<Tick<Depth2State>>,
@@ -448,6 +617,96 @@ impl Animal for Depth2 {
 }
 
 impl Observe for Depth2 {
+    type Appearance = String;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        state.replay_history().to_string()
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = Depth3LeftLeftState)]
+pub struct Depth3LeftNestedLeftFlow(Depth1InnerBody<Depth3LeftLeftState>);
+
+#[derive(Flow)]
+#[jungle(focus = Depth3LeftRightState)]
+pub struct Depth3LeftNestedRightFlow(Depth1InnerBody<Depth3LeftRightState>);
+
+#[derive(Flow)]
+pub struct Depth3LeftNestedJoin(
+    Join<Depth3LeftNestedLeftFlow, Depth3LeftNestedRightFlow>,
+    Step<MergeReplayJoin<Depth3LeftState>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = Depth3LeftState)]
+pub struct Depth3OuterLeftFlow(
+    Step<Tick<Depth3LeftState>>,
+    Step<SeedReplayBranches<Depth3LeftState>>,
+    Depth3LeftNestedJoin,
+    Step<Tick<Depth3LeftState>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = Depth3RightLeftState)]
+pub struct Depth3RightNestedLeftFlow(Depth1InnerBody<Depth3RightLeftState>);
+
+#[derive(Flow)]
+#[jungle(focus = Depth3RightRightState)]
+pub struct Depth3RightNestedRightFlow(Depth1InnerBody<Depth3RightRightState>);
+
+#[derive(Flow)]
+pub struct Depth3RightNestedJoin(
+    Join<Depth3RightNestedLeftFlow, Depth3RightNestedRightFlow>,
+    Step<MergeReplayJoin<Depth3RightState>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = Depth3RightState)]
+pub struct Depth3OuterRightFlow(
+    Step<Tick<Depth3RightState>>,
+    Step<SeedReplayBranches<Depth3RightState>>,
+    Depth3RightNestedJoin,
+    Step<Tick<Depth3RightState>>,
+);
+
+#[derive(Flow)]
+pub struct Depth3JoinedInnerBody(
+    Join<Depth3OuterLeftFlow, Depth3OuterRightFlow>,
+    Step<MergeReplayJoin<Depth3State>>,
+);
+
+#[derive(Flow)]
+pub struct Depth3OuterBody(
+    Step<Label<Depth3State, 'O'>>,
+    Step<Tick<Depth3State>>,
+    Step<Tick<Depth3State>>,
+    Step<Tick<Depth3State>>,
+    Step<SeedReplayBranches<Depth3State>>,
+    While<ReplayColorIsTrue, Depth3JoinedInnerBody>,
+    Step<Tick<Depth3State>>,
+    Step<Tick<Depth3State>>,
+    Conditional<
+        ReplayColorIsTrue,
+        Depth1TailLeftBranch<Depth3State>,
+        Depth1TailRightBranch<Depth3State>,
+    >,
+    Step<FlattenReplayChoice<Depth3State>>,
+);
+
+#[derive(Flow)]
+pub struct Depth3Flow(While<ReplayAlwaysTrue, Depth3OuterBody>);
+
+pub struct Depth3;
+
+#[jungle::animal(observe, id = 1006, generation = 0)]
+impl Animal for Depth3 {
+    type State = Depth3State;
+    type Seed = Depth3State;
+    type Flow = Depth3Flow;
+}
+
+impl Observe for Depth3 {
     type Appearance = String;
 
     fn observe(state: &Self::State) -> Self::Appearance {
@@ -483,11 +742,7 @@ struct ConditionalCompleteProbeFlow(
     Step<Tick<ReplayState>>,
     Step<Tick<ReplayState>>,
     Step<Tick<ReplayState>>,
-    Conditional<
-        ReplayColorIsTrue,
-        Step<Label<ReplayState, 'L'>>,
-        Step<Label<ReplayState, 'R'>>,
-    >,
+    Conditional<ReplayColorIsTrue, Step<Label<ReplayState, 'L'>>, Step<Label<ReplayState, 'R'>>>,
     Step<FlattenReplayChoice<ReplayState>>,
     Step<Tick<ReplayState>>,
 );
@@ -502,7 +757,7 @@ impl Animal for ConditionalCompleteProbe {
 }
 
 #[derive(Animals)]
-pub struct ReplayRainforestAnimals(Depth1, Depth2);
+pub struct ReplayRainforestAnimals(Depth1, Depth2, Depth3);
 
 const REPLAY_TEST_OWNER_LEASE_TTL_MS: i64 = 250;
 const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
@@ -568,11 +823,8 @@ async fn wait_for_replay_history_change(
     .expect("replay appearance should change before timeout")
 }
 
-async fn assert_replayed_history_extends_prefix<A, S>(
-    query: Vec<bool>,
-    namespace: &str,
-    seed: S,
-) where
+async fn assert_replayed_history_extends_prefix<A, S>(query: Vec<bool>, namespace: &str, seed: S)
+where
     A: Animal<State = S, Seed = S> + Observe<Appearance = String>,
     A::Id: AnimalIdValue,
     A::Generation: jungle_sdk::typosaurus::num::Unsigned,
