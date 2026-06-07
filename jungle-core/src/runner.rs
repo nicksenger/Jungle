@@ -1,5 +1,6 @@
 use futures::channel::oneshot;
 use futures::future;
+use futures::stream::FuturesUnordered;
 use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
@@ -119,29 +120,46 @@ where
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
         Initial: Serialize + Clone,
     {
-        while !executor.is_complete() {
-            process_perturbations(executor, journey_id, tx).await?;
-            let request = match executor.next_executable_request(initial_input.clone()) {
-                Ok(request) => request,
-                Err(ExecutorError::Complete) => {
-                    send_lifecycle_updates(executor, tx).await?;
-                    break;
-                }
-                Err(err) => return Err(err),
-            };
-            send_lifecycle_updates(executor, tx).await?;
-            let node_id = request.node_id();
-            send_history(
-                tx,
-                RunnerOut::EffectInput {
-                    node_id,
-                    data: request.request_bytes().to_vec(),
-                    uuid: journey_id,
-                },
-            )
-            .await?;
+        let sleep_effect_type = core::any::type_name::<Sleep>();
+        let mut in_flight = FuturesUnordered::new();
+        while !executor.is_complete() || !in_flight.is_empty() {
+            if in_flight.is_empty() {
+                process_perturbations(executor, journey_id, tx).await?;
+            }
 
-            if request.effect_type() == core::any::type_name::<Sleep>() {
+            let mut newly_dispatched = Vec::new();
+            loop {
+                let request = match executor.next_executable_request(initial_input.clone()) {
+                    Ok(request) => request,
+                    Err(ExecutorError::Complete) => {
+                        send_lifecycle_updates(executor, tx).await?;
+                        break;
+                    }
+                    Err(ExecutorError::AwaitingCompletion) => break,
+                    Err(err) => return Err(err),
+                };
+                send_lifecycle_updates(executor, tx).await?;
+                let node_id = request.node_id();
+                send_history(
+                    tx,
+                    RunnerOut::EffectInput {
+                        node_id,
+                        data: request.request_bytes().to_vec(),
+                        uuid: journey_id,
+                    },
+                )
+                .await?;
+                newly_dispatched.push(request);
+            }
+
+            if newly_dispatched.len() == 1
+                && in_flight.is_empty()
+                && newly_dispatched[0].effect_type() == sleep_effect_type
+            {
+                let request = newly_dispatched
+                    .pop()
+                    .expect("single dispatched sleep request should exist");
+                let node_id = request.node_id();
                 let duration: std::time::Duration = request.deserialize_request()?;
                 let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
                 let wake_at_unix_ms = chrono::Utc::now()
@@ -153,11 +171,28 @@ where
                 });
             }
 
-            let completion = run_request_with_live_history(&mut *tx, request).await?;
-            if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
-                executor, journey_id, tx, node_id, completion,
-            )
-            .await
+            for request in newly_dispatched {
+                let node_id = request.node_id();
+                let tx_clone = tx.clone();
+                in_flight.push(async move {
+                    let completion = run_request_with_live_history_owned(tx_clone, request).await;
+                    (node_id, completion)
+                });
+            }
+
+            let Some((node_id, completion)) = in_flight.next().await else {
+                if executor.is_complete() {
+                    break;
+                }
+                return Err(ExecutorError::ClientTransport(
+                    "runner found no in-flight requests while journey remained incomplete"
+                        .to_string(),
+                ));
+            };
+
+            if let Err(err) =
+                apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, node_id, completion?)
+                    .await
             {
                 return match err {
                     ExecutorError::ActionFailure(failure) => Ok(RunnerAdvance::Failed { failure }),
@@ -196,8 +231,8 @@ where
     }
 }
 
-async fn run_request_with_live_history(
-    tx: &mut RunnerChannelTx,
+async fn run_request_with_live_history_owned(
+    mut tx: RunnerChannelTx,
     mut request: jungle_types::ExecutableEffectRequest,
 ) -> Result<Result<Vec<u8>, Vec<u8>>, ExecutorError> {
     let Some(mut live_history_rx) = request.take_live_history() else {
@@ -208,14 +243,14 @@ async fn run_request_with_live_history(
         match future::select(completion, live_history_rx.next()).await {
             future::Either::Left((result, _)) => {
                 while let Some(event) = live_history_rx.next().await {
-                    send_history(tx, event).await?;
+                    send_history(&mut tx, event).await?;
                 }
                 return result;
             }
             future::Either::Right((maybe_event, next_completion)) => {
                 completion = next_completion;
                 match maybe_event {
-                    Some(event) => send_history(tx, event).await?,
+                    Some(event) => send_history(&mut tx, event).await?,
                     None => return completion.await,
                 }
             }

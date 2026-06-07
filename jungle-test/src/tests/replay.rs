@@ -1057,7 +1057,10 @@ async fn replay_after_join_live_history_crash_skips_child_events_and_resumes() {
             let worker = JungleWorker::new(zoo, client)
                 .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
                 .with_replay_page_size(1);
-            let _ = worker.spawn().await;
+            worker
+                .spawn()
+                .await
+                .expect("first replay join worker should keep running");
         }
     });
 
@@ -1092,7 +1095,10 @@ async fn replay_after_join_live_history_crash_skips_child_events_and_resumes() {
         };
         async move {
             let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
-            let _ = worker.spawn().await;
+            worker
+                .spawn()
+                .await
+                .expect("second replay join worker should keep running");
         }
     });
 
@@ -1144,6 +1150,64 @@ async fn replay_after_join_live_history_crash_skips_child_events_and_resumes() {
     let _ = worker_two.await;
     server_task.abort();
     let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn replay_join_runner_reaches_gate_after_parallel_focused_join() {
+    use jungle_sdk::client::{MockClient, RunnerChannelTx};
+    use jungle_sdk::core::JungleRunner;
+
+    let pre_counter = Arc::new(AtomicUsize::new(0));
+    let post_counter = Arc::new(AtomicUsize::new(0));
+    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+    let gate = Arc::new(Semaphore::new(0));
+    let runner = JungleRunner::new(ReplayJoinZoo {
+        pre_counter: Arc::clone(&pre_counter),
+        post_counter: Arc::clone(&post_counter),
+        reached_tx,
+        gate: Arc::clone(&gate),
+    });
+    let client = MockClient::builder().build();
+    let (tx, rx): (RunnerChannelTx, _) = futures::channel::mpsc::channel(32);
+    let resolver = tokio::spawn(async move {
+        client.serve_runner_channel(rx).await;
+    });
+    let run_tx = tx.clone();
+
+    let run = tokio::spawn(async move {
+        runner
+            .spawn::<ReplayJoinAnimal>(
+                ReplayJoinState::default(),
+                uuid::Uuid::from_u128(99),
+                run_tx,
+            )
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+        .await
+        .expect("runner should reach the join gate");
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        2,
+        "both focused join branches should complete before the gate opens"
+    );
+
+    gate.add_permits(1);
+    let state = run
+        .await
+        .expect("runner task should finish")
+        .expect("runner should complete the replay join animal");
+    assert!(state.left.ran);
+    assert!(state.right.ran);
+    assert!(state.gate_opened);
+    assert!(state.post_ran);
+    assert_eq!(post_counter.load(Ordering::SeqCst), 1);
+
+    drop(tx);
+    resolver
+        .await
+        .expect("runner transport resolver should complete");
 }
 
 #[tokio::test]
