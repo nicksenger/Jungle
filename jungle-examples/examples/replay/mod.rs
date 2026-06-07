@@ -103,15 +103,52 @@ pub struct ReplayFrame<L, R> {
 
 pub type DoubleFlowLeftInnerLeftState = ReplayFrame<DoubleFlowLeftLeft, ()>;
 pub type DoubleFlowLeftInnerRightState = ReplayFrame<(), DoubleFlowLeftRight>;
-pub type DoubleFlowLeftState = ReplayFrame<DoubleFlowLeftInnerLeftState, DoubleFlowLeftInnerRightState>;
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoubleFlowLeftState {
+    color: bool,
+    history: String,
+    #[jungle(focus)]
+    left: DoubleFlowLeftInnerLeftState,
+    #[jungle(focus)]
+    right: DoubleFlowLeftInnerRightState,
+}
+
 pub type DoubleFlowRightInnerLeftState = ReplayFrame<DoubleFlowRightLeft, ()>;
 pub type DoubleFlowRightInnerRightState = ReplayFrame<(), DoubleFlowRightRight>;
-pub type DoubleFlowRightState =
-    ReplayFrame<DoubleFlowRightInnerLeftState, DoubleFlowRightInnerRightState>;
-pub type ReplayState = ReplayFrame<DoubleFlowLeftState, DoubleFlowRightState>;
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoubleFlowRightState {
+    color: bool,
+    history: String,
+    #[jungle(focus)]
+    left: DoubleFlowRightInnerLeftState,
+    #[jungle(focus)]
+    right: DoubleFlowRightInnerRightState,
+}
+
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayState {
+    color: bool,
+    history: String,
+    #[jungle(focus)]
+    left: DoubleFlowLeftState,
+    #[jungle(focus)]
+    right: DoubleFlowRightState,
+}
 
 impl<L, R> From<ReplayFrame<L, R>> for () {
     fn from(_value: ReplayFrame<L, R>) -> Self {}
+}
+
+impl From<DoubleFlowLeftState> for () {
+    fn from(_value: DoubleFlowLeftState) -> Self {}
+}
+
+impl From<DoubleFlowRightState> for () {
+    fn from(_value: DoubleFlowRightState) -> Self {}
+}
+
+impl From<ReplayState> for () {
+    fn from(_value: ReplayState) -> Self {}
 }
 
 pub(crate) struct ReplayColorIsTrue;
@@ -152,29 +189,55 @@ impl_empty_replay_appearance!(
     DoubleFlowRightRight,
 );
 
+fn compose_replay_appearance<L, R>(history: &str, left: &L, right: &R) -> String
+where
+    L: ReplayAppearance,
+    R: ReplayAppearance,
+{
+    let mut appearance = history.to_owned();
+    let left = left.replay_appearance();
+    let right = right.replay_appearance();
+    if !left.is_empty() && right.is_empty() {
+        appearance.push('(');
+        appearance.push_str(&left);
+    } else if left.is_empty() && !right.is_empty() {
+        appearance.push('(');
+        appearance.push('|');
+        appearance.push_str(&right);
+    } else if !left.is_empty() || !right.is_empty() {
+        appearance.push('(');
+        appearance.push_str(&left);
+        appearance.push('|');
+        appearance.push_str(&right);
+    }
+    appearance
+}
+
 impl<L, R> ReplayAppearance for ReplayFrame<L, R>
 where
     L: ReplayAppearance,
     R: ReplayAppearance,
 {
     fn replay_appearance(&self) -> String {
-        let mut appearance = self.history.clone();
-        let left = self.left.replay_appearance();
-        let right = self.right.replay_appearance();
-        if !left.is_empty() && right.is_empty() {
-            appearance.push('(');
-            appearance.push_str(&left);
-        } else if left.is_empty() && !right.is_empty() {
-            appearance.push('(');
-            appearance.push('|');
-            appearance.push_str(&right);
-        } else if !left.is_empty() || !right.is_empty() {
-            appearance.push('(');
-            appearance.push_str(&left);
-            appearance.push('|');
-            appearance.push_str(&right);
-        }
-        appearance
+        compose_replay_appearance(&self.history, &self.left, &self.right)
+    }
+}
+
+impl ReplayAppearance for DoubleFlowLeftState {
+    fn replay_appearance(&self) -> String {
+        compose_replay_appearance(&self.history, &self.left, &self.right)
+    }
+}
+
+impl ReplayAppearance for DoubleFlowRightState {
+    fn replay_appearance(&self) -> String {
+        compose_replay_appearance(&self.history, &self.left, &self.right)
+    }
+}
+
+impl ReplayAppearance for ReplayState {
+    fn replay_appearance(&self) -> String {
+        compose_replay_appearance(&self.history, &self.left, &self.right)
     }
 }
 
@@ -195,6 +258,32 @@ impl<L, R> ReplayNodeState for ReplayFrame<L, R> {
         &mut self.history
     }
 }
+
+macro_rules! impl_replay_node_state_for_struct {
+    ($ty:ty) => {
+        impl ReplayNodeState for $ty {
+            fn replay_color(&self) -> bool {
+                self.color
+            }
+
+            fn replay_color_mut(&mut self) -> &mut bool {
+                &mut self.color
+            }
+
+            fn replay_history(&self) -> &str {
+                &self.history
+            }
+
+            fn replay_history_mut(&mut self) -> &mut String {
+                &mut self.history
+            }
+        }
+    };
+}
+
+impl_replay_node_state_for_struct!(DoubleFlowLeftState);
+impl_replay_node_state_for_struct!(DoubleFlowRightState);
+impl_replay_node_state_for_struct!(ReplayState);
 
 pub trait ReplayBranchHostState: ReplayNodeState {
     type LeftBranch: ReplayNodeState;
@@ -266,42 +355,6 @@ impl ReplayBranchHostState for DoubleFlowRightState {
 
     fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
         &mut self.right
-    }
-}
-
-impl ViewProject<DoubleFlowLeftState> for ReplayState {
-    fn project_view(state: &mut Self) -> &mut DoubleFlowLeftState {
-        &mut state.left
-    }
-}
-
-impl ViewProject<DoubleFlowRightState> for ReplayState {
-    fn project_view(state: &mut Self) -> &mut DoubleFlowRightState {
-        &mut state.right
-    }
-}
-
-impl ViewProject<DoubleFlowLeftInnerLeftState> for DoubleFlowLeftState {
-    fn project_view(state: &mut Self) -> &mut DoubleFlowLeftInnerLeftState {
-        &mut state.left
-    }
-}
-
-impl ViewProject<DoubleFlowLeftInnerRightState> for DoubleFlowLeftState {
-    fn project_view(state: &mut Self) -> &mut DoubleFlowLeftInnerRightState {
-        &mut state.right
-    }
-}
-
-impl ViewProject<DoubleFlowRightInnerLeftState> for DoubleFlowRightState {
-    fn project_view(state: &mut Self) -> &mut DoubleFlowRightInnerLeftState {
-        &mut state.left
-    }
-}
-
-impl ViewProject<DoubleFlowRightInnerRightState> for DoubleFlowRightState {
-    fn project_view(state: &mut Self) -> &mut DoubleFlowRightInnerRightState {
-        &mut state.right
     }
 }
 
