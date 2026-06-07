@@ -124,8 +124,7 @@ where
                 jungle_vision::DefaultTheme::default().with_cluster_expansion_config(
                     jungle_vision::ClusterExpansionConfig {
                         while_clusters: jungle_vision::ClusterExpansionMode::AlwaysExpanded,
-                        transparent_clusters:
-                            jungle_vision::ClusterExpansionMode::AlwaysExpanded,
+                        transparent_clusters: jungle_vision::ClusterExpansionMode::AlwaysExpanded,
                     },
                 ),
             )

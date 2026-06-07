@@ -1195,7 +1195,8 @@ async fn reconcile_replay_effect_input(
 
     if effect_type == no_effect_type
         || has_recoverable_cursor_event
-        || (request_has_live_history && is_journey_history_event(current_event.as_ref(), journey_id))
+        || (request_has_live_history
+            && is_journey_history_event(current_event.as_ref(), journey_id))
     {
         send_recovered_effect_input(tx, journey_id, request_node_id, expected_input).await
     } else {

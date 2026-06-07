@@ -3531,8 +3531,8 @@ struct JoinErasedFlow<State> {
     left_branch: Option<JoinBranchProgress<State>>,
     right_branch: Option<JoinBranchProgress<State>>,
     active_request: Option<JoinSide>,
-    left_request_in_flight: bool,
-    right_request_in_flight: bool,
+    left_requests_in_flight: usize,
+    right_requests_in_flight: usize,
     completed_emitted: Option<Serialized>,
 }
 
@@ -3561,8 +3561,8 @@ where
             left_branch: None,
             right_branch: None,
             active_request: None,
-            left_request_in_flight: false,
-            right_request_in_flight: false,
+            left_requests_in_flight: 0,
+            right_requests_in_flight: 0,
             completed_emitted: None,
         }
     }
@@ -3716,7 +3716,10 @@ where
         Ok(())
     }
 
-    fn settle_without_external_requests(&mut self, fallback: State) -> Result<State, ExecutorError> {
+    fn settle_without_external_requests(
+        &mut self,
+        fallback: State,
+    ) -> Result<State, ExecutorError> {
         if self.focused_merge {
             if let Some(left) = self.left_branch.as_mut() {
                 Self::settle_branch_without_progress(&mut self.left, left)?;
@@ -3771,21 +3774,23 @@ where
                         match envelope {
                             JoinCompletionEnvelope::Left(child_completion) => {
                                 completion = child_completion;
-                                self.left_request_in_flight = false;
+                                self.left_requests_in_flight =
+                                    self.left_requests_in_flight.saturating_sub(1);
                                 JoinSide::Left
                             }
                             JoinCompletionEnvelope::Right(child_completion) => {
                                 completion = child_completion;
-                                self.right_request_in_flight = false;
+                                self.right_requests_in_flight =
+                                    self.right_requests_in_flight.saturating_sub(1);
                                 JoinSide::Right
                             }
                         }
-                    } else if self.left_request_in_flight ^ self.right_request_in_flight {
-                        if self.left_request_in_flight {
-                            self.left_request_in_flight = false;
+                    } else if self.left_requests_in_flight + self.right_requests_in_flight == 1 {
+                        if self.left_requests_in_flight == 1 {
+                            self.left_requests_in_flight = 0;
                             JoinSide::Left
                         } else {
-                            self.right_request_in_flight = false;
+                            self.right_requests_in_flight = 0;
                             JoinSide::Right
                         }
                     } else {
@@ -3795,12 +3800,12 @@ where
                     }
                 }
                 Err(bytes) => {
-                    if self.left_request_in_flight ^ self.right_request_in_flight {
-                        if self.left_request_in_flight {
-                            self.left_request_in_flight = false;
+                    if self.left_requests_in_flight + self.right_requests_in_flight == 1 {
+                        if self.left_requests_in_flight == 1 {
+                            self.left_requests_in_flight = 0;
                             JoinSide::Left
                         } else {
-                            self.right_request_in_flight = false;
+                            self.right_requests_in_flight = 0;
                             JoinSide::Right
                         }
                     } else {
@@ -3891,7 +3896,10 @@ where
             Ok(current_state) => current_state,
             Err(ExecutorError::ActionFailure(failure)) => {
                 self.lifecycle.fail();
-                return Err((self.current_state(state), ExecutorError::ActionFailure(failure)));
+                return Err((
+                    self.current_state(state),
+                    ExecutorError::ActionFailure(failure),
+                ));
             }
             Err(err) => return Err((self.current_state(state), err)),
         };
@@ -3905,7 +3913,7 @@ where
                     .left_branch
                     .as_ref()
                     .is_some_and(|branch| branch.complete);
-                if !left_complete && !self.left_request_in_flight {
+                if !left_complete {
                     let left = self
                         .left_branch
                         .as_mut()
@@ -3918,7 +3926,8 @@ where
                     ) {
                         Ok((next_state, request)) => {
                             left.state = next_state;
-                            self.left_request_in_flight = true;
+                            self.left_requests_in_flight =
+                                self.left_requests_in_flight.saturating_add(1);
                             current_state = self.current_state(current_state);
                             let request = match Self::wrap_branch_request(JoinSide::Left, request) {
                                 Ok(request) => request,
@@ -3942,6 +3951,10 @@ where
                             current_state = self.current_state(current_state);
                             return Err((current_state, ExecutorError::ActionFailure(failure)));
                         }
+                        Err((next_state, ExecutorError::AwaitingCompletion)) => {
+                            left.state = next_state;
+                            current_state = self.current_state(current_state);
+                        }
                         Err((next_state, err)) => {
                             left.state = next_state;
                             current_state = self.current_state(current_state);
@@ -3954,7 +3967,6 @@ where
                     .right_branch
                     .as_ref()
                     .is_some_and(|branch| branch.complete)
-                    && !self.right_request_in_flight
                 {
                     let right = self
                         .right_branch
@@ -3968,13 +3980,14 @@ where
                     ) {
                         Ok((next_state, request)) => {
                             right.state = next_state;
-                            self.right_request_in_flight = true;
+                            self.right_requests_in_flight =
+                                self.right_requests_in_flight.saturating_add(1);
                             current_state = self.current_state(current_state);
-                            let request =
-                                match Self::wrap_branch_request(JoinSide::Right, request) {
-                                    Ok(request) => request,
-                                    Err(err) => return Err((current_state, err)),
-                                };
+                            let request = match Self::wrap_branch_request(JoinSide::Right, request)
+                            {
+                                Ok(request) => request,
+                                Err(err) => return Err((current_state, err)),
+                            };
                             return Ok((current_state, request));
                         }
                         Err((next_state, ExecutorError::Complete)) => {
@@ -3991,6 +4004,10 @@ where
                             self.lifecycle.fail();
                             current_state = self.current_state(current_state);
                             return Err((current_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err((next_state, ExecutorError::AwaitingCompletion)) => {
+                            right.state = next_state;
+                            current_state = self.current_state(current_state);
                         }
                         Err((next_state, err)) => {
                             right.state = next_state;
@@ -4094,8 +4111,8 @@ where
             return Ok((state, self.completed_emitted.take(), true));
         }
         if self.active_request.is_some()
-            || self.left_request_in_flight
-            || self.right_request_in_flight
+            || self.left_requests_in_flight > 0
+            || self.right_requests_in_flight > 0
             || self.join_input.is_none()
         {
             return Ok((state, None, false));
@@ -4111,7 +4128,9 @@ where
     }
 
     fn is_waiting_completion(&self) -> bool {
-        self.active_request.is_some() || self.left_request_in_flight || self.right_request_in_flight
+        self.active_request.is_some()
+            || self.left_requests_in_flight > 0
+            || self.right_requests_in_flight > 0
     }
 
     fn is_complete(&self) -> bool {

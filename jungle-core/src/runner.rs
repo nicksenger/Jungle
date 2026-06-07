@@ -195,9 +195,14 @@ where
                 ));
             };
 
-            if let Err(err) =
-                apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, node_id, completion?)
-                    .await
+            if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
+                executor,
+                journey_id,
+                tx,
+                node_id,
+                completion?,
+            )
+            .await
             {
                 return match err {
                     ExecutorError::ActionFailure(failure) => Ok(RunnerAdvance::Failed { failure }),

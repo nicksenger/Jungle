@@ -726,11 +726,7 @@ struct DoubleFlowLeftOuterRight(
 struct DoubleFlowLeft(
     Step<Label<DoubleFlowLeftState, 'D'>>,
     Step<Label<DoubleFlowLeftState, 'L'>>,
-    Conditional<
-        ReplayColorIsTrue,
-        DoubleFlowLeftOuterLeft,
-        DoubleFlowLeftOuterRight,
-    >,
+    Conditional<ReplayColorIsTrue, DoubleFlowLeftOuterLeft, DoubleFlowLeftOuterRight>,
     Step<FlattenReplayChoice<DoubleFlowLeftState>>,
     Step<SleepMillis<DoubleFlowLeftState, 100>>,
     Step<Tick<DoubleFlowLeftState>>,
@@ -815,11 +811,7 @@ struct DoubleFlowRightOuterRight(
 struct DoubleFlowRight(
     Step<Label<DoubleFlowRightState, 'D'>>,
     Step<Label<DoubleFlowRightState, 'R'>>,
-    Conditional<
-        ReplayColorIsTrue,
-        DoubleFlowRightOuterLeft,
-        DoubleFlowRightOuterRight,
-    >,
+    Conditional<ReplayColorIsTrue, DoubleFlowRightOuterLeft, DoubleFlowRightOuterRight>,
     Step<FlattenReplayChoice<DoubleFlowRightState>>,
     Step<SleepMillis<DoubleFlowRightState, 100>>,
     Step<Tick<DoubleFlowRightState>>,
