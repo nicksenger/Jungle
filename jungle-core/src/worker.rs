@@ -1,4 +1,4 @@
-use crate::runner::{JungleRunner, RunnerAdvance};
+use crate::runner::{JungleRunner, PendingSleep, RunnerAdvance};
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
@@ -9,8 +9,8 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutableEffectRequest,
-    ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, Observable, Perturbable,
-    RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, Observable, OwnerWake,
+    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -148,8 +148,9 @@ where
 
         let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
         let mut active_journeys: HashSet<Uuid> = HashSet::new();
-        let mut pending_wakes = VecDeque::<Uuid>::new();
-        let mut pending_wake_ids = HashSet::<Uuid>::new();
+        let mut pending_wakes = HashMap::<Uuid, VecDeque<Uuid>>::new();
+        let mut pending_wake_journeys = VecDeque::<Uuid>::new();
+        let mut pending_wake_journey_ids = HashSet::<Uuid>::new();
         let mut in_flight: FuturesUnordered<InFlightFuture<'_, T>> = FuturesUnordered::new();
         let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
         let mut should_poll = true;
@@ -165,8 +166,9 @@ where
                 for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
                     if is_terminal_journey_status(self.client.journey_details(journey_id).await?) {
                         suspended.remove(&journey_id);
-                        pending_wake_ids.remove(&journey_id);
-                        pending_wakes.retain(|id| *id != journey_id);
+                        pending_wakes.remove(&journey_id);
+                        pending_wake_journey_ids.remove(&journey_id);
+                        pending_wake_journeys.retain(|id| *id != journey_id);
                         continue;
                     }
                     self.client
@@ -183,28 +185,51 @@ where
 
             if should_poll {
                 if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
-                    if !pending_wake_ids.contains(&wake.journey_id) {
-                        pending_wake_ids.insert(wake.journey_id);
-                        pending_wakes.push_back(wake.journey_id);
-                    }
+                    enqueue_owner_wake(
+                        &mut pending_wakes,
+                        &mut pending_wake_journeys,
+                        &mut pending_wake_journey_ids,
+                        wake,
+                    );
                 }
 
                 while in_flight.len() < self.max_in_flight_journeys {
-                    if let Some(wake_journey_id) = pending_wakes.pop_front() {
-                        pending_wake_ids.remove(&wake_journey_id);
+                    if let Some(wake_journey_id) = pending_wake_journeys.pop_front() {
+                        pending_wake_journey_ids.remove(&wake_journey_id);
                         if active_journeys.contains(&wake_journey_id) {
+                            if pending_wakes
+                                .get(&wake_journey_id)
+                                .is_some_and(|timer_ids| !timer_ids.is_empty())
+                            {
+                                pending_wake_journey_ids.insert(wake_journey_id);
+                                pending_wake_journeys.push_back(wake_journey_id);
+                            }
                             continue;
                         }
                         if is_terminal_journey_status(
                             self.client.journey_details(wake_journey_id).await?,
                         ) {
                             suspended.remove(&wake_journey_id);
+                            pending_wakes.remove(&wake_journey_id);
                             continue;
                         }
                         if let Some(journey) = suspended.remove(&wake_journey_id) {
+                            let Some(timer_id) = pending_wakes
+                                .get_mut(&wake_journey_id)
+                                .and_then(|timer_ids| timer_ids.pop_front())
+                            else {
+                                continue;
+                            };
+                            if pending_wakes
+                                .get(&wake_journey_id)
+                                .is_some_and(|timer_ids| timer_ids.is_empty())
+                            {
+                                pending_wakes.remove(&wake_journey_id);
+                            }
                             active_journeys.insert(wake_journey_id);
                             in_flight.push(run_resume_suspended(
                                 wake_journey_id,
+                                timer_id,
                                 journey,
                                 &self.runner,
                                 tx.clone(),
@@ -296,6 +321,9 @@ where
                     result?,
                     &mut active_journeys,
                     &mut suspended,
+                    &mut pending_wakes,
+                    &mut pending_wake_journeys,
+                    &mut pending_wake_journey_ids,
                     self.client.as_ref(),
                     owner_id,
                     self.owner_lease_ttl_ms,
@@ -321,6 +349,9 @@ where
                         result?,
                         &mut active_journeys,
                         &mut suspended,
+                        &mut pending_wakes,
+                        &mut pending_wake_journeys,
+                        &mut pending_wake_journey_ids,
                         self.client.as_ref(),
                         owner_id,
                         self.owner_lease_ttl_ms,
@@ -426,10 +457,28 @@ fn is_terminal_journey_status(status: JourneyStatus) -> bool {
     )
 }
 
+fn enqueue_owner_wake(
+    pending_wakes: &mut HashMap<Uuid, VecDeque<Uuid>>,
+    pending_wake_journeys: &mut VecDeque<Uuid>,
+    pending_wake_journey_ids: &mut HashSet<Uuid>,
+    wake: OwnerWake,
+) {
+    pending_wakes
+        .entry(wake.journey_id)
+        .or_default()
+        .push_back(wake.timer_id);
+    if pending_wake_journey_ids.insert(wake.journey_id) {
+        pending_wake_journeys.push_back(wake.journey_id);
+    }
+}
+
 async fn handle_in_flight_result<T>(
     result: InFlightJourneyResult<T>,
     active_journeys: &mut HashSet<Uuid>,
     suspended: &mut HashMap<Uuid, Box<dyn SuspendedJourney<T>>>,
+    pending_wakes: &mut HashMap<Uuid, VecDeque<Uuid>>,
+    pending_wake_journeys: &mut VecDeque<Uuid>,
+    pending_wake_journey_ids: &mut HashSet<Uuid>,
     client: &dyn JungleClient,
     owner_id: Uuid,
     owner_lease_ttl_ms: i64,
@@ -459,26 +508,36 @@ async fn handle_in_flight_result<T>(
                     }
                 }
                 JourneyStartOutcome::Sleeping {
-                    wake_at_unix_ms,
-                    journey,
+                    sleeps,
+                    mut journey,
                 } => {
                     if is_terminal_journey_status(client.journey_details(journey_id).await?) {
                         return Ok(());
                     }
-                    let timer_id = Uuid::new_v4();
-                    client
-                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
-                        .await?;
+                    for sleep in sleeps {
+                        let timer_id = Uuid::new_v4();
+                        client
+                            .schedule_sleep_timer(journey_id, timer_id, sleep.wake_at_unix_ms)
+                            .await?;
+                        journey.record_sleep(timer_id, sleep);
+                    }
                     client
                         .heartbeat_journey_lease(journey_id, owner_id, owner_lease_ttl_ms)
                         .await?;
                     suspended.insert(journey_id, journey);
+                    if pending_wakes
+                        .get(&journey_id)
+                        .is_some_and(|timer_ids| !timer_ids.is_empty())
+                        && pending_wake_journey_ids.insert(journey_id)
+                    {
+                        pending_wake_journeys.push_back(journey_id);
+                    }
                 }
             }
         }
         InFlightJourneyResult::ResumedWake {
             journey_id,
-            journey,
+            mut journey,
             outcome,
         } => {
             active_journeys.remove(&journey_id);
@@ -493,21 +552,28 @@ async fn handle_in_flight_result<T>(
                         client.dead_journey(journey_id).await?;
                     }
                 }
-                SuspendedOutcome::Sleeping {
-                    wake_at_unix_ms,
-                    node_id: _,
-                } => {
+                SuspendedOutcome::Sleeping { new_sleeps } => {
                     if is_terminal_journey_status(client.journey_details(journey_id).await?) {
                         return Ok(());
                     }
-                    let timer_id = Uuid::new_v4();
-                    client
-                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
-                        .await?;
+                    for sleep in new_sleeps {
+                        let timer_id = Uuid::new_v4();
+                        client
+                            .schedule_sleep_timer(journey_id, timer_id, sleep.wake_at_unix_ms)
+                            .await?;
+                        journey.record_sleep(timer_id, sleep);
+                    }
                     client
                         .heartbeat_journey_lease(journey_id, owner_id, owner_lease_ttl_ms)
                         .await?;
                     suspended.insert(journey_id, journey);
+                    if pending_wakes
+                        .get(&journey_id)
+                        .is_some_and(|timer_ids| !timer_ids.is_empty())
+                        && pending_wake_journey_ids.insert(journey_id)
+                    {
+                        pending_wake_journeys.push_back(journey_id);
+                    }
                 }
             }
         }
@@ -572,6 +638,7 @@ where
 
 fn run_resume_suspended<'a, T>(
     journey_id: Uuid,
+    timer_id: Uuid,
     mut journey: Box<dyn SuspendedJourney<T>>,
     runner: &'a JungleRunner<T>,
     tx: RunnerChannelTx,
@@ -584,7 +651,7 @@ where
     AnimalSet<T::Animals>: SupportedAnimalGenerations<T>,
 {
     Box::pin(async move {
-        let outcome = journey.resume(runner, tx).await?;
+        let outcome = journey.resume(timer_id, runner, tx).await?;
         Ok(InFlightJourneyResult::ResumedWake {
             journey_id,
             journey,
@@ -600,7 +667,7 @@ pub enum JourneyStartOutcome<T> {
         failure: Failure,
     },
     Sleeping {
-        wake_at_unix_ms: i64,
+        sleeps: Vec<PendingSleep>,
         journey: Box<dyn SuspendedJourney<T> + Send>,
     },
 }
@@ -608,15 +675,24 @@ pub enum JourneyStartOutcome<T> {
 pub enum SuspendedOutcome {
     Completed,
     Failed { failure: Failure },
-    Sleeping { wake_at_unix_ms: i64, node_id: u32 },
+    Sleeping { new_sleeps: Vec<PendingSleep> },
 }
 
 pub trait SuspendedJourney<T>: Send {
+    fn record_sleep(&mut self, timer_id: Uuid, sleep: PendingSleep);
+
     fn resume<'a>(
         &'a mut self,
+        timer_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>>;
+}
+
+#[derive(Debug, Clone)]
+struct ScheduledSleep {
+    timer_id: Uuid,
+    sleep: PendingSleep,
 }
 
 struct SuspendedAnimalJourney<T, A>
@@ -627,7 +703,7 @@ where
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     journey_id: Uuid,
-    sleep_node_id: u32,
+    pending_sleeps: Vec<ScheduledSleep>,
     executor: ContextExecutor<T, A>,
 }
 
@@ -639,32 +715,65 @@ where
     BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
+    fn record_sleep(&mut self, timer_id: Uuid, sleep: PendingSleep) {
+        self.pending_sleeps.push(ScheduledSleep { timer_id, sleep });
+    }
+
     fn resume<'a>(
         &'a mut self,
+        timer_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>> {
         Box::pin(async move {
+            let sleep_index = self
+                .pending_sleeps
+                .iter()
+                .position(|scheduled| scheduled.timer_id == timer_id)
+                .ok_or_else(|| {
+                    ExecutorError::ClientTransport(format!(
+                        "unknown sleep wake timer for journey {}: {timer_id}",
+                        self.journey_id
+                    ))
+                })?;
+            let scheduled = self.pending_sleeps.remove(sleep_index);
+            let pending_sleeps = self
+                .pending_sleeps
+                .iter()
+                .map(|scheduled| scheduled.sleep.clone())
+                .collect::<Vec<_>>();
             let advance = runner
                 .resume_after_sleep::<A>(
                     &mut self.executor,
                     self.journey_id,
-                    self.sleep_node_id,
+                    scheduled.sleep,
+                    pending_sleeps.clone(),
                     &mut tx,
                 )
                 .await?;
             match advance {
                 RunnerAdvance::Completed => Ok(SuspendedOutcome::Completed),
                 RunnerAdvance::Failed { failure } => Ok(SuspendedOutcome::Failed { failure }),
-                RunnerAdvance::SuspendedSleep {
-                    wake_at_unix_ms,
-                    node_id,
-                } => {
-                    self.sleep_node_id = node_id;
-                    Ok(SuspendedOutcome::Sleeping {
-                        wake_at_unix_ms,
-                        node_id,
-                    })
+                RunnerAdvance::SuspendedSleep { sleeps } => {
+                    let mut unmatched_pending = pending_sleeps;
+                    let mut new_sleeps = Vec::new();
+                    for sleep in sleeps {
+                        if let Some(index) = unmatched_pending
+                            .iter()
+                            .position(|pending| *pending == sleep)
+                        {
+                            unmatched_pending.remove(index);
+                        } else {
+                            new_sleeps.push(sleep);
+                        }
+                    }
+                    if !unmatched_pending.is_empty() {
+                        return Err(ExecutorError::ClientTransport(format!(
+                            "runner dropped pending sleeps for journey {}",
+                            self.journey_id
+                        )));
+                    }
+                    Ok(SuspendedOutcome::Sleeping { new_sleeps })
                 }
             }
         })
@@ -789,17 +898,14 @@ where
                     RunnerAdvance::Failed { failure } => {
                         Ok(JourneyStartOutcome::Failed { failure })
                     }
-                    RunnerAdvance::SuspendedSleep {
-                        wake_at_unix_ms,
-                        node_id,
-                    } => {
+                    RunnerAdvance::SuspendedSleep { sleeps } => {
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
-                            sleep_node_id: node_id,
+                            pending_sleeps: Vec::new(),
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
+                            sleeps,
                             journey: Box::new(suspended),
                         })
                     }
@@ -866,17 +972,14 @@ where
                     RunnerAdvance::Failed { failure } => {
                         Ok(JourneyStartOutcome::Failed { failure })
                     }
-                    RunnerAdvance::SuspendedSleep {
-                        wake_at_unix_ms,
-                        node_id,
-                    } => {
+                    RunnerAdvance::SuspendedSleep { sleeps } => {
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
-                            sleep_node_id: node_id,
+                            pending_sleeps: Vec::new(),
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
+                            sleeps,
                             journey: Box::new(suspended),
                         })
                     }

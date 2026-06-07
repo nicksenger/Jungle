@@ -12,9 +12,16 @@ use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSleep {
+    pub wake_at_unix_ms: i64,
+    pub node_id: u32,
+    pub completion: Result<Vec<u8>, Vec<u8>>,
+}
+
 pub enum RunnerAdvance {
     Completed,
-    SuspendedSleep { wake_at_unix_ms: i64, node_id: u32 },
+    SuspendedSleep { sleeps: Vec<PendingSleep> },
     Failed { failure: Failure },
 }
 
@@ -120,26 +127,45 @@ where
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
         Initial: Serialize + Clone,
     {
+        self.drive_until_sleep_or_complete_with_pending::<A, Initial>(
+            executor,
+            initial_input,
+            journey_id,
+            tx,
+            Vec::new(),
+        )
+        .await
+    }
+
+    async fn drive_until_sleep_or_complete_with_pending<A, Initial>(
+        &self,
+        executor: &mut ContextExecutor<T, A>,
+        initial_input: Initial,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+        mut pending_sleeps: Vec<PendingSleep>,
+    ) -> Result<RunnerAdvance, ExecutorError>
+    where
+        A: BoundAnimal + Observable + Perturbable,
+        BoundAnimalJourney<A>:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+        Initial: Serialize + Clone,
+    {
         let sleep_effect_type = core::any::type_name::<Sleep>();
         let mut in_flight = FuturesUnordered::new();
-        let mut pending_sleep: Option<(i64, u32)> = None;
-        while !executor.is_complete() || !in_flight.is_empty() || pending_sleep.is_some() {
-            if pending_sleep.is_some() && in_flight.is_empty() {
-                let (wake_at_unix_ms, node_id) = pending_sleep
-                    .take()
-                    .expect("pending sleep should be present when suspending");
+        while !executor.is_complete() || !in_flight.is_empty() || !pending_sleeps.is_empty() {
+            if !pending_sleeps.is_empty() && in_flight.is_empty() {
                 return Ok(RunnerAdvance::SuspendedSleep {
-                    wake_at_unix_ms,
-                    node_id,
+                    sleeps: pending_sleeps,
                 });
             }
 
-            if in_flight.is_empty() && pending_sleep.is_none() {
+            if in_flight.is_empty() && pending_sleeps.is_empty() {
                 process_perturbations(executor, journey_id, tx).await?;
             }
 
             let mut newly_dispatched = Vec::new();
-            while pending_sleep.is_none() {
+            loop {
                 let request = match executor.next_executable_request(initial_input.clone()) {
                     Ok(request) => request,
                     Err(ExecutorError::Complete) => {
@@ -156,8 +182,17 @@ where
                     let wake_at_unix_ms = chrono::Utc::now()
                         .timestamp_millis()
                         .saturating_add(duration_millis);
-                    pending_sleep = Some((wake_at_unix_ms, request.node_id()));
-                    break;
+                    let completion = match request.suspended_completion() {
+                        Some(completion) => completion.clone(),
+                        None => Ok(postcard::to_allocvec(&())
+                            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
+                    };
+                    pending_sleeps.push(PendingSleep {
+                        wake_at_unix_ms,
+                        node_id: request.node_id(),
+                        completion,
+                    });
+                    continue;
                 }
                 let node_id = request.node_id();
                 send_history(
@@ -217,7 +252,8 @@ where
         &self,
         executor: &mut ContextExecutor<T, A>,
         journey_id: Uuid,
-        sleep_node_id: u32,
+        completed_sleep: PendingSleep,
+        pending_sleeps: Vec<PendingSleep>,
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
@@ -225,19 +261,22 @@ where
         BoundAnimalJourney<A>:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
-        let sleep_out = postcard::to_allocvec(&())
-            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
-        let completion = Ok(sleep_out);
         apply_completion_and_emit_appearance::<T, A>(
             executor,
             journey_id,
             tx,
-            sleep_node_id,
-            completion,
+            completed_sleep.node_id,
+            completed_sleep.completion,
         )
         .await?;
-        self.drive_until_sleep_or_complete::<A, _>(executor, (), journey_id, tx)
-            .await
+        self.drive_until_sleep_or_complete_with_pending::<A, _>(
+            executor,
+            (),
+            journey_id,
+            tx,
+            pending_sleeps,
+        )
+        .await
     }
 }
 

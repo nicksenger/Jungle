@@ -1,7 +1,7 @@
 use crate::{
     Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
     Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NoEffect,
-    NodeLifecycle, NodeLifecyclePhase, RunnerOut, Running, Scoped, Select, StateCarrier,
+    NodeLifecycle, NodeLifecyclePhase, RunnerOut, Running, Scoped, Select, Sleep, StateCarrier,
     Transparent, While,
 };
 use futures::channel::{
@@ -353,6 +353,7 @@ pub struct ExecutableEffectRequest {
     request: Serialized,
     runner: EffectRunner,
     live_history_rx: Option<UnboundedReceiver<RunnerOut>>,
+    suspended_completion: Option<SerializedCompletion>,
 }
 
 impl ExecutableEffectRequest {
@@ -368,6 +369,7 @@ impl ExecutableEffectRequest {
             request,
             runner,
             live_history_rx: None,
+            suspended_completion: None,
         }
     }
 
@@ -402,8 +404,17 @@ impl ExecutableEffectRequest {
         self.live_history_rx.is_some()
     }
 
+    pub fn suspended_completion(&self) -> Option<&SerializedCompletion> {
+        self.suspended_completion.as_ref()
+    }
+
     fn with_live_history(mut self, live_history_rx: UnboundedReceiver<RunnerOut>) -> Self {
         self.live_history_rx = Some(live_history_rx);
+        self
+    }
+
+    fn with_suspended_completion(mut self, completion: SerializedCompletion) -> Self {
+        self.suspended_completion = Some(completion);
         self
     }
 }
@@ -3675,8 +3686,24 @@ where
     ) -> Result<ExecutableEffectRequest, ExecutorError> {
         let node_id = request.node_id();
         let effect_type = request.effect_type();
+        let sleep_effect_type = core::any::type_name::<Sleep>();
         let request_bytes = request.request_bytes().to_vec();
         let live_history = request.take_live_history();
+        let suspended_completion = if effect_type == sleep_effect_type {
+            let child_completion = Ok(postcard::to_allocvec(&())
+                .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+            let envelope = match side {
+                JoinSide::Left => JoinCompletionEnvelope::Left(child_completion),
+                JoinSide::Right => JoinCompletionEnvelope::Right(child_completion),
+            };
+            Some(
+                postcard::to_allocvec(&envelope)
+                    .map(Ok)
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?,
+            )
+        } else {
+            None
+        };
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion = request.run().await?;
@@ -3690,6 +3717,11 @@ where
             })
         });
         let wrapped = ExecutableEffectRequest::new(node_id, effect_type, request_bytes, runner);
+        let wrapped = if let Some(completion) = suspended_completion {
+            wrapped.with_suspended_completion(completion)
+        } else {
+            wrapped
+        };
         Ok(match live_history {
             Some(rx) => wrapped.with_live_history(rx),
             None => wrapped,
