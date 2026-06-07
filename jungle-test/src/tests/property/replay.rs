@@ -36,9 +36,10 @@ impl ReplayRainforest {
         };
 
         let mut recv = recv.lock().await;
-        recv.next()
-            .await
-            .expect("replay receiver should yield a bool after query exhaustion")
+        match recv.next().await {
+            Some(value) => value,
+            None => std::future::pending().await,
+        }
     }
 }
 
@@ -339,9 +340,9 @@ where
         let __absorb_out_1 = {
             let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
             if tocked {
-                state.replay_history_mut().push('0');
-            } else {
                 state.replay_history_mut().push('1');
+            } else {
+                state.replay_history_mut().push('0');
             }
             *state.replay_color_mut() = tocked;
         };
@@ -798,7 +799,6 @@ const REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_APPEARANCE_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_KILLED_WORKER_APPEARANCE_DRAIN: Duration = Duration::from_secs(1);
-const REPLAY_TEST_RESUME_SEND_INTERVAL: Duration = Duration::from_millis(10);
 
 fn replay_rainforest(
     query: Vec<bool>,
@@ -941,14 +941,10 @@ where
         .expect("replayed end signal should arrive before timeout")
         .expect("replayed end signal channel should remain open");
 
-    let replay_sender = tokio::spawn(async move {
-        loop {
-            if worker_two_resume_tx.unbounded_send(true).is_err() {
-                break;
-            }
-            tokio::time::sleep(REPLAY_TEST_RESUME_SEND_INTERVAL).await;
-        }
-    });
+    worker_two_resume_tx
+        .unbounded_send(true)
+        .expect("replay resume signal should send once after replay boundary");
+    drop(worker_two_resume_tx);
 
     let replayed_history =
         wait_for_replay_history_change(&client, journey_id, &killed_worker_history).await;
@@ -961,7 +957,6 @@ where
     );
 
     worker_two.abort();
-    let _ = replay_sender.await;
 }
 
 async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
