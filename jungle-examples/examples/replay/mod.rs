@@ -5,6 +5,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::FusedClient;
 use serde::{Deserialize, Serialize};
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -77,37 +78,185 @@ struct ReplayRainforest(Arc<tokio::sync::Mutex<ReplayInner>>);
 struct ReplayInner {
     query: Vec<bool>,
     end: UnboundedSender<()>,
-    recv: UnboundedReceiver<bool>,
+    recv: Arc<tokio::sync::Mutex<UnboundedReceiver<bool>>>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReplayState {
+pub struct Left;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Right;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayFrame<L, R> {
     color: bool,
     history: String,
+    left: L,
+    right: R,
 }
 
-impl From<ReplayState> for () {
-    fn from(_value: ReplayState) -> Self {}
+pub type Depth2LeftState = ReplayFrame<Left, ()>;
+pub type Depth2RightState = ReplayFrame<(), Right>;
+pub type ReplayState = ReplayFrame<Depth2LeftState, Depth2RightState>;
+
+impl<L, R> From<ReplayFrame<L, R>> for () {
+    fn from(_value: ReplayFrame<L, R>) -> Self {}
 }
 
 pub(crate) struct ReplayColorIsTrue;
 
-impl Predicate<(&ReplayState, &())> for ReplayColorIsTrue {
-    fn eval((state, _): &(&ReplayState, &())) -> bool {
-        state.color
+pub trait ReplayNodeState {
+    fn replay_color(&self) -> bool;
+    fn replay_color_mut(&mut self) -> &mut bool;
+    fn replay_history(&self) -> &str;
+    fn replay_history_mut(&mut self) -> &mut String;
+}
+
+trait ReplayAppearance {
+    fn replay_appearance(&self) -> String;
+}
+
+impl ReplayAppearance for () {
+    fn replay_appearance(&self) -> String {
+        String::new()
     }
 }
 
-impl Predicate<(ReplayState, ())> for ReplayColorIsTrue {
-    fn eval((state, _): &(ReplayState, ())) -> bool {
-        state.color
+macro_rules! impl_empty_replay_appearance {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl ReplayAppearance for $ty {
+                fn replay_appearance(&self) -> String {
+                    String::new()
+                }
+            }
+        )+
+    };
+}
+
+impl_empty_replay_appearance!(Left, Right);
+
+impl<L, R> ReplayAppearance for ReplayFrame<L, R>
+where
+    L: ReplayAppearance,
+    R: ReplayAppearance,
+{
+    fn replay_appearance(&self) -> String {
+        let mut appearance = self.history.clone();
+        let left = self.left.replay_appearance();
+        let right = self.right.replay_appearance();
+        if !left.is_empty() && right.is_empty() {
+            appearance.push('(');
+            appearance.push_str(&left);
+        } else if left.is_empty() && !right.is_empty() {
+            appearance.push('(');
+            appearance.push('|');
+            appearance.push_str(&right);
+        } else if !left.is_empty() || !right.is_empty() {
+            appearance.push('(');
+            appearance.push_str(&left);
+            appearance.push('|');
+            appearance.push_str(&right);
+        }
+        appearance
+    }
+}
+
+impl<L, R> ReplayNodeState for ReplayFrame<L, R> {
+    fn replay_color(&self) -> bool {
+        self.color
+    }
+
+    fn replay_color_mut(&mut self) -> &mut bool {
+        &mut self.color
+    }
+
+    fn replay_history(&self) -> &str {
+        &self.history
+    }
+
+    fn replay_history_mut(&mut self) -> &mut String {
+        &mut self.history
+    }
+}
+
+pub trait ReplayBranchHostState: ReplayNodeState {
+    type LeftBranch: ReplayNodeState;
+    type RightBranch: ReplayNodeState;
+
+    fn replay_left(&self) -> &Self::LeftBranch;
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch;
+    fn replay_right(&self) -> &Self::RightBranch;
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch;
+}
+
+impl ReplayBranchHostState for ReplayState {
+    type LeftBranch = Depth2LeftState;
+    type RightBranch = Depth2RightState;
+
+    fn replay_left(&self) -> &Self::LeftBranch {
+        &self.left
+    }
+
+    fn replay_left_mut(&mut self) -> &mut Self::LeftBranch {
+        &mut self.left
+    }
+
+    fn replay_right(&self) -> &Self::RightBranch {
+        &self.right
+    }
+
+    fn replay_right_mut(&mut self) -> &mut Self::RightBranch {
+        &mut self.right
+    }
+}
+
+impl ViewProject<Depth2LeftState> for ReplayState {
+    fn project_view(state: &mut Self) -> &mut Depth2LeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<Depth2RightState> for ReplayState {
+    fn project_view(state: &mut Self) -> &mut Depth2RightState {
+        &mut state.right
+    }
+}
+
+impl<St> Predicate<(&St, &())> for ReplayColorIsTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((state, _): &(&St, &())) -> bool {
+        state.replay_color()
+    }
+}
+
+impl<St> Predicate<(St, ())> for ReplayColorIsTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((state, _): &(St, ())) -> bool {
+        state.replay_color()
     }
 }
 
 pub(crate) struct ReplayAlwaysTrue;
 
-impl Predicate<(&ReplayState, &())> for ReplayAlwaysTrue {
-    fn eval((_state, _): &(&ReplayState, &())) -> bool {
+impl<St> Predicate<(&St, &())> for ReplayAlwaysTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((_state, _): &(&St, &())) -> bool {
+        true
+    }
+}
+
+impl<St> Predicate<(St, ())> for ReplayAlwaysTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((_state, _): &(St, ())) -> bool {
         true
     }
 }
@@ -119,18 +268,21 @@ impl Ecosystem for ReplayRainforest {
 
 impl ReplayRainforest {
     async fn next(&self) -> bool {
-        let mut inner = self.0.lock().await;
-        match inner.query.pop() {
-            Some(value) => value,
-            None => {
-                let _ = inner.end.unbounded_send(());
-                inner
-                    .recv
-                    .next()
-                    .await
-                    .expect("replay receiver should yield a bool after query exhaustion")
+        let recv = {
+            let mut inner = self.0.lock().await;
+            match inner.query.pop() {
+                Some(value) => return value,
+                None => {
+                    let _ = inner.end.unbounded_send(());
+                    Arc::clone(&inner.recv)
+                }
             }
-        }
+        };
+
+        let mut recv = recv.lock().await;
+        recv.next()
+            .await
+            .expect("replay receiver should yield a bool after query exhaustion")
     }
 }
 
@@ -169,67 +321,71 @@ where
     }
 }
 
-pub struct Tick;
+pub struct Tick<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for Tick {
+impl<St> Action for Tick<St>
+where
+    St: ReplayNodeState,
+{
     type Effect = Tock;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
-        state: &mut ReplayState,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
-        if tocked {
-            state.color = true;
-            state.history.push('1');
-        } else {
-            state.color = false;
-            state.history.push('0');
-        }
+        state.replay_history_mut().push(if tocked { '1' } else { '0' });
+        *state.replay_color_mut() = tocked;
         Ok(())
     }
 }
 
-pub struct Label<const CH: char>;
+pub struct Label<St, const CH: char>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl<const CH: char> Action for Label<CH> {
+impl<St, const CH: char> Action for Label<St, CH>
+where
+    St: ReplayNodeState,
+{
     type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
-        state: &mut ReplayState,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("label should complete without effect"))?;
-        state.history.push(CH);
+        state.replay_history_mut().push(CH);
         Ok(())
     }
 }
 
-pub struct FlattenReplayChoice;
+pub struct FlattenReplayChoice<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for FlattenReplayChoice {
+impl<St> Action for FlattenReplayChoice<St>
+where
+    St: ReplayNodeState,
+{
     type Effect = NoEffect;
     type Input = Either<(), ()>;
     type Output = ();
     type Carry = Either<(), ()>;
 
-    fn emit(_state: &ReplayState, input: Self::Input) -> ((), Self::Carry) {
+    fn emit(_state: &St, input: Self::Input) -> ((), Self::Carry) {
         ((), input)
     }
 
     fn absorb(
-        _state: &mut ReplayState,
+        _state: &mut St,
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
@@ -241,18 +397,85 @@ impl Action for FlattenReplayChoice {
     }
 }
 
-pub struct SleepMillis<const T: u64>;
+pub struct SeedReplayBranches<St>(PhantomData<fn() -> St>);
+
 #[jungle::action]
-impl<const T: u64> Action for SleepMillis<T> {
+impl<St> Action for SeedReplayBranches<St>
+where
+    St: ReplayBranchHostState,
+{
+    type Effect = NoEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut St,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("seed replay branches should succeed"))?;
+        let color = state.replay_color();
+        {
+            let left = state.replay_left_mut();
+            *left.replay_color_mut() = color;
+            left.replay_history_mut().clear();
+        }
+        {
+            let right = state.replay_right_mut();
+            *right.replay_color_mut() = color;
+            right.replay_history_mut().clear();
+        }
+        Ok(())
+    }
+}
+
+pub struct MergeReplayJoin<St>(PhantomData<fn() -> St>);
+
+#[jungle::action]
+impl<St> Action for MergeReplayJoin<St>
+where
+    St: ReplayBranchHostState,
+{
+    type Effect = NoEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &St, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut St,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("merge replay join should succeed"))?;
+        let left_history = state.replay_left().replay_history().to_string();
+        let right_history = state.replay_right().replay_history().to_string();
+        let next_color = state.replay_left().replay_color() || state.replay_right().replay_color();
+        state.replay_history_mut().push('(');
+        state.replay_history_mut().push_str(&left_history);
+        state.replay_history_mut().push('|');
+        state.replay_history_mut().push_str(&right_history);
+        state.replay_history_mut().push(')');
+        *state.replay_color_mut() = next_color;
+        state.replay_left_mut().replay_history_mut().clear();
+        state.replay_right_mut().replay_history_mut().clear();
+        Ok(())
+    }
+}
+
+pub struct SleepMillis<St, const T: u64>(PhantomData<fn() -> St>);
+
+#[jungle::action]
+impl<St, const T: u64> Action for SleepMillis<St, T> {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, _input: Self::Input) -> Duration {
+    fn emit(_state: &St, _input: Self::Input) -> Duration {
         Duration::from_millis(T)
     }
     fn absorb(
-        _state: &mut ReplayState,
+        _state: &mut St,
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         Ok(())
@@ -260,71 +483,99 @@ impl<const T: u64> Action for SleepMillis<T> {
 }
 
 #[derive(Flow)]
-struct Depth1LeftBranch(
-    Step<Label<'L'>>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
+struct ReplayHeadLeftBranch(
+    Step<Label<ReplayState, 'O'>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
 );
 
 #[derive(Flow)]
-struct Depth1RightBranch(
-    Step<SleepMillis<100>>,
-    Step<Label<'R'>>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
+struct ReplayHeadRightBranch(
+    Step<Label<ReplayState, 'Q'>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
 );
 
 #[derive(Flow)]
-struct Depth1InnerBody(
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
-    Step<FlattenReplayChoice>,
-    Step<SleepMillis<100>>,
+#[jungle(focus = Depth2LeftState)]
+struct ReplayInnerLeftFlow(
+    Step<Label<Depth2LeftState, '2'>>,
+    Step<SleepMillis<Depth2LeftState, 100>>,
+    Step<Tick<Depth2LeftState>>,
+    Step<SleepMillis<Depth2LeftState, 100>>,
+    Step<Tick<Depth2LeftState>>,
 );
 
 #[derive(Flow)]
-struct Depth1OuterBody(
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    While<ReplayColorIsTrue, Depth1InnerBody>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
-    Step<SleepMillis<100>>,
-    Step<Tick>,
+#[jungle(focus = Depth2RightState)]
+struct ReplayInnerRightFlow(
+    Step<Label<Depth2RightState, 'R'>>,
+    Step<SleepMillis<Depth2RightState, 100>>,
+    Step<Tick<Depth2RightState>>,
+    Step<SleepMillis<Depth2RightState, 100>>,
+    Step<Tick<Depth2RightState>>,
 );
 
 #[derive(Flow)]
-struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
+struct ReplayJoinedInnerBody(
+    Join<ReplayInnerLeftFlow, ReplayInnerRightFlow>,
+    Step<MergeReplayJoin<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+);
 
-pub(crate) struct Depth1;
+#[derive(Flow)]
+struct ReplayTailLeftBranch(
+    Step<Label<ReplayState, 'A'>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+);
 
-#[jungle::animal(id = 1004, generation = 0)]
-impl Animal for Depth1 {
+#[derive(Flow)]
+struct ReplayTailRightBranch(
+    Step<Label<ReplayState, 'B'>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Step<Tick<ReplayState>>,
+);
+
+#[derive(Flow)]
+struct ReplayOuterBody(
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Conditional<ReplayColorIsTrue, ReplayHeadLeftBranch, ReplayHeadRightBranch>,
+    Step<FlattenReplayChoice<ReplayState>>,
+    Step<SeedReplayBranches<ReplayState>>,
+    While<ReplayColorIsTrue, ReplayJoinedInnerBody>,
+    Step<Tick<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+    Conditional<ReplayColorIsTrue, ReplayTailLeftBranch, ReplayTailRightBranch>,
+    Step<FlattenReplayChoice<ReplayState>>,
+    Step<SleepMillis<ReplayState, 100>>,
+);
+
+#[derive(Flow)]
+struct ReplayFlow(While<ReplayAlwaysTrue, ReplayOuterBody>);
+
+pub(crate) struct Depth2;
+
+#[jungle::animal(observe, id = 1004, generation = 0)]
+impl Animal for Depth2 {
     type State = ReplayState;
     type Seed = ReplayState;
-    type Flow = Depth1Flow;
+    type Flow = ReplayFlow;
 }
 
 #[derive(Animals)]
-struct ReplayRainforestAnimals(Depth1);
+struct ReplayRainforestAnimals(Depth2);
+
+impl Observe for Depth2 {
+    type Appearance = String;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        state.replay_appearance()
+    }
+}
 
 fn replay_rainforest(
     query: Vec<bool>,
@@ -334,11 +585,11 @@ fn replay_rainforest(
     ReplayRainforest(Arc::new(tokio::sync::Mutex::new(ReplayInner {
         query,
         end,
-        recv,
+        recv: Arc::new(tokio::sync::Mutex::new(recv)),
     })))
 }
 
-fn spawn_depth1_worker(
+fn spawn_replay_worker(
     client: FusedClient,
     jungle: ReplayRainforest,
 ) -> tokio::task::JoinHandle<()> {
@@ -397,14 +648,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (end_tx, mut end_rx) = futures::channel::mpsc::unbounded::<()>();
     let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
-    let worker_one = spawn_depth1_worker(
+    let worker_one = spawn_replay_worker(
         client.clone(),
         replay_rainforest(query, end_tx.clone(), worker_one_resume_rx),
     );
     let worker_one_abort = worker_one.abort_handle();
 
     let journey_id = client
-        .spawn::<Depth1>(&ReplayState::default())
+        .spawn::<Depth2>(&ReplayState::default())
         .await?
         .journey_id;
     info!(%journey_id, "started replay example journey");
@@ -422,7 +673,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let (_worker_two_resume_tx, worker_two_resume_rx) =
                 futures::channel::mpsc::unbounded::<bool>();
-            let worker_two = spawn_depth1_worker(
+            let worker_two = spawn_replay_worker(
                 replay_client.clone(),
                 replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
             );
