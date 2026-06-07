@@ -97,7 +97,7 @@ struct LyrebirdUi {
     journey_id: Uuid,
     viewer: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     snapshot: Option<LyrebirdState>,
-    spectrogram_handles: BTreeMap<String, iced_image::Handle>,
+    spectrogram_handles: BTreeMap<PathBuf, iced_image::Handle>,
     snapshot_error: Option<String>,
     audio: AudioPlayer,
     image_dump: Option<ImageDumpConfig>,
@@ -368,10 +368,10 @@ impl LyrebirdUi {
             };
         let cards = row![
             spectrogram_tile(
-                self.spectrogram_handle(Some(&instrument_state.target_spectrogram_path)),
+                self.spectrogram_handle(non_empty_path(&instrument_state.target_spectrogram_path)),
                 Some(instrument.display_name().to_owned()),
                 alignment::Horizontal::Left,
-                existing_path(Some(&instrument_state.target_sample_path))
+                existing_path(non_empty_path(&instrument_state.target_sample_path))
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
                 "Waiting for spectrogram",
             ),
@@ -420,9 +420,8 @@ impl LyrebirdUi {
         content.width(Length::Fill).height(Length::Fill).into()
     }
 
-    fn spectrogram_handle(&self, path: Option<&str>) -> Option<iced_image::Handle> {
-        path.and_then(non_empty)
-            .and_then(|path| self.spectrogram_handles.get(path))
+    fn spectrogram_handle(&self, path: Option<&Path>) -> Option<iced_image::Handle> {
+        path.and_then(|path| self.spectrogram_handles.get(path))
             .cloned()
     }
 }
@@ -531,29 +530,29 @@ fn divider_vertical<'a>(visible: bool) -> Element<'a, Message> {
         .into()
 }
 
-fn current_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
+fn current_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&Path> {
     instrument_state
         .latest_rendered_code
         .as_ref()
-        .and_then(|code| non_empty(&code.spectrogram_path))
+        .and_then(|code| non_empty_path(&code.spectrogram_path))
         .or_else(|| {
             instrument_state
                 .latest_generated_spectrogram_path
                 .as_deref()
-                .and_then(non_empty)
+                .and_then(non_empty_path)
         })
 }
 
-fn current_sample_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
+fn current_sample_path(instrument_state: &LyrebirdInstrumentState) -> Option<&Path> {
     instrument_state
         .latest_rendered_code
         .as_ref()
-        .and_then(|code| non_empty(&code.sample_path))
+        .and_then(|code| non_empty_path(&code.sample_path))
         .or_else(|| {
             instrument_state
                 .latest_generated_sample_path
                 .as_deref()
-                .and_then(non_empty)
+                .and_then(non_empty_path)
         })
 }
 
@@ -570,29 +569,29 @@ fn current_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<S
         })
 }
 
-fn best_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
+fn best_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&Path> {
     instrument_state
         .best_generated_code
         .as_ref()
-        .and_then(|code| non_empty(&code.spectrogram_path))
+        .and_then(|code| non_empty_path(&code.spectrogram_path))
         .or_else(|| {
             instrument_state
                 .best_generated_spectrogram_path
                 .as_deref()
-                .and_then(non_empty)
+                .and_then(non_empty_path)
         })
 }
 
-fn best_sample_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
+fn best_sample_path(instrument_state: &LyrebirdInstrumentState) -> Option<&Path> {
     instrument_state
         .best_generated_code
         .as_ref()
-        .and_then(|code| non_empty(&code.sample_path))
+        .and_then(|code| non_empty_path(&code.sample_path))
         .or_else(|| {
             instrument_state
                 .best_generated_sample_path
                 .as_deref()
-                .and_then(non_empty)
+                .and_then(non_empty_path)
         })
 }
 
@@ -609,8 +608,8 @@ fn best_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<Stri
         })
 }
 
-fn initial_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
-    non_empty(&instrument_state.initial_dsp_code.spectrogram_path)
+fn initial_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&Path> {
+    non_empty_path(&instrument_state.initial_dsp_code.spectrogram_path)
 }
 
 fn initial_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<String> {
@@ -627,10 +626,12 @@ fn score_label(label: &str, score: Option<f32>) -> String {
 fn spectrogram_action_payload(
     instrument_state: &LyrebirdInstrumentState,
     kind: SnapshotKind,
-) -> (Option<String>, Option<String>) {
+) -> (Option<PathBuf>, Option<String>) {
     match kind {
         SnapshotKind::Initial => (
-            existing_path(non_empty(&instrument_state.initial_dsp_code.sample_path)),
+            existing_path(non_empty_path(
+                &instrument_state.initial_dsp_code.sample_path,
+            )),
             non_empty(&instrument_state.initial_dsp_code.source).map(ToOwned::to_owned),
         ),
         SnapshotKind::Current => (
@@ -648,7 +649,7 @@ fn spectrogram_action_payload(
                 .map(|code| code.source.clone()),
         ),
         SnapshotKind::Target => (
-            existing_path(Some(&instrument_state.target_sample_path)),
+            existing_path(non_empty_path(&instrument_state.target_sample_path)),
             None,
         ),
     }
@@ -658,9 +659,12 @@ fn non_empty(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
-fn existing_path(path: Option<&str>) -> Option<String> {
-    path.filter(|path| Path::new(path).exists())
-        .map(ToOwned::to_owned)
+fn non_empty_path(path: &Path) -> Option<&Path> {
+    (!path.as_os_str().is_empty()).then_some(path)
+}
+
+fn existing_path(path: Option<&Path>) -> Option<PathBuf> {
+    path.filter(|path| path.exists()).map(Path::to_path_buf)
 }
 
 async fn load_snapshot(
@@ -706,13 +710,13 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
     Ok(path)
 }
 
-fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<String, iced_image::Handle> {
+fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<PathBuf, iced_image::Handle> {
     let mut handles = BTreeMap::new();
 
     for instrument in LyrebirdInstrument::ALL {
         let instrument_state = snapshot.instrument_state(instrument);
         for path in [
-            existing_path(non_empty(&instrument_state.target_spectrogram_path)),
+            existing_path(non_empty_path(&instrument_state.target_spectrogram_path)),
             existing_path(initial_spectrogram_path(instrument_state)),
             existing_path(current_spectrogram_path(instrument_state)),
             existing_path(best_spectrogram_path(instrument_state)),
@@ -733,17 +737,17 @@ fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<String, iced_
     handles
 }
 
-fn load_spectrogram_handle(path: &str) -> Option<iced_image::Handle> {
+fn load_spectrogram_handle(path: &Path) -> Option<iced_image::Handle> {
     let decoded = match ::image::ImageReader::open(path) {
         Ok(reader) => match reader.decode() {
             Ok(image) => image,
             Err(err) => {
-                warn!(path, error = %err, "failed to decode spectrogram preview");
+                warn!(path = %path.display(), error = %err, "failed to decode spectrogram preview");
                 return None;
             }
         },
         Err(err) => {
-            warn!(path, error = %err, "failed to open spectrogram preview");
+            warn!(path = %path.display(), error = %err, "failed to open spectrogram preview");
             return None;
         }
     };
@@ -785,15 +789,15 @@ impl AudioPlayer {
         }
     }
 
-    fn play(&mut self, path: &str) -> Result<(), String> {
+    fn play(&mut self, path: &Path) -> Result<(), String> {
         let handle = self
             .handle
             .as_ref()
             .ok_or_else(|| "audio output is unavailable".to_owned())?;
-        let file =
-            File::open(path).map_err(|err| format!("failed to open wav file {path}: {err}"))?;
+        let file = File::open(path)
+            .map_err(|err| format!("failed to open wav file {}: {err}", path.display()))?;
         let decoder = Decoder::new(BufReader::new(file))
-            .map_err(|err| format!("failed to decode wav file {path}: {err}"))?;
+            .map_err(|err| format!("failed to decode wav file {}: {err}", path.display()))?;
         if let Some(sink) = self.sink.take() {
             sink.stop();
         }

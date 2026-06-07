@@ -28,7 +28,7 @@ impl<J> Effect<J> for Sleep {
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
-            std::thread::sleep(input);
+            tokio::time::sleep(input).await;
             Ok(())
         }
     }
@@ -41,6 +41,7 @@ where
     T: Animal,
     Focus: Aspect<T::State>,
 {
+    const NAME: &'static str = "SleepStep";
     type Effect = Sleep;
     type Aspect = Focus;
     type Input = Duration;

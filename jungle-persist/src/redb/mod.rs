@@ -3,8 +3,9 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, NodeLifecycle, OwnerWake,
-    RunnerOut, RunnerUpdateOut, SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyEvent, JourneyRecord, JourneyReplayPage, JourneyStatus,
+    JourneyUpdateEvent, NodeLifecycle, OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal,
+    Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -61,6 +62,7 @@ static REDB_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone)]
 pub struct RedbStore {
     db: Arc<redb::Database>,
+    claimed_work_ttl_ms: i64,
 }
 
 impl RedbStore {
@@ -69,10 +71,17 @@ impl RedbStore {
     }
 
     pub fn in_memory() -> Result<RedbStore> {
+        Self::in_memory_with_claimed_work_ttl_ms(crate::DEFAULT_CLAIMED_WORK_TTL_MS)
+    }
+
+    pub fn in_memory_with_claimed_work_ttl_ms(claimed_work_ttl_ms: i64) -> Result<RedbStore> {
         let db = redb::Database::builder()
             .create_with_backend(redb::backends::InMemoryBackend::new())
             .map_err(crate::PersistenceError::RedbOpen)?;
-        Ok(RedbStore { db: Arc::new(db) })
+        Ok(RedbStore {
+            db: Arc::new(db),
+            claimed_work_ttl_ms: claimed_work_ttl_ms.max(0),
+        })
     }
 
     fn update_journey_status(
@@ -139,9 +148,19 @@ impl RedbStore {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RedbStoreBuilder {
     path: Option<PathBuf>,
+    claimed_work_ttl_ms: i64,
+}
+
+impl Default for RedbStoreBuilder {
+    fn default() -> Self {
+        Self {
+            path: None,
+            claimed_work_ttl_ms: crate::DEFAULT_CLAIMED_WORK_TTL_MS,
+        }
+    }
 }
 
 impl RedbStoreBuilder {
@@ -150,10 +169,18 @@ impl RedbStoreBuilder {
         self
     }
 
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.claimed_work_ttl_ms = value.max(0);
+        self
+    }
+
     pub fn build(self) -> Result<RedbStore> {
         let path = self.path.ok_or(crate::PersistenceError::MissingRedbPath)?;
         let db = redb::Database::create(path).map_err(crate::PersistenceError::RedbOpen)?;
-        Ok(RedbStore { db: Arc::new(db) })
+        Ok(RedbStore {
+            db: Arc::new(db),
+            claimed_work_ttl_ms: self.claimed_work_ttl_ms,
+        })
     }
 }
 
@@ -317,6 +344,107 @@ impl JungleStore for RedbStore {
             history.push(decode_runner_out(journey_id, kind, data)?);
         }
         Ok(history)
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage> {
+        let fetch_started_at = Instant::now();
+        let limit = limit.max(1) as usize;
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_replay_page begin read failed: {err}"
+            ))
+        })?;
+        let snapshot_end_sequence_id = match snapshot_end_sequence_id {
+            Some(sequence_id) => Some(sequence_id),
+            None => {
+                let sequences =
+                    read_tx
+                        .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                        .map_err(|err| {
+                            crate::PersistenceError::Message(format!(
+                                "redb journey_replay_page open sequence table failed: {err}"
+                            ))
+                        })?;
+                let key = &journey_id.as_bytes()[..];
+                sequences
+                    .get(key)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb journey_replay_page read sequence failed: {err}"
+                        ))
+                    })?
+                    .map(|value| value.value())
+                    .and_then(|next_sequence| next_sequence.checked_sub(1))
+            }
+        };
+
+        let events = if let Some(snapshot_end_sequence_id) = snapshot_end_sequence_id {
+            if after_sequence_id.is_some_and(|after| after >= snapshot_end_sequence_id) {
+                Vec::new()
+            } else {
+                let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb journey_replay_page open events table failed: {err}"
+                    ))
+                })?;
+                let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
+                let start_key = encode_event_key(journey_id, start_sequence_id);
+                let end_key = encode_event_key(journey_id, snapshot_end_sequence_id);
+                let iter = events
+                    .range(start_key.as_slice()..=end_key.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb journey_replay_page range events failed: {err}"
+                        ))
+                    })?;
+
+                let mut out = Vec::with_capacity(limit);
+                for entry in iter.take(limit) {
+                    let (key, value) = entry.map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb journey_replay_page read events entry failed: {err}"
+                        ))
+                    })?;
+                    let (_, sequence_id) =
+                        decode_event_key(key.value(), "redb journey_replay_page decode event key")?;
+                    let (kind, data) = decode_event_value(
+                        value.value(),
+                        "redb journey_replay_page decode event value",
+                    )?;
+                    out.push(JourneyEvent {
+                        sequence_id,
+                        event: decode_runner_out(journey_id, kind, data)?,
+                    });
+                }
+                out
+            }
+        } else {
+            Vec::new()
+        };
+
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        if fetch_elapsed_ms > REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                snapshot_end_sequence_id = snapshot_end_sequence_id.unwrap_or(0),
+                limit,
+                events_len = events.len(),
+                fetch_elapsed_ms,
+                "slow redb journey_replay_page query"
+            );
+        }
+
+        Ok(JourneyReplayPage {
+            snapshot_end_sequence_id,
+            events,
+        })
     }
 
     async fn journey_update_events_since(
@@ -841,7 +969,7 @@ impl JungleStore for RedbStore {
         })?;
         let now = Utc::now();
         let now_millis = now_unix_ms();
-        let lease_until = now + chrono::Duration::seconds(30);
+        let lease_until = now + chrono::Duration::milliseconds(self.claimed_work_ttl_ms);
 
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 

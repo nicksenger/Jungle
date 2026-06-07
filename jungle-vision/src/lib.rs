@@ -9,10 +9,15 @@ use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
 use jungle_client::client::JourneyUpdateSubscription;
 use jungle_client::JungleClient;
+use jungle_core::dag::{Dag as GraphModel, DagProjection, DagSnapshot, LiveDagState as LiveData};
+#[cfg(test)]
+use jungle_core::dag::NodeDisplay;
 use jungle_types::{
-    Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, NodeLifecyclePhase, RunnerUpdateOut,
+    Animal, JourneyAstSource, JourneyUpdateEvent, NodeLifecyclePhase, RunnerUpdateOut,
 };
-use std::collections::{BTreeSet, HashMap, HashSet};
+#[cfg(test)]
+use jungle_types::JourneyAst;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -65,45 +70,12 @@ fn graph_refresh_task<Message: Clone + Send + 'static>(
 }
 
 pub struct AnyAnimal;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase<T> {
-    Static,
-    Live(T),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeState {
-    Pending,
-    Running,
-    Completed,
-    Failed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StepKind {
-    Step,
-    Conditional,
-    Select,
-    Join,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusterKind {
-    While,
-    Transparent,
-}
+pub use jungle_core::dag::{ClusterKind, ClusterLive, Phase, RuntimeState, StepKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusterExpansionMode {
     Automatic,
     AlwaysExpanded,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ConditionalSide {
-    Left,
-    Right,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,7 +88,9 @@ impl ClusterExpansionConfig {
     fn mode_for(self, kind: ClusterKind) -> ClusterExpansionMode {
         match kind {
             ClusterKind::While => self.while_clusters,
+            ClusterKind::Join => self.transparent_clusters,
             ClusterKind::Transparent => self.transparent_clusters,
+            ClusterKind::Attempt => self.transparent_clusters,
         }
     }
 }
@@ -140,13 +114,6 @@ pub struct StepViewCtx<'a> {
     pub label: &'a str,
     pub metadata: Option<&'a str>,
     pub phase: Phase<RuntimeState>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ClusterLive {
-    pub has_running: bool,
-    pub has_failed: bool,
-    pub has_completed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -926,7 +893,7 @@ where
         .map(|cluster| {
             let mut converted = iced_sugiyama::Cluster::new(cluster.nodes.clone());
             if let Some(padding) = cluster.padding {
-                converted = converted.padding(padding);
+                converted = converted.padding(padding.into());
             }
             if let Some(parent) = cluster.parent {
                 converted = converted.parent(parent);
@@ -973,11 +940,7 @@ where
     for update in updates {
         let _ = live.apply_update(update);
     }
-    let live_states = live_states_for_display(
-        &model,
-        Some(&live),
-        &model.derived.condition_successor_runtime_ids,
-    );
+    let snapshot = DagSnapshot::new(&model, Some(&live));
     model
         .nodes
         .iter()
@@ -985,7 +948,8 @@ where
             id: node.id,
             label: node.label.clone(),
             runtime_id: node.runtime_node_id,
-            state: live_states
+            state: snapshot
+                .node_states
                 .get(&node.id)
                 .copied()
                 .unwrap_or(RuntimeState::Pending),
@@ -1007,13 +971,7 @@ where
     for update in updates {
         let _ = live.apply_update(update);
     }
-    let runtime_sequence_floors = runtime_sequence_floors_for_display(&model, &live);
-    let runtime_activation_prefixes = runtime_activation_prefixes_for_display(&model, &live);
-    let live_states = live_states_for_display(
-        &model,
-        Some(&live),
-        &model.derived.condition_successor_runtime_ids,
-    );
+    let snapshot = DagSnapshot::new(&model, Some(&live));
 
     model
         .nodes
@@ -1022,7 +980,8 @@ where
             id: node.id,
             label: node.label.clone(),
             runtime_id: node.runtime_node_id,
-            state: live_states
+            state: snapshot
+                .node_states
                 .get(&node.id)
                 .copied()
                 .unwrap_or(RuntimeState::Pending),
@@ -1031,13 +990,13 @@ where
                 .and_then(|id| live.runtime_update_sequence.get(&id).copied()),
             floor: node
                 .runtime_node_id
-                .and_then(|id| runtime_sequence_floors.get(&id).copied()),
+                .and_then(|id| snapshot.runtime_sequence_floors.get(&id).copied()),
             activation_path: node
                 .runtime_node_id
                 .and_then(|id| live.runtime_activation_paths.get(&id).cloned()),
             required_prefix: node
                 .runtime_node_id
-                .and_then(|id| runtime_activation_prefixes.get(&id).cloned()),
+                .and_then(|id| snapshot.runtime_activation_prefixes.get(&id).cloned()),
         })
         .collect()
 }
@@ -1086,18 +1045,6 @@ enum LiveState {
     Loading,
     Error(String),
     Loaded(LiveData),
-}
-
-#[derive(Debug, Clone, Default)]
-struct LiveData {
-    active_runtime_ids: BTreeSet<u32>,
-    finished_runtime_ids: BTreeSet<u32>,
-    failed_runtime_ids: BTreeSet<u32>,
-    lifecycle_runtime_ids: BTreeSet<u32>,
-    descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
-    runtime_activation_paths: HashMap<u32, Vec<u64>>,
-    runtime_update_sequence: HashMap<u32, usize>,
-    latest_event_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -1538,107 +1485,6 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
     Ok(path)
 }
 
-impl LiveData {
-    fn bind_model(&mut self, model: &GraphModel) {
-        self.descendant_runtime_ids_by_runtime_id =
-            model.derived.descendant_runtime_ids_by_runtime_id.clone();
-    }
-
-    fn apply_update(&mut self, update: JourneyUpdateEvent) -> bool {
-        let mut highlight_changed = false;
-        let sequence = update.sequence_id as usize;
-        self.latest_event_count = sequence;
-        match update.event {
-            RunnerUpdateOut::EffectInput { node_id, .. } => {
-                if self.lifecycle_runtime_ids.contains(&node_id) {
-                    return highlight_changed;
-                }
-                highlight_changed |= self.finished_runtime_ids.remove(&node_id);
-                highlight_changed |= self.failed_runtime_ids.remove(&node_id);
-                highlight_changed |= self.active_runtime_ids.insert(node_id);
-                self.runtime_update_sequence.insert(node_id, sequence);
-            }
-            RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
-                if self.lifecycle_runtime_ids.contains(&node_id) {
-                    return highlight_changed;
-                }
-                highlight_changed |= self.active_runtime_ids.remove(&node_id);
-                highlight_changed |= self.finished_runtime_ids.insert(node_id);
-                self.runtime_update_sequence.insert(node_id, sequence);
-            }
-            RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
-                if self.lifecycle_runtime_ids.contains(&node_id) {
-                    return highlight_changed;
-                }
-                highlight_changed |= self.active_runtime_ids.remove(&node_id);
-                highlight_changed |= self.failed_runtime_ids.insert(node_id);
-                self.runtime_update_sequence.insert(node_id, sequence);
-            }
-            RunnerUpdateOut::NodeLifecycle(node) => {
-                if matches!(node.phase, NodeLifecyclePhase::Entered) {
-                    highlight_changed |=
-                        self.clear_stale_descendants(node.node_id, &node.activation_path);
-                }
-                self.lifecycle_runtime_ids.insert(node.node_id);
-                highlight_changed |= self.active_runtime_ids.remove(&node.node_id);
-                highlight_changed |= self.finished_runtime_ids.remove(&node.node_id);
-                highlight_changed |= self.failed_runtime_ids.remove(&node.node_id);
-                match node.phase {
-                    NodeLifecyclePhase::Entered => {
-                        highlight_changed |= self.active_runtime_ids.insert(node.node_id);
-                    }
-                    NodeLifecyclePhase::Succeeded => {
-                        highlight_changed |= self.finished_runtime_ids.insert(node.node_id);
-                    }
-                    NodeLifecyclePhase::Failed => {
-                        highlight_changed |= self.failed_runtime_ids.insert(node.node_id);
-                    }
-                }
-                self.runtime_update_sequence.insert(node.node_id, sequence);
-                self.runtime_activation_paths
-                    .insert(node.node_id, node.activation_path);
-            }
-            RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
-        }
-        highlight_changed
-    }
-
-    fn clear_stale_descendants(
-        &mut self,
-        ancestor_runtime_id: u32,
-        activation_path: &[u64],
-    ) -> bool {
-        let Some(descendants) = self
-            .descendant_runtime_ids_by_runtime_id
-            .get(&ancestor_runtime_id)
-            .cloned()
-        else {
-            return false;
-        };
-
-        let mut changed = false;
-        for runtime_id in descendants {
-            if self
-                .runtime_activation_paths
-                .get(&runtime_id)
-                .map(|path| {
-                    path.len() <= activation_path.len() || path.starts_with(activation_path)
-                })
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            changed |= self.active_runtime_ids.remove(&runtime_id);
-            changed |= self.finished_runtime_ids.remove(&runtime_id);
-            changed |= self.failed_runtime_ids.remove(&runtime_id);
-            self.lifecycle_runtime_ids.remove(&runtime_id);
-            changed |= self.runtime_update_sequence.remove(&runtime_id).is_some();
-            changed |= self.runtime_activation_paths.remove(&runtime_id).is_some();
-        }
-        changed
-    }
-}
-
 #[cfg(test)]
 fn runtime_state_for_live_data(
     live: &LiveData,
@@ -1653,6 +1499,7 @@ fn runtime_state_for_live_data(
     )
 }
 
+#[cfg(test)]
 fn runtime_state_for_live_data_with_activation_prefixes(
     live: &LiveData,
     runtime_id: u32,
@@ -1691,49 +1538,6 @@ fn runtime_state_for_live_data_with_activation_prefixes(
     }
 }
 
-#[cfg(test)]
-fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32]) -> RuntimeState {
-    infer_condition_runtime_state_with_runtime_floors(
-        live,
-        successor_runtime_ids,
-        &HashMap::new(),
-        &HashMap::new(),
-    )
-}
-
-fn infer_condition_runtime_state_with_runtime_floors(
-    live: &LiveData,
-    successor_runtime_ids: &[u32],
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
-) -> RuntimeState {
-    let mut newest: Option<(usize, RuntimeState)> = None;
-
-    for runtime_id in successor_runtime_ids {
-        let Some(sequence) = live.runtime_update_sequence.get(runtime_id).copied() else {
-            continue;
-        };
-        if newest
-            .map(|(best_sequence, _)| sequence > best_sequence)
-            .unwrap_or(true)
-        {
-            newest = Some((
-                sequence,
-                runtime_state_for_live_data_with_activation_prefixes(
-                    live,
-                    *runtime_id,
-                    runtime_sequence_floors,
-                    runtime_activation_prefixes,
-                ),
-            ));
-        }
-    }
-
-    newest
-        .map(|(_, state)| state)
-        .unwrap_or(RuntimeState::Pending)
-}
-
 fn current_unix_ms() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
@@ -1756,625 +1560,51 @@ fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
     }
 }
 
-fn node_phase_for_display(
-    live_data: Option<&LiveData>,
-    display_id: u32,
-    runtime_id: Option<u32>,
-    proxy_runtime_ids: &[u32],
-    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
-) -> Phase<RuntimeState> {
-    node_phase_for_display_with_runtime_floors(
-        live_data,
-        display_id,
-        runtime_id,
-        proxy_runtime_ids,
-        condition_successor_runtime_ids,
-        &HashMap::new(),
-        &HashMap::new(),
-    )
-}
-
-fn node_phase_for_display_with_runtime_floors(
-    live_data: Option<&LiveData>,
-    display_id: u32,
-    runtime_id: Option<u32>,
-    _proxy_runtime_ids: &[u32],
-    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
-) -> Phase<RuntimeState> {
-    let Some(live) = live_data else {
-        return Phase::Static;
-    };
-
-    let state = match runtime_id {
-        Some(id) => runtime_state_for_live_data_with_activation_prefixes(
-            live,
-            id,
-            runtime_sequence_floors,
-            runtime_activation_prefixes,
-        ),
-        None => condition_successor_runtime_ids
-            .get(&display_id)
-            .map(|successors| {
-                infer_condition_runtime_state_with_runtime_floors(
-                    live,
-                    successors,
-                    runtime_sequence_floors,
-                    runtime_activation_prefixes,
-                )
-            })
-            .unwrap_or(RuntimeState::Pending),
-    };
-
-    let newest = runtime_id.and_then(|id| {
-        live.runtime_update_sequence
-            .get(&id)
-            .copied()
-            .map(|sequence| (sequence, state))
-    });
-
-    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
-}
-
-fn runtime_observed_in_current_iteration(
-    live: &LiveData,
-    runtime_id: u32,
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
-) -> bool {
-    live.runtime_update_sequence
-        .get(&runtime_id)
-        .copied()
-        .map(|sequence| {
-            sequence
-                >= runtime_sequence_floors
-                    .get(&runtime_id)
-                    .copied()
-                    .unwrap_or_default()
-                && runtime_activation_prefixes
-                    .get(&runtime_id)
-                    .and_then(|required_prefix| {
-                        live.runtime_activation_paths
-                            .get(&runtime_id)
-                            .map(|path| path.starts_with(required_prefix))
-                    })
-                    .unwrap_or(true)
-        })
-        .unwrap_or(false)
-}
-
-fn node_has_current_iteration_activity(
-    live: &LiveData,
-    node: &NodeDisplay,
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
-) -> bool {
-    node.runtime_node_id.into_iter().any(|runtime_id| {
-        runtime_observed_in_current_iteration(
-            live,
-            runtime_id,
-            runtime_sequence_floors,
-            runtime_activation_prefixes,
-        )
-    })
-}
-
-fn conditional_branch_membership(model: &GraphModel) -> HashMap<u32, (u32, ConditionalSide)> {
-    let mut membership = HashMap::new();
-    for branch in &model.derived.conditional_branches {
-        for display_id in &branch.left_member_display_ids {
-            membership.insert(
-                *display_id,
-                (branch.condition_display_id, ConditionalSide::Left),
-            );
-        }
-        for display_id in &branch.right_member_display_ids {
-            membership.insert(
-                *display_id,
-                (branch.condition_display_id, ConditionalSide::Right),
-            );
-        }
-    }
-    membership
-}
-
-fn active_conditional_branch_sides(
-    model: &GraphModel,
-    live: &LiveData,
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
-) -> HashMap<u32, ConditionalSide> {
-    #[derive(Clone, Copy)]
-    struct BranchSignal {
-        best_priority: u8,
-        observed_count: usize,
-        latest_sequence: usize,
-    }
-
-    let mut active = HashMap::new();
-
-    for branch in &model.derived.conditional_branches {
-        let branch_signal_for_side = |display_ids: &[u32]| {
-            let mut latest_sequence = None::<usize>;
-            let mut best_priority = 0_u8;
-            let mut observed_count = 0_usize;
-            for display_id in display_ids {
-                let Some(node) = model.node_map.get(display_id) else {
-                    continue;
-                };
-                let Some(runtime_id) = node.runtime_node_id else {
-                    continue;
-                };
-                if !runtime_observed_in_current_iteration(
-                    live,
-                    runtime_id,
-                    runtime_sequence_floors,
-                    runtime_activation_prefixes,
-                ) {
-                    continue;
-                }
-                let Some(sequence) = live.runtime_update_sequence.get(&runtime_id).copied() else {
-                    continue;
-                };
-                let priority = match runtime_state_for_live_data_with_activation_prefixes(
-                    live,
-                    runtime_id,
-                    runtime_sequence_floors,
-                    runtime_activation_prefixes,
-                ) {
-                    RuntimeState::Failed => 3_u8,
-                    RuntimeState::Running => 2_u8,
-                    RuntimeState::Completed => 1_u8,
-                    RuntimeState::Pending => 0_u8,
-                };
-                best_priority = best_priority.max(priority);
-                observed_count = observed_count.saturating_add(1);
-                latest_sequence = Some(
-                    latest_sequence
-                        .map(|current| current.max(sequence))
-                        .unwrap_or(sequence),
-                );
-            }
-            latest_sequence.map(|latest_sequence| BranchSignal {
-                best_priority,
-                observed_count,
-                latest_sequence,
-            })
-        };
-
-        let left_root_signal = branch_signal_for_side(&branch.left_root_display_ids);
-        let right_root_signal = branch_signal_for_side(&branch.right_root_display_ids);
-        let left_signal = branch_signal_for_side(&branch.left_member_display_ids);
-        let right_signal = branch_signal_for_side(&branch.right_member_display_ids);
-
-        let selected_side = match (left_root_signal, right_root_signal) {
-            (Some(_), Some(_)) => Some(ConditionalSide::Left),
-            (Some(_), None) => Some(ConditionalSide::Left),
-            (None, Some(_)) => Some(ConditionalSide::Right),
-            (None, None) => None,
-        }
-        .or_else(|| match (left_signal, right_signal) {
-            (Some(_), None) => Some(ConditionalSide::Left),
-            (None, Some(_)) => Some(ConditionalSide::Right),
-            (Some(left_signal), Some(right_signal)) => {
-                if left_signal.best_priority > right_signal.best_priority
-                    || (left_signal.best_priority == right_signal.best_priority
-                        && left_signal.observed_count > right_signal.observed_count)
-                    || (left_signal.best_priority == right_signal.best_priority
-                        && left_signal.observed_count == right_signal.observed_count
-                        && left_signal.latest_sequence > right_signal.latest_sequence)
-                {
-                    Some(ConditionalSide::Left)
-                } else if right_signal.best_priority > left_signal.best_priority
-                    || (right_signal.best_priority == left_signal.best_priority
-                        && right_signal.observed_count > left_signal.observed_count)
-                    || (right_signal.best_priority == left_signal.best_priority
-                        && right_signal.observed_count == left_signal.observed_count
-                        && right_signal.latest_sequence > left_signal.latest_sequence)
-                {
-                    Some(ConditionalSide::Right)
-                } else {
-                    None
-                }
-            }
-            (None, None) => None,
-        });
-
-        if let Some(side) = selected_side {
-            active.insert(branch.condition_display_id, side);
-        }
-    }
-
-    active
-}
-
-fn skipped_conditional_branch_nodes(
-    model: &GraphModel,
-    active_conditional_sides: &HashMap<u32, ConditionalSide>,
-) -> HashSet<u32> {
-    let mut skipped = HashSet::new();
-
-    for branch in &model.derived.conditional_branches {
-        match active_conditional_sides.get(&branch.condition_display_id) {
-            Some(ConditionalSide::Left) => {
-                skipped.extend(branch.right_member_display_ids.iter().copied());
-            }
-            Some(ConditionalSide::Right) => {
-                skipped.extend(branch.left_member_display_ids.iter().copied());
-            }
-            None => {}
-        }
-    }
-
-    skipped
-}
-
+#[cfg(test)]
 fn runtime_activation_prefixes_for_display(
     model: &GraphModel,
     live: &LiveData,
 ) -> HashMap<u32, Vec<u64>> {
-    let mut prefixes = HashMap::<u32, Vec<u64>>::new();
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        if !matches!(cluster.kind, ClusterKind::While) {
-            continue;
-        }
-        let cluster_path_len = live
-            .runtime_activation_paths
-            .get(&cluster.runtime_node_id)
-            .map(Vec::len);
-        let current_iteration = std::iter::once(cluster.runtime_node_id)
-            .chain(
-                model.derived.cluster_entry_runtime_ids[index]
-                    .iter()
-                    .copied(),
-            )
-            .filter_map(|runtime_id| {
-                Some((
-                    live.runtime_update_sequence.get(&runtime_id).copied()?,
-                    live.runtime_activation_paths.get(&runtime_id)?.clone(),
-                ))
-            })
-            .max_by_key(|(sequence, _)| *sequence)
-            .map(|(_, path)| {
-                let prefix_len = cluster_path_len
-                    .unwrap_or_else(|| path.len().saturating_sub(1))
-                    .min(path.len());
-                path[..prefix_len].to_vec()
-            });
-        let Some(current_iteration) = current_iteration else {
-            continue;
-        };
-        for runtime_id in &cluster.member_runtime_ids {
-            prefixes
-                .entry(*runtime_id)
-                .and_modify(|current| {
-                    if current_iteration.len() > current.len() {
-                        *current = current_iteration.clone();
-                    }
-                })
-                .or_insert_with(|| current_iteration.clone());
-        }
-    }
-    prefixes
+    DagSnapshot::new(model, Some(live)).runtime_activation_prefixes
 }
 
+#[cfg(test)]
 fn repaired_live_states_for_display(
     model: &GraphModel,
     live_data: Option<&LiveData>,
-    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+    _condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> HashMap<u32, RuntimeState> {
-    let Some(live) = live_data else {
-        return HashMap::new();
-    };
-    let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
-    let runtime_activation_prefixes = runtime_activation_prefixes_for_display(model, live);
-    let conditional_branch_membership = conditional_branch_membership(model);
-    let active_conditional_sides = active_conditional_branch_sides(
-        model,
-        live,
-        &runtime_sequence_floors,
-        &runtime_activation_prefixes,
-    );
-    let skipped_conditional_branch_nodes =
-        skipped_conditional_branch_nodes(model, &active_conditional_sides);
-
-    let mut states = HashMap::<u32, RuntimeState>::new();
-    for node in &model.nodes {
-        let phase = node_phase_for_display_with_runtime_floors(
-            Some(live),
-            node.id,
-            node.runtime_node_id,
-            &node.proxy_runtime_ids,
-            condition_successor_runtime_ids,
-            &runtime_sequence_floors,
-            &runtime_activation_prefixes,
-        );
-        let state = match phase {
-            Phase::Live(state) => state,
-            Phase::Static => RuntimeState::Pending,
-        };
-        states.insert(node.id, state);
-    }
-    for node_id in &skipped_conditional_branch_nodes {
-        states.insert(*node_id, RuntimeState::Pending);
-    }
-
-    let mut loop_back_edges = HashSet::<(u32, u32)>::new();
-    for cluster in &model.cluster_info {
-        if !matches!(cluster.kind, ClusterKind::While) {
-            continue;
-        }
-        let root_nodes = cluster.root_nodes.iter().copied().collect::<HashSet<_>>();
-        let member_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        for (from, to) in &model.edges {
-            if member_nodes.contains(from) && root_nodes.contains(to) {
-                loop_back_edges.insert((*from, *to));
-            }
-        }
-    }
-
-    let mut incoming = HashMap::<u32, Vec<u32>>::new();
-    for (from, to) in &model.edges {
-        if loop_back_edges.contains(&(*from, *to)) {
-            continue;
-        }
-        incoming.entry(*to).or_default().push(*from);
-    }
-
-    let mut queue = std::collections::VecDeque::<u32>::new();
-    let mut queued = HashSet::<u32>::new();
-    for (node_id, state) in &states {
-        if matches!(state, RuntimeState::Running | RuntimeState::Completed) {
-            queue.push_back(*node_id);
-            queued.insert(*node_id);
-        }
-    }
-
-    while let Some(node_id) = queue.pop_front() {
-        queued.remove(&node_id);
-        let Some(predecessors) = incoming.get(&node_id) else {
-            continue;
-        };
-        for predecessor in predecessors {
-            if skipped_conditional_branch_nodes.contains(predecessor) {
-                continue;
-            }
-            if let Some((condition_display_id, side)) =
-                conditional_branch_membership.get(predecessor).copied()
-            {
-                let predecessor_has_activity = model
-                    .node_map
-                    .get(predecessor)
-                    .map(|node| {
-                        node_has_current_iteration_activity(
-                            live,
-                            node,
-                            &runtime_sequence_floors,
-                            &runtime_activation_prefixes,
-                        )
-                    })
-                    .unwrap_or(false);
-                if !predecessor_has_activity
-                    && active_conditional_sides.get(&condition_display_id).copied() != Some(side)
-                {
-                    continue;
-                }
-            }
-            let predecessor_state = states
-                .get(predecessor)
-                .copied()
-                .unwrap_or(RuntimeState::Pending);
-            if !matches!(
-                predecessor_state,
-                RuntimeState::Pending | RuntimeState::Running
-            ) {
-                continue;
-            }
-            states.insert(*predecessor, RuntimeState::Completed);
-            if queued.insert(*predecessor) {
-                queue.push_back(*predecessor);
-            }
-        }
-    }
-
-    if !states
-        .values()
-        .any(|state| matches!(state, RuntimeState::Running | RuntimeState::Failed))
-    {
-        let ready_pending_nodes = model
-            .nodes
-            .iter()
-            .filter_map(|node| {
-                if skipped_conditional_branch_nodes.contains(&node.id) {
-                    return None;
-                }
-                if !matches!(states.get(&node.id), Some(RuntimeState::Pending)) {
-                    return None;
-                }
-                let predecessors = incoming.get(&node.id)?;
-                if predecessors.is_empty() {
-                    return None;
-                }
-                predecessors
-                    .iter()
-                    .all(|predecessor| {
-                        if skipped_conditional_branch_nodes.contains(predecessor) {
-                            return true;
-                        }
-                        matches!(
-                            states.get(predecessor),
-                            Some(RuntimeState::Completed | RuntimeState::Failed)
-                        )
-                    })
-                    .then_some(node.id)
-            })
-            .collect::<Vec<_>>();
-
-        if ready_pending_nodes.len() == 1 {
-            states.insert(ready_pending_nodes[0], RuntimeState::Running);
-        }
-    }
-
-    for node_id in &skipped_conditional_branch_nodes {
-        states.insert(*node_id, RuntimeState::Pending);
-    }
-
-    states
+    DagSnapshot::new(model, live_data).repaired_node_states
 }
 
+#[cfg(test)]
 fn runtime_sequence_floors_for_display(model: &GraphModel, live: &LiveData) -> HashMap<u32, usize> {
-    let mut floors = HashMap::<u32, usize>::new();
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        if !matches!(cluster.kind, ClusterKind::While) {
-            continue;
-        }
-
-        let iteration_start_sequence = std::iter::once(cluster.runtime_node_id)
-            .chain(
-                model.derived.cluster_entry_runtime_ids[index]
-                    .iter()
-                    .copied(),
-            )
-            .filter_map(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied())
-            .max();
-        let Some(iteration_start_sequence) = iteration_start_sequence else {
-            continue;
-        };
-
-        for runtime_id in &model.derived.cluster_member_runtime_ids[index] {
-            floors
-                .entry(*runtime_id)
-                .and_modify(|current| *current = (*current).max(iteration_start_sequence))
-                .or_insert(iteration_start_sequence);
-        }
-    }
-
-    floors
+    DagSnapshot::new(model, Some(live)).runtime_sequence_floors
 }
 
+#[cfg(test)]
 fn live_states_for_display(
     model: &GraphModel,
     live_data: Option<&LiveData>,
-    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+    _condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> HashMap<u32, RuntimeState> {
-    let mut states =
-        repaired_live_states_for_display(model, live_data, condition_successor_runtime_ids);
-
-    let Some(live) = live_data else {
-        return states;
-    };
-    let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
-    let runtime_activation_prefixes = runtime_activation_prefixes_for_display(model, live);
-    let branch_root_has_activity = |display_ids: &[u32]| {
-        display_ids.iter().any(|display_id| {
-            model
-                .node_map
-                .get(display_id)
-                .and_then(|node| node.runtime_node_id)
-                .map(|runtime_id| {
-                    runtime_observed_in_current_iteration(
-                        live,
-                        runtime_id,
-                        &runtime_sequence_floors,
-                        &runtime_activation_prefixes,
-                    )
-                })
-                .unwrap_or(false)
-        })
-    };
-
-    for branch in &model.derived.conditional_branches {
-        if !branch_root_has_activity(&branch.left_root_display_ids)
-            && branch_root_has_activity(&branch.right_root_display_ids)
-        {
-            states.insert(branch.condition_display_id, RuntimeState::Pending);
-        }
-    }
-
-    states
+    DagSnapshot::new(model, live_data).node_states
 }
 
-fn node_phase_for_display_with_repairs(
-    live_data: Option<&LiveData>,
-    display_id: u32,
-    runtime_id: Option<u32>,
-    proxy_runtime_ids: &[u32],
-    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
-    repaired_live_states: &HashMap<u32, RuntimeState>,
-) -> Phase<RuntimeState> {
-    if let Some(repaired) = repaired_live_states.get(&display_id).copied() {
-        return Phase::Live(repaired);
-    }
-    node_phase_for_display(
-        live_data,
-        display_id,
-        runtime_id,
-        proxy_runtime_ids,
-        condition_successor_runtime_ids,
-    )
-}
-
-fn cluster_live_from_repaired_states(
-    live: &LiveData,
-    cluster: &ClusterInfo,
-    repaired_live_states: &HashMap<u32, RuntimeState>,
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
-) -> ClusterLive {
-    let cluster_state = runtime_state_for_live_data_with_activation_prefixes(
-        live,
-        cluster.runtime_node_id,
-        runtime_sequence_floors,
-        runtime_activation_prefixes,
-    );
-    let mut has_running = matches!(cluster_state, RuntimeState::Running);
-    let mut has_failed = matches!(cluster_state, RuntimeState::Failed);
-    let mut has_completed = matches!(cluster_state, RuntimeState::Completed);
-
-    for node_id in &cluster.nodes {
-        let state = repaired_live_states
-            .get(node_id)
-            .copied()
-            .unwrap_or(RuntimeState::Pending);
-        match state {
-            RuntimeState::Pending => {}
-            RuntimeState::Running => {
-                has_running = true;
-            }
-            RuntimeState::Completed => {
-                has_completed = true;
-            }
-            RuntimeState::Failed => {
-                has_failed = true;
-            }
-        }
-    }
-
-    ClusterLive {
-        has_running,
-        has_failed,
-        has_completed,
-    }
-}
-
+#[cfg(test)]
 fn cluster_phase_for_display(
     live_data: Option<&LiveData>,
-    cluster: &ClusterInfo,
-    repaired_live_states: &HashMap<u32, RuntimeState>,
-    runtime_sequence_floors: &HashMap<u32, usize>,
-    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
+    model: &GraphModel,
+    cluster_index: usize,
+    _repaired_live_states: &HashMap<u32, RuntimeState>,
+    _runtime_sequence_floors: &HashMap<u32, usize>,
+    _runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> Phase<ClusterLive> {
-    let Some(live) = live_data else {
-        return Phase::Static;
-    };
-    Phase::Live(cluster_live_from_repaired_states(
-        live,
-        cluster,
-        repaired_live_states,
-        runtime_sequence_floors,
-        runtime_activation_prefixes,
-    ))
+    if live_data.is_none() {
+        Phase::Static
+    } else {
+        DagSnapshot::new(model, live_data).cluster_phase(cluster_index)
+    }
 }
 
 fn sidebar<'a>(
@@ -2438,26 +1668,25 @@ fn sidebar<'a>(
         text("While: clustered body + condition label")
             .size(12)
             .color(jungle_text_muted()),
-        text("Transparent: clustered boundary label")
+        text("Green: completed")
             .size(12)
             .color(jungle_text_muted()),
-        text("Green glow: completed in live journey")
+        text("Yellow: running")
             .size(12)
             .color(jungle_text_muted()),
-        text("Yellow glow: active in live journey")
+        text("Red: failed")
             .size(12)
             .color(jungle_text_muted()),
-        text("Red glow: failed in live journey")
+        text("Gray: pending")
             .size(12)
             .color(jungle_text_muted()),
     ]
     .spacing(2);
 
-    container(column![info, Space::new().height(16), legend].spacing(0))
-        .width(320)
-        .height(Length::Fill)
-        .padding(16)
+    container(column![info, Space::new().height(18), legend].spacing(0))
         .style(sidebar_style)
+        .padding(16)
+        .width(280)
         .into()
 }
 
@@ -2475,29 +1704,13 @@ fn graph_panel<'a, T, Scope>(
 where
     T: JunglePanelTheme<Scope, Message = ()>,
 {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum VisibleOwner {
-        Node(u32),
-        Cluster(usize),
-    }
     let condition_successor_runtime_ids = &model.derived.condition_successor_runtime_ids;
     let cluster_member_runtime_ids = &model.derived.cluster_member_runtime_ids;
     let cluster_successor_runtime_ids = &model.derived.cluster_successor_runtime_ids;
     let cluster_entry_runtime_ids = &model.derived.cluster_entry_runtime_ids;
-    let memberships = &model.derived.memberships;
     let runtime_by_display_id = &model.derived.runtime_by_display_id;
     let proxy_runtime_ids_by_display_id = &model.derived.proxy_runtime_ids_by_display_id;
-    let display_live_states = Arc::new(live_states_for_display(
-        model,
-        live_data,
-        condition_successor_runtime_ids,
-    ));
-    let runtime_sequence_floors = live_data
-        .map(|live| runtime_sequence_floors_for_display(model, live))
-        .unwrap_or_default();
-    let runtime_activation_prefixes = live_data
-        .map(|live| runtime_activation_prefixes_for_display(model, live))
-        .unwrap_or_default();
+    let snapshot = Arc::new(DagSnapshot::new(model, live_data));
 
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
@@ -2515,13 +1728,7 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[index],
             member_runtime_ids: &cluster_member_runtime_ids[index],
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
-            phase: cluster_phase_for_display(
-                live_data,
-                cluster,
-                display_live_states.as_ref(),
-                &runtime_sequence_floors,
-                &runtime_activation_prefixes,
-            ),
+            phase: snapshot.cluster_phase(index),
         };
         if matches!(
             theme.view_cluster(theme_state, &cx),
@@ -2531,53 +1738,13 @@ where
         }
     }
 
-    let cluster_hidden_by_collapsed_ancestor = |cluster_index: usize| -> bool {
-        let mut parent = model.cluster_info[cluster_index].parent;
-        while let Some(parent_index) = parent {
-            if collapsed_clusters.contains(&parent_index) {
-                return true;
-            }
-            parent = model.cluster_info[parent_index].parent;
-        }
-        false
-    };
-
-    let owner_for_node = |node_id: u32| -> VisibleOwner {
-        if let Some(candidates) = memberships.get(&node_id) {
-            for (_, index) in candidates {
-                if collapsed_clusters.contains(index) {
-                    return VisibleOwner::Cluster(*index);
-                }
-            }
-        }
-        VisibleOwner::Node(node_id)
-    };
-
-    let owner_to_display = |owner: VisibleOwner| -> Option<u32> {
-        match owner {
-            VisibleOwner::Node(node_id) => Some(node_id),
-            VisibleOwner::Cluster(index) => model.cluster_node_id(index),
-        }
-    };
-
-    let mut visible_ids = BTreeSet::new();
-    let mut visible_real_nodes = HashSet::<u32>::new();
-    let mut collapsed_cluster_by_display = HashMap::<u32, usize>::new();
+    let projection = DagProjection::new(model, &collapsed_clusters);
     let mut node_sizes = HashMap::<u32, (f64, f64)>::new();
 
     for node in &model.nodes {
-        let owner = owner_for_node(node.id);
-        if owner != VisibleOwner::Node(node.id) {
+        if !projection.visible_real_nodes.contains(&node.id) {
             continue;
         }
-        let phase = node_phase_for_display_with_repairs(
-            live_data,
-            node.id,
-            node.runtime_node_id,
-            &node.proxy_runtime_ids,
-            &condition_successor_runtime_ids,
-            display_live_states.as_ref(),
-        );
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
@@ -2589,28 +1756,18 @@ where
             kind: node.kind(),
             label: &node.label,
             metadata: node.metadata.as_deref(),
-            phase,
+            phase: snapshot.node_phase(node.id),
         };
         let (element, size) = theme.view_step(theme_state, &step_ctx);
         let _ = element;
-        visible_ids.insert(node.id);
-        visible_real_nodes.insert(node.id);
         node_sizes.insert(node.id, size);
     }
 
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        if !collapsed_clusters.contains(&index) {
-            continue;
-        }
-        if cluster_hidden_by_collapsed_ancestor(index) {
-            continue;
-        }
-        let Some(display_id) = model.cluster_node_id(index) else {
-            continue;
-        };
+    for (display_id, index) in &projection.collapsed_cluster_by_display {
+        let cluster = &model.cluster_info[*index];
         let cx = ClusterViewCtx {
             cluster_id: cluster.id,
-            cluster_index: index,
+            cluster_index: *index,
             kind: cluster.kind,
             label: &cluster.label,
             metadata: cluster.metadata.as_deref(),
@@ -2619,49 +1776,25 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: &cluster_entry_runtime_ids[index],
-            member_runtime_ids: &cluster_member_runtime_ids[index],
-            successor_runtime_ids: &cluster_successor_runtime_ids[index],
-            phase: cluster_phase_for_display(
-                live_data,
-                cluster,
-                display_live_states.as_ref(),
-                &runtime_sequence_floors,
-                &runtime_activation_prefixes,
-            ),
+            entry_runtime_ids: &cluster_entry_runtime_ids[*index],
+            member_runtime_ids: &cluster_member_runtime_ids[*index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[*index],
+            phase: snapshot.cluster_phase(*index),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
             let _ = element;
-            visible_ids.insert(display_id);
-            collapsed_cluster_by_display.insert(display_id, index);
-            node_sizes.insert(display_id, size);
+            node_sizes.insert(*display_id, size);
         }
     }
 
-    let mut edges = Vec::<(u32, u32)>::new();
-    let mut edge_set = HashSet::<(u32, u32)>::new();
-    for (from, to) in &model.edges {
-        let from_display = owner_to_display(owner_for_node(*from));
-        let to_display = owner_to_display(owner_for_node(*to));
-        let (Some(from_display), Some(to_display)) = (from_display, to_display) else {
-            continue;
-        };
-        if from_display == to_display {
-            continue;
-        }
-        if edge_set.insert((from_display, to_display)) {
-            edges.push((from_display, to_display));
-        }
-    }
-
-    let nodes = visible_ids.into_iter().collect::<Vec<_>>();
-    let graph = Graph::new(nodes.clone(), edges.clone());
+    let graph = Graph::new(projection.nodes.clone(), projection.edges.clone());
 
     let mut visible_clusters = Vec::<Cluster>::new();
     let mut visible_cluster_source_indices = Vec::<usize>::new();
     let mut visible_cluster_fills = Vec::<Color>::new();
-    let mut visible_cluster_index_by_source = HashMap::<usize, usize>::new();
-    for (source_index, cluster) in model.cluster_info.iter().enumerate() {
+    for projected_cluster in &projection.visible_clusters {
+        let source_index = projected_cluster.source_index;
+        let cluster = &model.cluster_info[source_index];
         let cx = ClusterViewCtx {
             cluster_id: cluster.id,
             cluster_index: source_index,
@@ -2676,40 +1809,20 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
             member_runtime_ids: &cluster_member_runtime_ids[source_index],
             successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
-            phase: cluster_phase_for_display(
-                live_data,
-                cluster,
-                display_live_states.as_ref(),
-                &runtime_sequence_floors,
-                &runtime_activation_prefixes,
-            ),
+            phase: snapshot.cluster_phase(source_index),
         };
         let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
             continue;
         };
-        let member_nodes = cluster
-            .nodes
-            .iter()
-            .copied()
-            .filter(|node_id| matches!(owner_for_node(*node_id), VisibleOwner::Node(id) if id == *node_id))
-            .collect::<Vec<_>>();
-        if member_nodes.is_empty() {
-            continue;
+        let mut spec = Cluster::new(projected_cluster.member_nodes.clone())
+            .padding(projected_cluster.padding.into());
+        if let Some(parent_visible) = projected_cluster.parent_visible_index {
+            spec = spec.parent(parent_visible);
         }
-        let mut spec = Cluster::new(member_nodes).padding(24.0);
-        if let Some(parent_source) = cluster.parent {
-            if let Some(parent_visible) =
-                visible_cluster_index_by_source.get(&parent_source).copied()
-            {
-                spec = spec.parent(parent_visible);
-            }
-        }
-        let visible_index = visible_clusters.len();
         visible_clusters.push(spec);
         visible_cluster_fills.push(fill);
         let _ = overlay;
         visible_cluster_source_indices.push(source_index);
-        visible_cluster_index_by_source.insert(source_index, visible_index);
     }
 
     set_cluster_fill_colors(visible_cluster_fills);
@@ -2724,8 +1837,8 @@ where
         let node_map = &model.node_map;
         let cluster_info_for_nodes = &model.cluster_info;
         let cluster_info_for_clusters = &model.cluster_info;
-        let collapsed_display_map = collapsed_cluster_by_display.clone();
-        let visible_nodes = visible_real_nodes.clone();
+        let collapsed_display_map = projection.collapsed_cluster_by_display.clone();
+        let visible_nodes = projection.visible_real_nodes.clone();
         let sizes_for_view = node_sizes.clone();
         let visible_cluster_sources = visible_cluster_source_indices.clone();
         let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids;
@@ -2736,30 +1849,16 @@ where
         let proxy_runtime_ids_for_edge_colors = proxy_runtime_ids_by_display_id;
         let proxy_runtime_ids_for_edge_strokes = proxy_runtime_ids_by_display_id;
         let condition_successors_for_nodes = condition_successor_runtime_ids;
-        let condition_successors_for_edge_colors = condition_successor_runtime_ids;
-        let condition_successors_for_edge_strokes = condition_successor_runtime_ids;
-        let display_live_states_for_nodes = display_live_states.clone();
-        let display_live_states_for_edge_colors = display_live_states.clone();
-        let display_live_states_for_edge_strokes = display_live_states.clone();
-        let display_live_states_for_cluster_chips = display_live_states.clone();
-        let display_live_states_for_cluster_overlays = display_live_states.clone();
-        let runtime_sequence_floors_for_cluster_chips = runtime_sequence_floors.clone();
-        let runtime_sequence_floors_for_cluster_overlays = runtime_sequence_floors.clone();
-        let runtime_activation_prefixes_for_cluster_chips = runtime_activation_prefixes.clone();
-        let runtime_activation_prefixes_for_cluster_overlays = runtime_activation_prefixes.clone();
+        let snapshot_for_nodes = snapshot.clone();
+        let snapshot_for_edge_colors = snapshot.clone();
+        let snapshot_for_edge_strokes = snapshot.clone();
+        let snapshot_for_cluster_chips = snapshot.clone();
+        let snapshot_for_cluster_overlays = snapshot.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
                 if visible_nodes.contains(&node_id) {
                     if let Some(node) = node_map.get(&node_id) {
-                        let phase = node_phase_for_display_with_repairs(
-                            live_data,
-                            node.id,
-                            node.runtime_node_id,
-                            &node.proxy_runtime_ids,
-                            &condition_successors_for_nodes,
-                            display_live_states_for_nodes.as_ref(),
-                        );
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
@@ -2771,7 +1870,7 @@ where
                             kind: node.kind(),
                             label: &node.label,
                             metadata: node.metadata.as_deref(),
-                            phase,
+                            phase: snapshot_for_nodes.node_phase(node.id),
                         };
                         let (element, _size) = theme.view_step(theme_state, &step_ctx);
                         return element.map(|_event| Message::Theme(ViewerEvent::Message(())));
@@ -2795,13 +1894,7 @@ where
                                 [cluster_index],
                             successor_runtime_ids: &cluster_successor_runtime_ids_for_nodes
                                 [cluster_index],
-                            phase: cluster_phase_for_display(
-                                live_data,
-                                cluster,
-                                display_live_states_for_cluster_chips.as_ref(),
-                                &runtime_sequence_floors_for_cluster_chips,
-                                &runtime_activation_prefixes_for_cluster_chips,
-                            ),
+                            phase: snapshot_for_cluster_chips.cluster_phase(cluster_index),
                         };
                         if let ClusterView::Collapsed { element, .. } =
                             theme.view_cluster(theme_state, &cx)
@@ -2842,28 +1935,8 @@ where
                         target_runtime_id,
                         source_has_proxy_runtime,
                         target_has_proxy_runtime,
-                        source_phase: node_phase_for_display_with_repairs(
-                            live_data,
-                            ctx.edge.0,
-                            source_runtime_id,
-                            proxy_runtime_ids_for_edge_colors
-                                .get(&ctx.edge.0)
-                                .map(Vec::as_slice)
-                                .unwrap_or(&[]),
-                            &condition_successors_for_edge_colors,
-                            display_live_states_for_edge_colors.as_ref(),
-                        ),
-                        target_phase: node_phase_for_display_with_repairs(
-                            live_data,
-                            ctx.edge.1,
-                            target_runtime_id,
-                            proxy_runtime_ids_for_edge_colors
-                                .get(&ctx.edge.1)
-                                .map(Vec::as_slice)
-                                .unwrap_or(&[]),
-                            &condition_successors_for_edge_colors,
-                            display_live_states_for_edge_colors.as_ref(),
-                        ),
+                        source_phase: snapshot_for_edge_colors.node_phase(ctx.edge.0),
+                        target_phase: snapshot_for_edge_colors.node_phase(ctx.edge.1),
                         extent: ctx.transition_progress,
                     },
                 )
@@ -2898,28 +1971,8 @@ where
                         target_runtime_id,
                         source_has_proxy_runtime,
                         target_has_proxy_runtime,
-                        source_phase: node_phase_for_display_with_repairs(
-                            live_data,
-                            ctx.edge.0,
-                            source_runtime_id,
-                            proxy_runtime_ids_for_edge_strokes
-                                .get(&ctx.edge.0)
-                                .map(Vec::as_slice)
-                                .unwrap_or(&[]),
-                            &condition_successors_for_edge_strokes,
-                            display_live_states_for_edge_strokes.as_ref(),
-                        ),
-                        target_phase: node_phase_for_display_with_repairs(
-                            live_data,
-                            ctx.edge.1,
-                            target_runtime_id,
-                            proxy_runtime_ids_for_edge_strokes
-                                .get(&ctx.edge.1)
-                                .map(Vec::as_slice)
-                                .unwrap_or(&[]),
-                            &condition_successors_for_edge_strokes,
-                            display_live_states_for_edge_strokes.as_ref(),
-                        ),
+                        source_phase: snapshot_for_edge_strokes.node_phase(ctx.edge.0),
+                        target_phase: snapshot_for_edge_strokes.node_phase(ctx.edge.1),
                         extent: ctx.transition_progress,
                     },
                 )
@@ -2957,13 +2010,7 @@ where
                 entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
                 member_runtime_ids: &cluster_member_runtime_ids[source_index],
                 successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
-                phase: cluster_phase_for_display(
-                    live_data,
-                    cluster,
-                    display_live_states_for_cluster_overlays.as_ref(),
-                    &runtime_sequence_floors_for_cluster_overlays,
-                    &runtime_activation_prefixes_for_cluster_overlays,
-                ),
+                phase: snapshot_for_cluster_overlays.cluster_phase(source_index),
             };
             let base_overlay = match theme.view_cluster(theme_state, &cx) {
                 ClusterView::Expanded { overlay, .. } => overlay,
@@ -3003,729 +2050,6 @@ where
     .into()
 }
 
-#[derive(Clone)]
-struct GraphModel {
-    nodes: Vec<NodeDisplay>,
-    node_map: HashMap<u32, NodeDisplay>,
-    edges: Vec<(u32, u32)>,
-    clusters: Vec<Cluster>,
-    derived: GraphDerived,
-    #[cfg(test)]
-    while_clusters: Vec<Cluster>,
-    #[cfg(test)]
-    while_cluster_labels: Vec<String>,
-    cluster_info: Vec<ClusterInfo>,
-}
-
-impl GraphModel {
-    fn from_ast(ast: JourneyAst) -> Self {
-        let mut builder = GraphBuilder::default();
-        builder.flatten(&ast);
-
-        let descendant_runtime_ids_by_runtime_id =
-            builder.descendant_runtime_ids_by_runtime_id.clone();
-        let nodes = std::mem::take(&mut builder.nodes);
-        let edges = std::mem::take(&mut builder.edges);
-        let cluster_info = std::mem::take(&mut builder.cluster_info);
-        let node_map = nodes
-            .iter()
-            .map(|node| (node.id, node.clone()))
-            .collect::<HashMap<_, _>>();
-        let derived = GraphDerived::build(
-            &nodes,
-            &node_map,
-            &edges,
-            &cluster_info,
-            &builder.conditional_branches,
-            &descendant_runtime_ids_by_runtime_id,
-        );
-
-        Self {
-            nodes,
-            node_map,
-            edges,
-            clusters: builder.clusters.clone(),
-            derived,
-            #[cfg(test)]
-            while_clusters: builder.clusters,
-            #[cfg(test)]
-            while_cluster_labels: builder.cluster_labels,
-            cluster_info,
-        }
-    }
-
-    fn cluster_node_id(&self, index: usize) -> Option<u32> {
-        let offset = u32::try_from(index).ok()?;
-        Some(
-            self.derived
-                .max_node_id
-                .saturating_add(1)
-                .saturating_add(offset),
-        )
-    }
-}
-
-#[derive(Clone)]
-struct GraphDerived {
-    condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
-    conditional_branches: Vec<ConditionalBranchInfo>,
-    cluster_member_runtime_ids: Vec<Vec<u32>>,
-    cluster_successor_runtime_ids: Vec<Vec<u32>>,
-    cluster_entry_runtime_ids: Vec<Vec<u32>>,
-    memberships: HashMap<u32, Vec<(usize, usize)>>,
-    max_node_id: u32,
-    runtime_by_display_id: HashMap<u32, Option<u32>>,
-    proxy_runtime_ids_by_display_id: HashMap<u32, Vec<u32>>,
-    descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
-}
-
-impl GraphDerived {
-    fn build(
-        nodes: &[NodeDisplay],
-        node_map: &HashMap<u32, NodeDisplay>,
-        edges: &[(u32, u32)],
-        cluster_info: &[ClusterInfo],
-        conditional_branches: &[ConditionalBranchInfo],
-        descendant_runtime_ids_by_runtime_id: &HashMap<u32, Vec<u32>>,
-    ) -> Self {
-        let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
-        let mut condition_successor_seen = HashMap::<u32, BTreeSet<u32>>::new();
-        for (from, to) in edges {
-            let Some(source) = node_map.get(from) else {
-                continue;
-            };
-            if !source.is_conditional_branch {
-                continue;
-            }
-            let Some(target) = node_map.get(to) else {
-                continue;
-            };
-            let Some(runtime_id) = target.runtime_node_id else {
-                continue;
-            };
-            let seen = condition_successor_seen.entry(*from).or_default();
-            if seen.insert(runtime_id) {
-                condition_successor_runtime_ids
-                    .entry(*from)
-                    .or_default()
-                    .push(runtime_id);
-            }
-        }
-
-        let mut cluster_member_runtime_ids = vec![Vec::<u32>::new(); cluster_info.len()];
-        for (index, cluster) in cluster_info.iter().enumerate() {
-            cluster_member_runtime_ids[index] = cluster.member_runtime_ids.clone();
-        }
-
-        let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); cluster_info.len()];
-        for (index, cluster) in cluster_info.iter().enumerate() {
-            cluster_entry_runtime_ids[index] = cluster.root_runtime_ids.clone();
-        }
-
-        let mut memberships = HashMap::<u32, Vec<(usize, usize)>>::new();
-        for (index, cluster) in cluster_info.iter().enumerate() {
-            for node_id in &cluster.nodes {
-                memberships
-                    .entry(*node_id)
-                    .or_default()
-                    .push((cluster.depth, index));
-            }
-        }
-        for entry in memberships.values_mut() {
-            entry.sort_by_key(|(depth, _)| *depth);
-        }
-
-        let runtime_by_display_id = node_map
-            .iter()
-            .map(|(display_id, node)| (*display_id, node.runtime_node_id))
-            .collect::<HashMap<_, _>>();
-        let proxy_runtime_ids_by_display_id = node_map
-            .iter()
-            .map(|(display_id, node)| (*display_id, node.proxy_runtime_ids.clone()))
-            .collect::<HashMap<_, _>>();
-
-        Self {
-            condition_successor_runtime_ids,
-            conditional_branches: conditional_branches.to_vec(),
-            cluster_member_runtime_ids,
-            cluster_successor_runtime_ids: compute_cluster_successor_runtime_ids(
-                edges,
-                node_map,
-                cluster_info,
-            ),
-            cluster_entry_runtime_ids,
-            memberships,
-            max_node_id: nodes.iter().map(|node| node.id).max().unwrap_or(0),
-            runtime_by_display_id,
-            proxy_runtime_ids_by_display_id,
-            descendant_runtime_ids_by_runtime_id: descendant_runtime_ids_by_runtime_id.clone(),
-        }
-    }
-}
-
-#[derive(Default)]
-struct GraphBuilder {
-    nodes: Vec<NodeDisplay>,
-    edges: Vec<(u32, u32)>,
-    clusters: Vec<Cluster>,
-    cluster_labels: Vec<String>,
-    cluster_info: Vec<ClusterInfo>,
-    cluster_stack: Vec<usize>,
-    cluster_next_id: u32,
-    runtime_next_id: u32,
-    display_next_id: u32,
-    label_occurrences: HashMap<String, u32>,
-    conditional_branches: Vec<ConditionalBranchInfo>,
-    descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
-}
-
-#[derive(Clone)]
-struct NodeDisplay {
-    id: u32,
-    label: String,
-    metadata: Option<String>,
-    runtime_node_id: Option<u32>,
-    proxy_runtime_ids: Vec<u32>,
-    is_conditional_branch: bool,
-    is_select: bool,
-    is_join: bool,
-}
-
-#[derive(Clone)]
-struct ClusterInfo {
-    id: u32,
-    kind: ClusterKind,
-    runtime_node_id: u32,
-    label: String,
-    metadata: Option<String>,
-    parent: Option<usize>,
-    nodes: Vec<u32>,
-    root_nodes: Vec<u32>,
-    member_runtime_ids: Vec<u32>,
-    root_runtime_ids: Vec<u32>,
-    depth: usize,
-}
-
-#[derive(Clone)]
-struct ConditionalBranchInfo {
-    condition_display_id: u32,
-    left_root_display_ids: Vec<u32>,
-    right_root_display_ids: Vec<u32>,
-    left_member_display_ids: Vec<u32>,
-    right_member_display_ids: Vec<u32>,
-}
-
-impl NodeDisplay {
-    fn kind(&self) -> StepKind {
-        if self.is_conditional_branch {
-            StepKind::Conditional
-        } else if self.is_select {
-            StepKind::Select
-        } else if self.is_join {
-            StepKind::Join
-        } else {
-            StepKind::Step
-        }
-    }
-}
-
-#[derive(Default)]
-struct Flattened {
-    roots: Vec<u32>,
-    exits: Vec<u32>,
-    members: Vec<u32>,
-    root_runtime_ids: Vec<u32>,
-    member_runtime_ids: Vec<u32>,
-}
-
-impl GraphBuilder {
-    fn flatten(&mut self, ast: &JourneyAst) -> Flattened {
-        match ast {
-            JourneyAst::Empty => Flattened::default(),
-            JourneyAst::Sequence(items) => {
-                let mut acc = Flattened::default();
-                let mut previous_exits = Vec::<u32>::new();
-                for item in items {
-                    let current = self.flatten(item);
-                    if current.roots.is_empty() {
-                        continue;
-                    }
-
-                    if acc.roots.is_empty() {
-                        acc.roots = current.roots.clone();
-                    }
-
-                    for from in &previous_exits {
-                        for to in &current.roots {
-                            self.edges.push((*from, *to));
-                        }
-                    }
-
-                    previous_exits = current.exits.clone();
-                    acc.exits = current.exits.clone();
-                    acc.members.extend(current.members);
-                    if acc.root_runtime_ids.is_empty() {
-                        acc.root_runtime_ids = current.root_runtime_ids.clone();
-                    }
-                    acc.member_runtime_ids
-                        .extend(current.member_runtime_ids.iter().copied());
-                }
-                acc.member_runtime_ids = dedup(acc.member_runtime_ids);
-                acc
-            }
-            JourneyAst::Step { label } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let label = self.unique_label(*label);
-                let node = self.push_runtime_node(label, runtime_id);
-                Flattened {
-                    roots: vec![node],
-                    exits: vec![node],
-                    members: vec![node],
-                    root_runtime_ids: vec![runtime_id],
-                    member_runtime_ids: vec![runtime_id],
-                }
-            }
-            JourneyAst::Conditional {
-                label,
-                metadata,
-                left,
-                right,
-            } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let branch_label = if metadata.trim().is_empty() {
-                    short_type_name_str(label).to_string()
-                } else {
-                    format!("{} :: {}", short_type_name_str(label), metadata)
-                };
-                let branch = self.push_layout_node(branch_label, Some(runtime_id), |node| {
-                    node.is_conditional_branch = true;
-                });
-                if !metadata.trim().is_empty() {
-                    self.mark(branch, |node| node.metadata = Some((*metadata).to_string()));
-                }
-                let left_flow = self.flatten(left);
-                let right_flow = self.flatten(right);
-
-                for target in &left_flow.roots {
-                    self.edges.push((branch, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((branch, *target));
-                }
-
-                let mut members = vec![branch];
-                members.extend(left_flow.members.iter().copied());
-                members.extend(right_flow.members.iter().copied());
-                let mut member_runtime_ids = vec![runtime_id];
-                member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
-                let member_runtime_ids = dedup(member_runtime_ids);
-
-                let mut exits = left_flow.exits;
-                exits.extend(right_flow.exits);
-                exits = dedup(exits);
-                let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
-                descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
-                self.descendant_runtime_ids_by_runtime_id
-                    .insert(runtime_id, dedup(descendant_runtime_ids));
-                self.conditional_branches.push(ConditionalBranchInfo {
-                    condition_display_id: branch,
-                    left_root_display_ids: dedup(left_flow.roots.clone()),
-                    right_root_display_ids: dedup(right_flow.roots.clone()),
-                    left_member_display_ids: dedup(left_flow.members.clone()),
-                    right_member_display_ids: dedup(right_flow.members.clone()),
-                });
-
-                Flattened {
-                    roots: vec![branch],
-                    exits,
-                    members,
-                    root_runtime_ids: vec![runtime_id],
-                    member_runtime_ids,
-                }
-            }
-            JourneyAst::While {
-                label,
-                metadata,
-                body,
-            } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let parent_cluster = self.cluster_stack.last().copied();
-                let cluster_index = self.clusters.len();
-                let cluster_id = self.cluster_next_id;
-                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
-                let depth = self.cluster_stack.len();
-                let cluster = Cluster::new(Vec::new()).padding(24.0);
-                let cluster = if let Some(parent) = parent_cluster {
-                    cluster.parent(parent)
-                } else {
-                    cluster
-                };
-                self.clusters.push(cluster);
-                let cluster_label = if metadata.trim().is_empty() {
-                    format!("while: {}", short_type_name_str(label))
-                } else {
-                    format!("while: {} :: {}", short_type_name_str(label), metadata)
-                };
-                self.cluster_labels.push(cluster_label.clone());
-                self.cluster_info.push(ClusterInfo {
-                    id: cluster_id,
-                    kind: ClusterKind::While,
-                    runtime_node_id: runtime_id,
-                    label: cluster_label,
-                    metadata: if metadata.trim().is_empty() {
-                        None
-                    } else {
-                        Some((*metadata).to_string())
-                    },
-                    parent: parent_cluster,
-                    nodes: Vec::new(),
-                    root_nodes: Vec::new(),
-                    member_runtime_ids: Vec::new(),
-                    root_runtime_ids: Vec::new(),
-                    depth,
-                });
-                self.cluster_stack.push(cluster_index);
-                let body_flow = self.flatten(body);
-                let _ = self.cluster_stack.pop();
-
-                for exit in &body_flow.exits {
-                    for root in &body_flow.roots {
-                        self.edges.push((*exit, *root));
-                    }
-                }
-
-                let cluster_nodes = dedup(body_flow.members.clone());
-                if !cluster_nodes.is_empty() {
-                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
-                    self.cluster_info[cluster_index].nodes = cluster_nodes;
-                }
-                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
-                let mut member_runtime_ids = vec![runtime_id];
-                member_runtime_ids.extend(body_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids = dedup(member_runtime_ids);
-                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
-                self.cluster_info[cluster_index].root_runtime_ids =
-                    dedup(body_flow.root_runtime_ids.clone());
-                self.descendant_runtime_ids_by_runtime_id
-                    .insert(runtime_id, dedup(body_flow.member_runtime_ids.clone()));
-
-                Flattened {
-                    roots: body_flow.roots.clone(),
-                    exits: body_flow.exits,
-                    members: body_flow.members,
-                    root_runtime_ids: body_flow.root_runtime_ids,
-                    member_runtime_ids,
-                }
-            }
-            JourneyAst::Transparent {
-                label,
-                metadata,
-                body,
-            } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let parent_cluster = self.cluster_stack.last().copied();
-                let cluster_index = self.clusters.len();
-                let cluster_id = self.cluster_next_id;
-                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
-                let depth = self.cluster_stack.len();
-                let cluster = Cluster::new(Vec::new()).padding(24.0);
-                let cluster = if let Some(parent) = parent_cluster {
-                    cluster.parent(parent)
-                } else {
-                    cluster
-                };
-                self.clusters.push(cluster);
-
-                let cluster_label = if metadata.trim().is_empty() {
-                    format!("transparent: {}", short_type_name_str(label))
-                } else {
-                    format!(
-                        "transparent: {} :: {}",
-                        short_type_name_str(label),
-                        metadata
-                    )
-                };
-                self.cluster_labels.push(cluster_label.clone());
-                self.cluster_info.push(ClusterInfo {
-                    id: cluster_id,
-                    kind: ClusterKind::Transparent,
-                    runtime_node_id: runtime_id,
-                    label: cluster_label,
-                    metadata: if metadata.trim().is_empty() {
-                        None
-                    } else {
-                        Some((*metadata).to_string())
-                    },
-                    parent: parent_cluster,
-                    nodes: Vec::new(),
-                    root_nodes: Vec::new(),
-                    member_runtime_ids: Vec::new(),
-                    root_runtime_ids: Vec::new(),
-                    depth,
-                });
-
-                self.cluster_stack.push(cluster_index);
-                let body_flow = self.flatten(body);
-                let _ = self.cluster_stack.pop();
-
-                let cluster_nodes = dedup(body_flow.members.clone());
-                if !cluster_nodes.is_empty() {
-                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
-                    self.cluster_info[cluster_index].nodes = cluster_nodes;
-                }
-                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
-                let mut member_runtime_ids = vec![runtime_id];
-                member_runtime_ids.extend(body_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids = dedup(member_runtime_ids);
-                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
-                self.cluster_info[cluster_index].root_runtime_ids =
-                    dedup(body_flow.root_runtime_ids.clone());
-                self.descendant_runtime_ids_by_runtime_id
-                    .insert(runtime_id, dedup(body_flow.member_runtime_ids.clone()));
-
-                Flattened {
-                    roots: body_flow.roots.clone(),
-                    exits: body_flow.exits,
-                    members: body_flow.members,
-                    root_runtime_ids: body_flow.root_runtime_ids,
-                    member_runtime_ids,
-                }
-            }
-            JourneyAst::Attempt {
-                label,
-                metadata,
-                body,
-            } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let parent_cluster = self.cluster_stack.last().copied();
-                let cluster_index = self.clusters.len();
-                let cluster_id = self.cluster_next_id;
-                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
-                let depth = self.cluster_stack.len();
-                let cluster = Cluster::new(Vec::new()).padding(24.0);
-                let cluster = if let Some(parent) = parent_cluster {
-                    cluster.parent(parent)
-                } else {
-                    cluster
-                };
-                self.clusters.push(cluster);
-
-                let cluster_label = if metadata.trim().is_empty() {
-                    format!("attempt: {}", short_type_name_str(label))
-                } else {
-                    format!("attempt: {} :: {}", short_type_name_str(label), metadata)
-                };
-                self.cluster_labels.push(cluster_label.clone());
-                self.cluster_info.push(ClusterInfo {
-                    id: cluster_id,
-                    kind: ClusterKind::Transparent,
-                    runtime_node_id: runtime_id,
-                    label: cluster_label,
-                    metadata: if metadata.trim().is_empty() {
-                        None
-                    } else {
-                        Some((*metadata).to_string())
-                    },
-                    parent: parent_cluster,
-                    nodes: Vec::new(),
-                    root_nodes: Vec::new(),
-                    member_runtime_ids: Vec::new(),
-                    root_runtime_ids: Vec::new(),
-                    depth,
-                });
-
-                self.cluster_stack.push(cluster_index);
-                let body_flow = self.flatten(body);
-                let _ = self.cluster_stack.pop();
-
-                let cluster_nodes = dedup(body_flow.members.clone());
-                if !cluster_nodes.is_empty() {
-                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
-                    self.cluster_info[cluster_index].nodes = cluster_nodes;
-                }
-                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
-                let mut member_runtime_ids = vec![runtime_id];
-                member_runtime_ids.extend(body_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids = dedup(member_runtime_ids);
-                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
-                self.cluster_info[cluster_index].root_runtime_ids =
-                    dedup(body_flow.root_runtime_ids.clone());
-                self.descendant_runtime_ids_by_runtime_id
-                    .insert(runtime_id, dedup(body_flow.member_runtime_ids.clone()));
-
-                Flattened {
-                    roots: body_flow.roots.clone(),
-                    exits: body_flow.exits,
-                    members: body_flow.members,
-                    root_runtime_ids: body_flow.root_runtime_ids,
-                    member_runtime_ids,
-                }
-            }
-            JourneyAst::Select {
-                label,
-                metadata,
-                left,
-                right,
-            } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let _ = (label, metadata);
-                let left_flow = self.flatten(left);
-                let right_flow = self.flatten(right);
-                let mut roots = left_flow.roots;
-                roots.extend(right_flow.roots.iter().copied());
-                roots = dedup(roots);
-                let mut exits = left_flow.exits;
-                exits.extend(right_flow.exits.iter().copied());
-                exits = dedup(exits);
-                let mut members = Vec::new();
-                members.extend(left_flow.members.iter().copied());
-                members.extend(right_flow.members.iter().copied());
-                members = dedup(members);
-                let mut root_runtime_ids = left_flow.root_runtime_ids;
-                root_runtime_ids.extend(right_flow.root_runtime_ids.iter().copied());
-                root_runtime_ids = dedup(root_runtime_ids);
-                let mut member_runtime_ids = vec![runtime_id];
-                member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids = dedup(member_runtime_ids);
-                for member_id in &exits {
-                    self.mark(*member_id, |node| {
-                        if !node.proxy_runtime_ids.contains(&runtime_id) {
-                            node.proxy_runtime_ids.push(runtime_id);
-                        }
-                    });
-                }
-
-                Flattened {
-                    roots,
-                    exits,
-                    members,
-                    root_runtime_ids,
-                    member_runtime_ids,
-                }
-            }
-            JourneyAst::Join {
-                label,
-                metadata,
-                left,
-                right,
-            } => {
-                let runtime_id = self.runtime_next_id;
-                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let _ = (label, metadata);
-                let left_flow = self.flatten(left);
-                let right_flow = self.flatten(right);
-                let mut roots = left_flow.roots;
-                roots.extend(right_flow.roots.iter().copied());
-                roots = dedup(roots);
-                let mut exits = left_flow.exits;
-                exits.extend(right_flow.exits.iter().copied());
-                exits = dedup(exits);
-                let mut members = Vec::new();
-                members.extend(left_flow.members.iter().copied());
-                members.extend(right_flow.members.iter().copied());
-                members = dedup(members);
-                let mut root_runtime_ids = left_flow.root_runtime_ids;
-                root_runtime_ids.extend(right_flow.root_runtime_ids.iter().copied());
-                root_runtime_ids = dedup(root_runtime_ids);
-                let mut member_runtime_ids = vec![runtime_id];
-                member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
-                member_runtime_ids = dedup(member_runtime_ids);
-                for member_id in &exits {
-                    self.mark(*member_id, |node| {
-                        if !node.proxy_runtime_ids.contains(&runtime_id) {
-                            node.proxy_runtime_ids.push(runtime_id);
-                        }
-                    });
-                }
-
-                Flattened {
-                    roots,
-                    exits,
-                    members,
-                    root_runtime_ids,
-                    member_runtime_ids,
-                }
-            }
-        }
-    }
-
-    fn push_runtime_node(&mut self, label: impl Into<String>, runtime_id: u32) -> u32 {
-        let node_id = self.next_display_id();
-        let display = NodeDisplay {
-            id: node_id,
-            label: label.into(),
-            metadata: None,
-            runtime_node_id: Some(runtime_id),
-            proxy_runtime_ids: Vec::new(),
-            is_conditional_branch: false,
-            is_select: false,
-            is_join: false,
-        };
-        self.nodes.push(display);
-        node_id
-    }
-
-    fn push_layout_node(
-        &mut self,
-        label: impl Into<String>,
-        runtime_node_id: Option<u32>,
-        apply: impl FnOnce(&mut NodeDisplay),
-    ) -> u32 {
-        let node_id = self.next_display_id();
-        let mut display = NodeDisplay {
-            id: node_id,
-            label: label.into(),
-            metadata: None,
-            runtime_node_id,
-            proxy_runtime_ids: Vec::new(),
-            is_conditional_branch: false,
-            is_select: false,
-            is_join: false,
-        };
-        apply(&mut display);
-        self.nodes.push(display);
-        node_id
-    }
-
-    fn mark(&mut self, node_id: u32, apply: impl FnOnce(&mut NodeDisplay)) {
-        if let Some(node) = self
-            .nodes
-            .iter_mut()
-            .find(|candidate| candidate.id == node_id)
-        {
-            apply(node);
-        }
-    }
-
-    fn next_display_id(&mut self) -> u32 {
-        let id = self.display_next_id;
-        self.display_next_id = self.display_next_id.saturating_add(1);
-        id
-    }
-
-    fn unique_label(&mut self, raw: impl Into<String>) -> String {
-        let full = raw.into();
-        let short = short_type_name_str(&full);
-        let entry = self.label_occurrences.entry(short.clone()).or_insert(0);
-        let label = if *entry == 0 {
-            short
-        } else {
-            format!("{short} #{}", *entry + 1)
-        };
-        *entry = entry.saturating_add(1);
-        label
-    }
-}
-
 fn short_type_name<T>() -> String {
     short_type_name_str(core::any::type_name::<T>())
 }
@@ -3739,69 +2063,9 @@ fn short_type_name_str(value: &str) -> String {
         .to_string()
 }
 
-fn dedup(values: Vec<u32>) -> Vec<u32> {
-    let mut seen = BTreeSet::new();
-    let mut output = Vec::new();
-    for value in values {
-        if seen.insert(value) {
-            output.push(value);
-        }
-    }
-    output
-}
-
 #[cfg(test)]
 fn cluster_successor_runtime_ids(model: &GraphModel) -> Vec<Vec<u32>> {
     model.derived.cluster_successor_runtime_ids.clone()
-}
-
-fn compute_cluster_successor_runtime_ids(
-    edges: &[(u32, u32)],
-    node_map: &HashMap<u32, NodeDisplay>,
-    cluster_info: &[ClusterInfo],
-) -> Vec<Vec<u32>> {
-    let mut outgoing_by_node = HashMap::<u32, Vec<u32>>::new();
-    for (from, to) in edges {
-        outgoing_by_node.entry(*from).or_default().push(*to);
-    }
-
-    let mut cluster_successors = vec![Vec::<u32>::new(); cluster_info.len()];
-    for (index, cluster) in cluster_info.iter().enumerate() {
-        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        let mut queue = std::collections::VecDeque::<u32>::new();
-        let mut visited = HashSet::<u32>::new();
-
-        for (from, to) in edges {
-            if !cluster_nodes.contains(from) || cluster_nodes.contains(to) {
-                continue;
-            }
-            if visited.insert(*to) {
-                queue.push_back(*to);
-            }
-        }
-
-        let mut seen_runtime_ids = BTreeSet::new();
-        while let Some(node_id) = queue.pop_front() {
-            if cluster_nodes.contains(&node_id) {
-                continue;
-            }
-            if let Some(node) = node_map.get(&node_id) {
-                if let Some(runtime_id) = node.runtime_node_id {
-                    if seen_runtime_ids.insert(runtime_id) {
-                        cluster_successors[index].push(runtime_id);
-                    }
-                }
-            }
-            if let Some(neighbors) = outgoing_by_node.get(&node_id) {
-                for neighbor in neighbors {
-                    if visited.insert(*neighbor) {
-                        queue.push_back(*neighbor);
-                    }
-                }
-            }
-        }
-    }
-    cluster_successors
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -4035,7 +2299,13 @@ impl DefaultThemeState {
         cx: &ClusterViewCtx<'_>,
         now: Instant,
     ) -> bool {
-        if !matches!(cx.kind, ClusterKind::While | ClusterKind::Transparent) {
+        if !matches!(
+            cx.kind,
+            ClusterKind::While
+                | ClusterKind::Join
+                | ClusterKind::Transparent
+                | ClusterKind::Attempt
+        ) {
             return false;
         }
         if matches!(
@@ -4424,6 +2694,14 @@ mod tests {
         node_by_label(model, label)
             .runtime_node_id
             .unwrap_or_else(|| panic!("missing runtime id for {label}"))
+    }
+
+    fn cluster_index_for_kind(model: &GraphModel, kind: ClusterKind) -> usize {
+        model
+            .cluster_info
+            .iter()
+            .position(|cluster| cluster.kind == kind)
+            .unwrap_or_else(|| panic!("missing cluster for kind {kind:?}"))
     }
 
     #[test]
@@ -4982,7 +3260,8 @@ mod tests {
         );
         let phase = cluster_phase_for_display(
             Some(&live),
-            &model.cluster_info[0],
+            &model,
+            0,
             &repaired,
             &runtime_sequence_floors_for_display(&model, &live),
             &runtime_activation_prefixes_for_display(&model, &live),
@@ -4996,6 +3275,142 @@ mod tests {
                 has_completed: false,
             })
         );
+    }
+
+    #[test]
+    fn attempt_cluster_contains_failure_without_turning_outer_clusters_red() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "OuterLoop",
+            metadata: "",
+            body: Box::new(JourneyAst::Join {
+                label: "OuterJoin",
+                metadata: "",
+                left: Box::new(JourneyAst::Attempt {
+                    label: "Attempt",
+                    metadata: "",
+                    body: Box::new(JourneyAst::Step { label: "FailStep" }),
+                }),
+                right: Box::new(JourneyAst::Step { label: "PassStep" }),
+            }),
+        });
+        let while_index = cluster_index_for_kind(&model, ClusterKind::While);
+        let join_index = cluster_index_for_kind(&model, ClusterKind::Join);
+        let attempt_index = cluster_index_for_kind(&model, ClusterKind::Attempt);
+        let fail_display_id = node_by_label(&model, "FailStep").id;
+        assert!(model.cluster_info[attempt_index]
+            .nodes
+            .contains(&fail_display_id));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[while_index].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[attempt_index].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: runtime_id_for(&model, "PassStep"),
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 4,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id_for(&model, "FailStep"),
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Failed,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 5,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[attempt_index].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Succeeded,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        let repaired = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&fail_display_id).copied(),
+            Some(RuntimeState::Failed)
+        );
+        let runtime_sequence_floors = runtime_sequence_floors_for_display(&model, &live);
+        let runtime_activation_prefixes = runtime_activation_prefixes_for_display(&model, &live);
+
+        let while_phase = cluster_phase_for_display(
+            Some(&live),
+            &model,
+            while_index,
+            &repaired,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
+        let join_phase = cluster_phase_for_display(
+            Some(&live),
+            &model,
+            join_index,
+            &repaired,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
+        let attempt_phase = cluster_phase_for_display(
+            Some(&live),
+            &model,
+            attempt_index,
+            &repaired,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
+
+        assert!(matches!(
+            while_phase,
+            Phase::Live(ClusterLive {
+                has_failed: false,
+                ..
+            })
+        ));
+        assert!(matches!(
+            join_phase,
+            Phase::Live(ClusterLive {
+                has_failed: false,
+                ..
+            })
+        ));
+        assert!(matches!(
+            attempt_phase,
+            Phase::Live(ClusterLive {
+                has_failed: true,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -5078,6 +3493,43 @@ mod tests {
             .copied()
             .unwrap_or_else(|| panic!("SelL should carry hidden select runtime"));
         assert_eq!(sel_r.proxy_runtime_ids, vec![select_runtime_id]);
+    }
+
+    #[test]
+    fn graph_model_renders_join_as_cluster() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "Start" },
+            JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "JoinL" }),
+                right: Box::new(JourneyAst::Step { label: "JoinR" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+
+        let join_cluster = model
+            .cluster_info
+            .iter()
+            .find(|cluster| matches!(cluster.kind, ClusterKind::Join))
+            .unwrap_or_else(|| panic!("expected join cluster to be emitted"));
+
+        assert_eq!(join_cluster.label, "join: Join");
+        assert_eq!(
+            join_cluster.nodes,
+            vec![
+                node_by_label(&model, "JoinL").id,
+                node_by_label(&model, "JoinR").id
+            ]
+        );
+        assert_eq!(join_cluster.root_nodes, join_cluster.nodes);
+        assert_eq!(
+            join_cluster.root_runtime_ids,
+            vec![
+                runtime_id_for(&model, "JoinL"),
+                runtime_id_for(&model, "JoinR")
+            ]
+        );
     }
 
     #[test]
@@ -5702,7 +4154,7 @@ mod tests {
     }
 
     #[test]
-    fn repaired_live_states_keep_untaken_conditional_path_pending_when_taken_side_is_noop() {
+    fn repaired_live_states_keep_untaken_conditional_path_pending_when_taken_side_is_no_effect() {
         let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
             JourneyAst::Join {
                 label: "Join",

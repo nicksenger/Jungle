@@ -591,8 +591,8 @@ mod tests {
         DspCode {
             iteration_id: iteration_id.to_owned(),
             source: format!("// {iteration_id}"),
-            sample_path: format!("/tmp/{iteration_id}.wav"),
-            spectrogram_path: format!("/tmp/{iteration_id}.png"),
+            sample_path: format!("/tmp/{iteration_id}.wav").into(),
+            spectrogram_path: format!("/tmp/{iteration_id}.png").into(),
             mel_similarity: similarity,
             score: similarity,
             audio_metrics: None,

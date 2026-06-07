@@ -113,13 +113,12 @@ impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for BoundFlowStep<T, A>
 where
     T: crate::Animal + 'static,
     A: crate::BoundAction<T> + 'static,
-    <A as crate::BoundAction<T>>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<A as crate::BoundAction<T>>::Effect>(),
+            label: <A as crate::BoundAction<T>>::NAME,
         });
         nodes
     }
@@ -129,13 +128,12 @@ where
 impl<S> BuildJourneyAst<Vec<JourneyAst>> for Step<S>
 where
     S: Action + 'static,
-    <S as Action>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<S as Action>::Effect>(),
+            label: <S as Action>::NAME,
         });
         nodes
     }

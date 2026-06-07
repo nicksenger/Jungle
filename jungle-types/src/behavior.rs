@@ -111,6 +111,7 @@ impl<State> StateCarrier<State> for Identity {
 /// Single step-facing contract for adapting an [`Effect`] over an [`Aspect`]
 /// of animal state.
 pub trait BoundAction<T: Animal> {
+    const NAME: &'static str;
     type Effect: EffectSchema;
     type Aspect: Aspect<T::State>;
     type Input;
@@ -143,6 +144,7 @@ pub trait BoundAction<T: Animal> {
 
 /// Late-bound action spec that can be bound to a concrete [`Animal`] at the edge.
 pub trait Action {
+    const NAME: &'static str;
     type Effect: EffectMember;
     type Input;
     type Output;
@@ -184,6 +186,7 @@ where
     ScopeCarrier: Aspect<A::State, Focus = ScopeState>,
     InnerAct: BoundAction<ScopedAnimal<A, ScopeState>>,
 {
+    const NAME: &'static str = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::NAME;
     type Effect = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Effect;
     type Aspect = ComposeCarrier<
         ScopeCarrier,
@@ -400,6 +403,7 @@ where
         Carry = <E as Emit<T>>::Carry,
     >,
 {
+    const NAME: &'static str = "Fuse";
     type Effect = <E as Emit<T>>::Effect;
     type Aspect = <E as Emit<T>>::Aspect;
     type Input = <E as Emit<T>>::Arg;

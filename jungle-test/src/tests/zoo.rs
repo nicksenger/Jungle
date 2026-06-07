@@ -127,6 +127,7 @@ where
     T: Animal,
     A: EffectSchema<In = (), Out = (), Err = ()>,
 {
+    const NAME: &'static str = "UnitOkStep";
     type Effect = A;
     type Aspect = Identity;
     type Input = ();
@@ -153,6 +154,7 @@ impl<E> Action for UnitOkSpec<E>
 where
     E: EffectSchema<In = (), Out = (), Err = ()>,
 {
+    const NAME: &'static str = "UnitOkSpec";
     type Effect = E;
     type Input = ();
     type Output = ();
@@ -573,6 +575,7 @@ where
     Focus: jungle_sdk::types::Aspect<T::State, Focus = i32>,
     A: EffectSchema<In = i32, Out = i32, Err = ()>,
 {
+    const NAME: &'static str = "AddI32";
     type Effect = A;
     type Aspect = Focus;
     type Input = i32;
@@ -1037,9 +1040,9 @@ async fn jungle_worker_can_run_multiple_journeys_in_parallel_when_configured() {
     use jungle_sdk::types::Work;
     use std::time::Duration;
 
-    let history_calls = Arc::new(AtomicUsize::new(0));
+    let replay_page_calls = Arc::new(AtomicUsize::new(0));
     let flow_complete_calls = Arc::new(AtomicUsize::new(0));
-    let history_calls_at_first_complete = Arc::new(AtomicUsize::new(usize::MAX));
+    let replay_page_calls_at_first_complete = Arc::new(AtomicUsize::new(usize::MAX));
     let poll_idx = Arc::new(AtomicUsize::new(0));
     let seed = postcard::to_allocvec(&RunnerState(0)).expect("runner seed should serialize");
     let first_journey_id = Uuid::from_u128(201);
@@ -1071,30 +1074,35 @@ async fn jungle_worker_can_run_multiple_journeys_in_parallel_when_configured() {
                 }
             }
         })
-        .on_journey_history({
-            let history_calls = Arc::clone(&history_calls);
-            move |_| {
-                let history_calls = Arc::clone(&history_calls);
+        .on_journey_replay_page({
+            let replay_page_calls = Arc::clone(&replay_page_calls);
+            move |_, _, _, _| {
+                let replay_page_calls = Arc::clone(&replay_page_calls);
                 async move {
-                    history_calls.fetch_add(1, Ordering::Relaxed);
-                    Ok(Vec::new())
+                    replay_page_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(jungle_sdk::JourneyReplayPage {
+                        snapshot_end_sequence_id: None,
+                        events: Vec::new(),
+                    })
                 }
             }
         })
         .on_flow_complete({
             let flow_complete_calls = Arc::clone(&flow_complete_calls);
-            let history_calls = Arc::clone(&history_calls);
-            let history_calls_at_first_complete = Arc::clone(&history_calls_at_first_complete);
+            let replay_page_calls = Arc::clone(&replay_page_calls);
+            let replay_page_calls_at_first_complete =
+                Arc::clone(&replay_page_calls_at_first_complete);
             move |_| {
                 let flow_complete_calls = Arc::clone(&flow_complete_calls);
-                let history_calls = Arc::clone(&history_calls);
-                let history_calls_at_first_complete = Arc::clone(&history_calls_at_first_complete);
+                let replay_page_calls = Arc::clone(&replay_page_calls);
+                let replay_page_calls_at_first_complete =
+                    Arc::clone(&replay_page_calls_at_first_complete);
                 async move {
                     let prior = flow_complete_calls.fetch_add(1, Ordering::Relaxed);
                     if prior == 0 {
-                        let _ = history_calls_at_first_complete.compare_exchange(
+                        let _ = replay_page_calls_at_first_complete.compare_exchange(
                             usize::MAX,
-                            history_calls.load(Ordering::Relaxed),
+                            replay_page_calls.load(Ordering::Relaxed),
                             Ordering::Relaxed,
                             Ordering::Relaxed,
                         );
@@ -1121,16 +1129,16 @@ async fn jungle_worker_can_run_multiple_journeys_in_parallel_when_configured() {
     .await;
     if finished.is_err() {
         panic!(
-            "worker did not complete both journeys: history_calls={}, flow_complete_calls={}",
-            history_calls.load(Ordering::Relaxed),
+            "worker did not complete both journeys: replay_page_calls={}, flow_complete_calls={}",
+            replay_page_calls.load(Ordering::Relaxed),
             flow_complete_calls.load(Ordering::Relaxed),
         );
     }
 
     assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 2);
-    assert_eq!(history_calls.load(Ordering::Relaxed), 2);
+    assert_eq!(replay_page_calls.load(Ordering::Relaxed), 2);
     assert_eq!(
-        history_calls_at_first_complete.load(Ordering::Relaxed),
+        replay_page_calls_at_first_complete.load(Ordering::Relaxed),
         2,
         "second journey should be claimed before first completion when parallelism > 1",
     );

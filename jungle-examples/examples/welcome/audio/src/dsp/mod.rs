@@ -3,7 +3,6 @@ use std::{f32::consts::TAU, time::Duration};
 pub mod bass;
 pub mod drums;
 pub mod electric_guitar;
-pub mod toms;
 pub mod vocals;
 
 pub const SAMPLE_RATE: u32 = 48_000;

@@ -16,7 +16,7 @@ pub struct FailureState {
 pub struct PassStep;
 #[jungle::action]
 impl Action for PassStep {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -276,7 +276,9 @@ fn decode_i32_effect_inputs(history: &[RunnerOut]) -> Vec<i32> {
     history
         .iter()
         .filter_map(|entry| match entry {
-            RunnerOut::EffectInput { data, .. } => postcard::from_bytes::<i32>(data).ok(),
+            RunnerOut::EffectInput { data, .. } => postcard::take_from_bytes::<i32>(data)
+                .ok()
+                .and_then(|(value, remaining)| remaining.is_empty().then_some(value)),
             _ => None,
         })
         .collect()
@@ -1263,8 +1265,8 @@ async fn combinator_failures_outside_attempt_mark_journey_dead_and_emit_expected
         "join-outside-fail"
     );
     assert_eq!(status, JourneyStatus::Dead);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 901]);
-    assert_history_effect_counts(&history, 3, 3);
+    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 411, 412, 901]);
+    assert_history_effect_counts(&history, 4, 4);
 
     let (status, history) = run_case!(
         SelectFailureZoo,
@@ -1272,8 +1274,8 @@ async fn combinator_failures_outside_attempt_mark_journey_dead_and_emit_expected
         "select-outside-fail"
     );
     assert_eq!(status, JourneyStatus::Dead);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 902]);
-    assert_history_effect_counts(&history, 3, 3);
+    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 902]);
+    assert_history_effect_counts(&history, 5, 5);
 }
 
 #[tokio::test]
@@ -1313,9 +1315,9 @@ async fn combinator_failures_inside_attempt_complete_and_emit_expected_events() 
     assert_eq!(status, JourneyStatus::Completed);
     assert_eq!(
         decode_i32_effect_inputs(&history),
-        vec![100, 1, 901, 700, 700]
+        vec![100, 411, 412, 901, 700, 700]
     );
-    assert_history_effect_counts(&history, 5, 5);
+    assert_history_effect_counts(&history, 6, 6);
 
     let (status, history) = run_case!(
         SelectFailureZoo,
@@ -1323,11 +1325,8 @@ async fn combinator_failures_inside_attempt_complete_and_emit_expected_events() 
         "select-inside-fail"
     );
     assert_eq!(status, JourneyStatus::Completed);
-    assert_eq!(
-        decode_i32_effect_inputs(&history),
-        vec![100, 1, 902, 700, 700]
-    );
-    assert_history_effect_counts(&history, 5, 5);
+    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 902, 700, 700]);
+    assert_history_effect_counts(&history, 7, 7);
 }
 
 #[tokio::test]
@@ -1361,8 +1360,11 @@ async fn combinator_attempt_successes_complete_and_emit_expected_events() {
 
     let (status, history) = run_case!(JoinFailureZoo, JoinInsideAttemptOkAnimal, "join-inside-ok");
     assert_eq!(status, JourneyStatus::Completed);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 800, 800]);
-    assert_history_effect_counts(&history, 4, 4);
+    assert_eq!(
+        decode_i32_effect_inputs(&history),
+        vec![100, 411, 412, 800, 800]
+    );
+    assert_history_effect_counts(&history, 5, 5);
 
     let (status, history) = run_case!(
         SelectFailureZoo,
@@ -1370,6 +1372,6 @@ async fn combinator_attempt_successes_complete_and_emit_expected_events() {
         "select-inside-ok"
     );
     assert_eq!(status, JourneyStatus::Completed);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 800, 800]);
-    assert_history_effect_counts(&history, 4, 4);
+    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 800, 800]);
+    assert_history_effect_counts(&history, 6, 6);
 }

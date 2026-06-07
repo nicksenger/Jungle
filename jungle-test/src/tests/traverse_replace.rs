@@ -66,6 +66,7 @@ struct TraverseAnimal;
 
 struct StepA;
 impl BoundAction<TraverseAnimal> for StepA {
+    const NAME: &'static str = "StepA";
     type Effect = TraverseAEffect;
     type Aspect = Identity;
     type Input = ();
@@ -94,6 +95,7 @@ impl BoundAction<TraverseAnimal> for StepA {
 
 struct StepB;
 impl BoundAction<TraverseAnimal> for StepB {
+    const NAME: &'static str = "StepB";
     type Effect = TraverseBEffect;
     type Aspect = Identity;
     type Input = ();
@@ -122,6 +124,7 @@ impl BoundAction<TraverseAnimal> for StepB {
 
 struct StepC;
 impl BoundAction<TraverseAnimal> for StepC {
+    const NAME: &'static str = "StepC";
     type Effect = TraverseCEffect;
     type Aspect = Identity;
     type Input = ();
@@ -150,6 +153,7 @@ impl BoundAction<TraverseAnimal> for StepC {
 
 struct StepD;
 impl BoundAction<TraverseAnimal> for StepD {
+    const NAME: &'static str = "StepD";
     type Effect = TraverseDEffect;
     type Aspect = Identity;
     type Input = ();

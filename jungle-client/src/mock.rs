@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
     Animal, AnimalIdValue, ClaimedPerturbable, Ecosystem, ExecutorError, JourneyRecord,
-    JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+    JourneyReplayPage, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -43,6 +43,14 @@ type JourneyHistoryHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Vec<RunnerOut>, ExecutorError>> + Send + 'static>>;
 type JourneyHistoryHandler =
     Arc<dyn Fn(Uuid) -> JourneyHistoryHandlerFuture + Send + Sync + 'static>;
+type JourneyReplayPageHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<JourneyReplayPage, ExecutorError>> + Send + 'static>>;
+type JourneyReplayPageHandler = Arc<
+    dyn Fn(Uuid, Option<u64>, Option<u64>, u32) -> JourneyReplayPageHandlerFuture
+        + Send
+        + Sync
+        + 'static,
+>;
 type ListJourneysHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Vec<JourneyRecord>, ExecutorError>> + Send + 'static>>;
 type ListJourneysHandler = Arc<dyn Fn(String) -> ListJourneysHandlerFuture + Send + Sync + 'static>;
@@ -82,6 +90,7 @@ pub struct MockClient {
     on_history_event: Option<HistoryEventHandler>,
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
+    on_journey_replay_page: JourneyReplayPageHandler,
     on_list_journeys: ListJourneysHandler,
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
@@ -173,6 +182,22 @@ impl JungleClient for MockClient {
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
         (self.on_journey_history)(id).await
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage, ExecutorError> {
+        (self.on_journey_replay_page)(
+            journey_id,
+            after_sequence_id,
+            snapshot_end_sequence_id,
+            limit,
+        )
+        .await
     }
 
     async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>, ExecutorError> {
@@ -330,6 +355,7 @@ pub struct MockClientBuilder {
     on_history_event: Option<HistoryEventHandler>,
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
+    on_journey_replay_page: Option<JourneyReplayPageHandler>,
     on_list_journeys: Option<ListJourneysHandler>,
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
@@ -357,6 +383,7 @@ impl Default for MockClientBuilder {
             on_history_event: None,
             on_create_flow: None,
             on_journey_history: None,
+            on_journey_replay_page: None,
             on_list_journeys: None,
             on_flow_status: None,
             on_flow_appearance: None,
@@ -426,6 +453,24 @@ impl MockClientBuilder {
         Fut: Future<Output = Result<Vec<RunnerOut>, ExecutorError>> + Send + 'static,
     {
         self.on_journey_history = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
+    pub fn on_journey_replay_page<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Option<u64>, Option<u64>, u32) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<JourneyReplayPage, ExecutorError>> + Send + 'static,
+    {
+        self.on_journey_replay_page = Some(Arc::new(
+            move |journey_id, after_sequence_id, snapshot_end_sequence_id, limit| {
+                Box::pin(f(
+                    journey_id,
+                    after_sequence_id,
+                    snapshot_end_sequence_id,
+                    limit,
+                ))
+            },
+        ));
         self
     }
 
@@ -598,6 +643,15 @@ impl MockClientBuilder {
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
         let default_journey_history_handler: JourneyHistoryHandler =
             Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
+        let default_journey_replay_page_handler: JourneyReplayPageHandler =
+            Arc::new(|_, _, _, _| {
+                Box::pin(async {
+                    Ok(JourneyReplayPage {
+                        snapshot_end_sequence_id: None,
+                        events: Vec::new(),
+                    })
+                })
+            });
         let default_list_journeys_handler: ListJourneysHandler =
             Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
         let default_flow_status_handler: FlowStatusHandler =
@@ -638,6 +692,9 @@ impl MockClientBuilder {
             on_journey_history: self
                 .on_journey_history
                 .unwrap_or_else(|| default_journey_history_handler.clone()),
+            on_journey_replay_page: self
+                .on_journey_replay_page
+                .unwrap_or_else(|| default_journey_replay_page_handler.clone()),
             on_list_journeys: self
                 .on_list_journeys
                 .unwrap_or_else(|| default_list_journeys_handler.clone()),

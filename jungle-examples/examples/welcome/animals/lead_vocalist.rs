@@ -65,7 +65,7 @@ impl Predicate<(LeadVocalistState, ())> for UseLeadVocalPickup {
 pub struct ConsumeLeadVocalPickup;
 #[jungle::action]
 impl Action for ConsumeLeadVocalPickup {
-    type Effect = Noop;
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 

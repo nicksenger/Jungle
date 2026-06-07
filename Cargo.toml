@@ -10,6 +10,7 @@ members = [
     "jungle-migrate",
     "jungle-server",
     "jungle-sdk",
+    "jungle-zoo",
     "jungle-persist",
     "jungle-test",
     "jungle-vision",

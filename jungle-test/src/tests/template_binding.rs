@@ -192,6 +192,7 @@ impl<A> BoundAction<A> for CounterAddOne<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "CounterAddOne";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -227,6 +228,7 @@ impl<A> BoundAction<A> for LedgerAddOne<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "LedgerAddOne";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -262,6 +264,7 @@ impl<A> BoundAction<A> for CounterCommit<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "CounterCommit";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -298,6 +301,7 @@ impl<A> BoundAction<A> for LedgerCommit<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "LedgerCommit";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -334,6 +338,7 @@ impl<A> BoundAction<A> for GenericAddOne<A>
 where
     A: Animal<State = i32> + LateBoundPolicy,
 {
+    const NAME: &'static str = "GenericAddOne";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -369,6 +374,7 @@ impl<A> BoundAction<A> for GenericCommit<A>
 where
     A: Animal<State = i32> + LateBoundPolicy,
 {
+    const NAME: &'static str = "GenericCommit";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -644,6 +650,7 @@ impl<A> BoundAction<A> for ContextBoundAct<A>
 where
     A: Animal<State = i32>,
 {
+    const NAME: &'static str = "ContextBoundAct";
     type Effect = ContextBoundEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -952,6 +959,7 @@ impl<A> BoundAction<A> for LensReadSpareAct<A>
 where
     A: Animal<State = LensRootState>,
 {
+    const NAME: &'static str = "LensReadSpareAct";
     type Effect = TemplateAddEffect;
     type Aspect = LensRootSpareCarrier;
     type Input = i32;
@@ -987,6 +995,7 @@ impl<A> BoundAction<A> for LensReadLeafAct<A>
 where
     A: Animal<State = LensRootState>,
 {
+    const NAME: &'static str = "LensReadLeafAct";
     type Effect = TemplateAddEffect;
     type Aspect = LensRootLeafValueCarrier;
     type Input = i32;
@@ -1022,6 +1031,7 @@ impl<A> BoundAction<A> for LensCommitAct<A>
 where
     A: Animal<State = LensRootState>,
 {
+    const NAME: &'static str = "LensCommitAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -1274,6 +1284,7 @@ impl<A> BoundAction<A> for NestedBranchSpareAct<A>
 where
     A: Animal<State = NestedLensBranch>,
 {
+    const NAME: &'static str = "NestedBranchSpareAct";
     type Effect = TemplateAddEffect;
     type Aspect = NestedBranchSpareCarrier;
     type Input = i32;
@@ -1310,6 +1321,7 @@ impl<A> BoundAction<A> for NestedLeafValueAct<A>
 where
     A: Animal<State = NestedLensLeaf>,
 {
+    const NAME: &'static str = "NestedLeafValueAct";
     type Effect = TemplateAddEffect;
     type Aspect = NestedLeafValueCarrier;
     type Input = i32;
@@ -1346,6 +1358,7 @@ impl<A> BoundAction<A> for NestedLeafNoiseAct<A>
 where
     A: Animal<State = NestedLensLeaf>,
 {
+    const NAME: &'static str = "NestedLeafNoiseAct";
     type Effect = TemplateAddEffect;
     type Aspect = NestedLeafNoiseCarrier;
     type Input = i32;
@@ -1921,17 +1934,17 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct NoopLoop2TraceState {
+struct NoEffectLoop2TraceState {
     left_hits: u8,
     right_hits: u8,
     order: u8,
 }
 
-struct NoopLoop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
+struct NoEffectLoop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
 #[jungle::action]
-impl<St> Action for NoopLoop2SetCounter<St> {
-    type Effect = Noop;
+impl<St> Action for NoEffectLoop2SetCounter<St> {
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -1948,11 +1961,11 @@ impl<St> Action for NoopLoop2SetCounter<St> {
     }
 }
 
-struct NoopLoop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
+struct NoEffectLoop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
 #[jungle::action]
-impl<St> Action for NoopLoop2DecCounter<St> {
-    type Effect = Noop;
+impl<St> Action for NoEffectLoop2DecCounter<St> {
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
@@ -1963,17 +1976,18 @@ impl<St> Action for NoopLoop2DecCounter<St> {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_20 = {
-            output.map_err(|_err| Failure::from("noop loop2 decrement step should succeed"))?;
+            output
+                .map_err(|_err| Failure::from("no-effect loop2 decrement step should succeed"))?;
             state.counter = state.counter.saturating_sub(1);
         };
         Ok(__absorb_out_20)
     }
 }
 
-struct NoopFlattenEither<T, S>(core::marker::PhantomData<fn() -> (T, S)>);
+struct NoEffectFlattenEither<T, S>(core::marker::PhantomData<fn() -> (T, S)>);
 #[jungle::action]
-impl<T, S> Action for NoopFlattenEither<T, S> {
-    type Effect = Noop;
+impl<T, S> Action for NoEffectFlattenEither<T, S> {
+    type Effect = NoEffect;
     type Input = Either<T, T>;
     type Output = T;
     type Carry = Either<T, T>;
@@ -1988,7 +2002,7 @@ impl<T, S> Action for NoopFlattenEither<T, S> {
         carry: Either<T, T>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_21 = {
-            output.map_err(|_err| Failure::from("noop loop2 flatten step should succeed"))?;
+            output.map_err(|_err| Failure::from("no-effect loop2 flatten step should succeed"))?;
             match carry {
                 Either::Left(value) | Either::Right(value) => value,
             }
@@ -1997,35 +2011,35 @@ impl<T, S> Action for NoopFlattenEither<T, S> {
     }
 }
 
-struct NoopLoop2CounterGt0;
-impl<St> Predicate<(&Loop2Container<St>, &())> for NoopLoop2CounterGt0 {
+struct NoEffectLoop2CounterGt0;
+impl<St> Predicate<(&Loop2Container<St>, &())> for NoEffectLoop2CounterGt0 {
     fn eval((state, _): &(&Loop2Container<St>, &())) -> bool {
         state.counter > 0
     }
 }
 
-struct NoopLoop2CounterIsEven;
-impl<St> Predicate<(Loop2Container<St>, ())> for NoopLoop2CounterIsEven {
+struct NoEffectLoop2CounterIsEven;
+impl<St> Predicate<(Loop2Container<St>, ())> for NoEffectLoop2CounterIsEven {
     fn eval((state, _): &(Loop2Container<St>, ())) -> bool {
         state.counter % 2 == 0
     }
 }
 
-struct NoopLoop2LeftSpec;
+struct NoEffectLoop2LeftSpec;
 #[jungle::action]
-impl Action for NoopLoop2LeftSpec {
-    type Effect = Noop;
+impl Action for NoEffectLoop2LeftSpec {
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &NoopLoop2TraceState, _input: Self::Input) {}
+    fn emit(_state: &NoEffectLoop2TraceState, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut NoopLoop2TraceState,
+        state: &mut NoEffectLoop2TraceState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_22 = {
-            output.map_err(|_err| Failure::from("noop loop2 left arm should succeed"))?;
+            output.map_err(|_err| Failure::from("no-effect loop2 left arm should succeed"))?;
             state.left_hits = state.left_hits.saturating_add(1);
             state.order = state.order.saturating_mul(10).saturating_add(1);
         };
@@ -2033,21 +2047,21 @@ impl Action for NoopLoop2LeftSpec {
     }
 }
 
-struct NoopLoop2RightSpec;
+struct NoEffectLoop2RightSpec;
 #[jungle::action]
-impl Action for NoopLoop2RightSpec {
-    type Effect = Noop;
+impl Action for NoEffectLoop2RightSpec {
+    type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &NoopLoop2TraceState, _input: Self::Input) {}
+    fn emit(_state: &NoEffectLoop2TraceState, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut NoopLoop2TraceState,
+        state: &mut NoEffectLoop2TraceState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_23 = {
-            output.map_err(|_err| Failure::from("noop loop2 right arm should succeed"))?;
+            output.map_err(|_err| Failure::from("no-effect loop2 right arm should succeed"))?;
             state.right_hits = state.right_hits.saturating_add(1);
             state.order = state.order.saturating_mul(10).saturating_add(2);
         };
@@ -2056,36 +2070,39 @@ impl Action for NoopLoop2RightSpec {
 }
 
 #[derive(Flow)]
-#[jungle(focus = NoopLoop2TraceState)]
-struct NoopLoop2LeftFlow(Step<NoopLoop2LeftSpec>);
+#[jungle(focus = NoEffectLoop2TraceState)]
+struct NoEffectLoop2LeftFlow(Step<NoEffectLoop2LeftSpec>);
 
 #[derive(Flow)]
-#[jungle(focus = NoopLoop2TraceState)]
-struct NoopLoop2RightFlow(Step<NoopLoop2RightSpec>);
+#[jungle(focus = NoEffectLoop2TraceState)]
+struct NoEffectLoop2RightFlow(Step<NoEffectLoop2RightSpec>);
 
 #[derive(Flow)]
 #[jungle(focus = Loop2Container<St>)]
-struct NoopLoop2Body<St, L: TraverseFlow, R: TraverseFlow>(
-    Conditional<FocusedCondition<NoopLoop2CounterIsEven, Loop2Container<St>>, L, R>,
-    Step<NoopFlattenEither<(), Loop2Container<St>>>,
-    Step<NoopLoop2DecCounter<St>>,
+struct NoEffectLoop2Body<St, L: TraverseFlow, R: TraverseFlow>(
+    Conditional<FocusedCondition<NoEffectLoop2CounterIsEven, Loop2Container<St>>, L, R>,
+    Step<NoEffectFlattenEither<(), Loop2Container<St>>>,
+    Step<NoEffectLoop2DecCounter<St>>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = Loop2Container<St>)]
-struct NoopLoop2<St, L: TraverseFlow, R: TraverseFlow>(
-    Step<NoopLoop2SetCounter<St>>,
-    While<FocusedLoopCondition<NoopLoop2CounterGt0, Loop2Container<St>>, NoopLoop2Body<St, L, R>>,
+struct NoEffectLoop2<St, L: TraverseFlow, R: TraverseFlow>(
+    Step<NoEffectLoop2SetCounter<St>>,
+    While<
+        FocusedLoopCondition<NoEffectLoop2CounterGt0, Loop2Container<St>>,
+        NoEffectLoop2Body<St, L, R>,
+    >,
 );
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct NoopLoop2HarnessState {
+struct NoEffectLoop2HarnessState {
     #[jungle(focus)]
-    loop2: Loop2Container<NoopLoop2TraceState>,
+    loop2: Loop2Container<NoEffectLoop2TraceState>,
 }
 
-impl From<NoopLoop2TraceState> for NoopLoop2HarnessState {
-    fn from(seed: NoopLoop2TraceState) -> Self {
+impl From<NoEffectLoop2TraceState> for NoEffectLoop2HarnessState {
+    fn from(seed: NoEffectLoop2TraceState) -> Self {
         Self {
             loop2: Loop2Container {
                 counter: 0,
@@ -2095,21 +2112,22 @@ impl From<NoopLoop2TraceState> for NoopLoop2HarnessState {
     }
 }
 
-type NoopLoop2Journey = NoopLoop2<NoopLoop2TraceState, NoopLoop2LeftFlow, NoopLoop2RightFlow>;
+type NoEffectLoop2Journey =
+    NoEffectLoop2<NoEffectLoop2TraceState, NoEffectLoop2LeftFlow, NoEffectLoop2RightFlow>;
 
-struct NoopLoop2HarnessAnimal;
+struct NoEffectLoop2HarnessAnimal;
 #[jungle::animal(id = 58, generation = 0)]
-impl Animal for NoopLoop2HarnessAnimal {
-    type State = NoopLoop2HarnessState;
-    type Seed = NoopLoop2TraceState;
-    type Flow = NoopLoop2Journey;
+impl Animal for NoEffectLoop2HarnessAnimal {
+    type State = NoEffectLoop2HarnessState;
+    type Seed = NoEffectLoop2TraceState;
+    type Flow = NoEffectLoop2Journey;
 }
 
 #[test]
-fn template_binding_noop_loop2_repro_completes_during_executor_init() {
-    let mut exec = ManualExecutor::<NoopLoop2HarnessAnimal>::new(NoopLoop2HarnessState::from(
-        NoopLoop2TraceState::default(),
-    ));
+fn template_binding_no_effect_loop2_repro_completes_during_executor_init() {
+    let mut exec = ManualExecutor::<NoEffectLoop2HarnessAnimal>::new(
+        NoEffectLoop2HarnessState::from(NoEffectLoop2TraceState::default()),
+    );
 
     assert!(!exec.is_complete());
     let step: Result<(), ExecutorError> = exec.next_typed((), Ok::<(), ()>(()));
@@ -2386,7 +2404,7 @@ impl Animal for JoinFocusedAnimal {
 struct JoinFocusedConcurrentLeftSpec;
 #[jungle::action]
 impl Action for JoinFocusedConcurrentLeftSpec {
-    type Effect = TemplateConcurrentJoinEffect;
+    type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2407,7 +2425,7 @@ impl Action for JoinFocusedConcurrentLeftSpec {
 struct JoinFocusedConcurrentRightSpec;
 #[jungle::action]
 impl Action for JoinFocusedConcurrentRightSpec {
-    type Effect = TemplateConcurrentJoinEffect;
+    type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2476,7 +2494,7 @@ struct NestedJoinFocusedHostState {
 struct NestedJoinFocusedLeftSpec;
 #[jungle::action]
 impl Action for NestedJoinFocusedLeftSpec {
-    type Effect = TemplateConcurrentJoinEffect;
+    type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2497,7 +2515,7 @@ impl Action for NestedJoinFocusedLeftSpec {
 struct NestedJoinFocusedMiddleSpec;
 #[jungle::action]
 impl Action for NestedJoinFocusedMiddleSpec {
-    type Effect = TemplateConcurrentJoinEffect;
+    type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2518,7 +2536,7 @@ impl Action for NestedJoinFocusedMiddleSpec {
 struct NestedJoinFocusedRightSpec;
 #[jungle::action]
 impl Action for NestedJoinFocusedRightSpec {
-    type Effect = TemplateConcurrentJoinEffect;
+    type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2588,30 +2606,40 @@ fn template_binding_join_merges_distinct_focused_branch_states() {
 }
 
 #[tokio::test]
-async fn template_binding_focused_join_subflows_run_concurrently() {
-    let runtime = join_concurrent_runtime();
-    runtime.reset(2);
-
+async fn template_binding_focused_join_subflows_run_incrementally_in_parent_executor() {
     let mut executor = Executor::<JoinFocusedConcurrentAnimal>::new(JoinFocusedHostState {
         left: JoinFocusedLeftState { value: 1 },
         right: JoinFocusedRightState { value: 2 },
         marker: 99,
     });
 
-    let request = executor
+    let first_request = executor
         .next_executable_request(3)
         .expect("focused join should produce an executable request");
-    let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
-        .await
-        .expect("focused join branches should rendezvous without serial deadlock")
-        .expect("focused join effect runner should succeed");
-    let emitted = executor
-        .complete_serialized(completion)
-        .expect("focused join completion should apply cleanly");
-    let final_emitted: (i32, i32) =
-        postcard::from_bytes(&emitted).expect("join final emitted tuple should deserialize");
+    let first_emitted = executor
+        .complete_serialized(first_request.run().await.expect("left branch effect should run"))
+        .expect("left branch completion should apply cleanly");
+    let left_emitted: i32 =
+        postcard::from_bytes(&first_emitted).expect("left branch emitted value should deserialize");
+    assert_eq!(
+        executor.state(),
+        &JoinFocusedHostState {
+            left: JoinFocusedLeftState { value: 4 },
+            right: JoinFocusedRightState { value: 2 },
+            marker: 99,
+        }
+    );
+    assert_eq!(left_emitted, 4);
 
-    assert_eq!(runtime.max_active.load(Ordering::SeqCst), 2);
+    let second_request = executor
+        .next_executable_request(3)
+        .expect("focused join should produce a second branch request");
+    let final_emitted = executor
+        .complete_serialized(second_request.run().await.expect("right branch effect should run"))
+        .expect("right branch completion should finish the join");
+    let final_emitted: (i32, i32) =
+        postcard::from_bytes(&final_emitted).expect("join final emitted tuple should deserialize");
+
     assert_eq!(final_emitted, (4, 32));
     assert_eq!(
         executor.state(),
@@ -2624,10 +2652,7 @@ async fn template_binding_focused_join_subflows_run_concurrently() {
 }
 
 #[tokio::test]
-async fn template_binding_nested_focused_join_subflows_run_concurrently() {
-    let runtime = join_concurrent_runtime();
-    runtime.reset(3);
-
+async fn template_binding_nested_focused_join_subflows_run_incrementally_in_parent_executor() {
     let mut executor = Executor::<NestedJoinFocusedAnimal>::new(NestedJoinFocusedHostState {
         left: NestedJoinFocusedLeftState { value: 1 },
         middle: NestedJoinFocusedMiddleState { value: 2 },
@@ -2635,20 +2660,53 @@ async fn template_binding_nested_focused_join_subflows_run_concurrently() {
         marker: 99,
     });
 
-    let request = executor
+    let first_request = executor
         .next_executable_request(3)
-        .expect("nested focused join should produce an executable request");
-    let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
-        .await
-        .expect("nested focused join branches should rendezvous without serial deadlock")
-        .expect("nested focused join effect runner should succeed");
-    let emitted = executor
-        .complete_serialized(completion)
-        .expect("nested focused join completion should apply cleanly");
-    let final_emitted: ((i32, i32), i32) =
-        postcard::from_bytes(&emitted).expect("nested focused join output should deserialize");
+        .expect("nested focused join should produce the left branch request");
+    let first_emitted = executor
+        .complete_serialized(first_request.run().await.expect("left branch effect should run"))
+        .expect("left branch completion should apply cleanly");
+    let left_emitted: i32 =
+        postcard::from_bytes(&first_emitted).expect("left branch output should deserialize");
+    assert_eq!(left_emitted, 4);
+    assert_eq!(
+        executor.state(),
+        &NestedJoinFocusedHostState {
+            left: NestedJoinFocusedLeftState { value: 4 },
+            middle: NestedJoinFocusedMiddleState { value: 2 },
+            right: NestedJoinFocusedRightState { value: 3 },
+            marker: 99,
+        }
+    );
 
-    assert_eq!(runtime.max_active.load(Ordering::SeqCst), 3);
+    let second_request = executor
+        .next_executable_request(3)
+        .expect("nested focused join should produce the middle branch request");
+    let second_emitted = executor
+        .complete_serialized(second_request.run().await.expect("middle branch effect should run"))
+        .expect("middle branch completion should apply cleanly");
+    let inner_join_emitted: (i32, i32) =
+        postcard::from_bytes(&second_emitted).expect("inner join tuple should deserialize");
+    assert_eq!(inner_join_emitted, (4, 32));
+    assert_eq!(
+        executor.state(),
+        &NestedJoinFocusedHostState {
+            left: NestedJoinFocusedLeftState { value: 4 },
+            middle: NestedJoinFocusedMiddleState { value: 32 },
+            right: NestedJoinFocusedRightState { value: 3 },
+            marker: 99,
+        }
+    );
+
+    let third_request = executor
+        .next_executable_request(3)
+        .expect("nested focused join should produce the right branch request");
+    let final_emitted = executor
+        .complete_serialized(third_request.run().await.expect("right branch effect should run"))
+        .expect("right branch completion should finish the nested join");
+    let final_emitted: ((i32, i32), i32) =
+        postcard::from_bytes(&final_emitted).expect("nested focused join output should deserialize");
+
     assert_eq!(final_emitted, ((4, 32), 303));
     assert_eq!(
         executor.state(),
@@ -2862,8 +2920,7 @@ impl From<ConditionalJoinMergeState> for () {
     fn from(_value: ConditionalJoinMergeState) -> Self {}
 }
 
-#[tokio::test]
-async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
+async fn run_conditional_join_merge_case(marker: i32) -> ConditionalJoinMergeState {
     let client = jungle_sdk::FusedClient::builder()
         .namespace("conditional-join-merge-local-client-zoo")
         .build()
@@ -2877,7 +2934,7 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
 
     let journey_id = client
         .spawn::<ConditionalJoinMergeAnimal>(&ConditionalJoinMergeState {
-            marker: 1,
+            marker,
             ..ConditionalJoinMergeState::default()
         })
         .await
@@ -2891,15 +2948,22 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
         .await
         .expect("appearance request should succeed")
         .expect("appearance should exist");
-    let appearance: ConditionalJoinMergeState =
+    let appearance =
         postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+
+    appearance
+}
+
+#[tokio::test]
+async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
+    let appearance = run_conditional_join_merge_case(1).await;
 
     assert_eq!(appearance.left_join_hits + appearance.right_join_hits, 2);
     assert_eq!(appearance.join_merge_hits, 1);
     assert_eq!(appearance.terminal_merge_hits, 1);
-
-    worker_handle.abort();
-    let _ = worker_handle.await;
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -3002,6 +3066,7 @@ impl<A> BoundAction<A> for JoinLeftAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "JoinLeftAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3034,6 +3099,7 @@ impl<A> BoundAction<A> for JoinRightAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "JoinRightAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3066,6 +3132,7 @@ impl<A> BoundAction<A> for JoinToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "JoinToCarryAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = (i32, i32);
@@ -3101,6 +3168,7 @@ impl<A> BoundAction<A> for SelectFastAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "SelectFastAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3133,6 +3201,7 @@ impl<A> BoundAction<A> for SelectSlowAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "SelectSlowAct";
     type Effect = ComplexTimedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3165,6 +3234,7 @@ impl<A> BoundAction<A> for SelectToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "SelectToCarryAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = Either<i32, i32>;
@@ -3202,6 +3272,7 @@ impl<A> BoundAction<A> for LoopAdvanceAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "LoopAdvanceAct";
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3238,6 +3309,7 @@ impl<A> BoundAction<A> for UniqueAlphaAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "UniqueAlphaAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3273,6 +3345,7 @@ impl<A> BoundAction<A> for UniqueBetaAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "UniqueBetaAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3308,6 +3381,7 @@ impl<A> BoundAction<A> for FinalizeAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "FinalizeAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -3343,6 +3417,7 @@ impl<A> BoundAction<A> for UniqueToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
+    const NAME: &'static str = "UniqueToCarryAct";
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = Either<i32, i32>;

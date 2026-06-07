@@ -215,6 +215,14 @@ impl ServerBuilder {
         self
     }
 
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        #[cfg(any(feature = "postgres", feature = "redb"))]
+        {
+            self.db = self.db.claimed_work_ttl_ms(value);
+        }
+        self
+    }
+
     pub fn backend<S>(mut self, backend: S) -> Self
     where
         S: JungleServer,

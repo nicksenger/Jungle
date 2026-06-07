@@ -2,8 +2,8 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::{
-    ClaimedPerturbable, JourneyUpdateEvent, NodeLifecycle, OwnerWake, RunnerOut, RunnerUpdateOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyEvent, JourneyReplayPage, JourneyUpdateEvent, NodeLifecycle,
+    OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal, Work,
 };
 use jungle_types::{JourneyRecord, JourneyStatus};
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ static PG_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone)]
 pub struct PgStore {
     pool: sqlx::PgPool,
+    claimed_work_ttl_ms: i64,
 }
 
 impl PgStore {
@@ -46,6 +47,7 @@ impl PgStore {
 pub struct PgStoreBuilder {
     connection_string: Option<String>,
     max_connections: u32,
+    claimed_work_ttl_ms: i64,
 }
 
 impl Default for PgStoreBuilder {
@@ -53,6 +55,7 @@ impl Default for PgStoreBuilder {
         Self {
             connection_string: None,
             max_connections: 10,
+            claimed_work_ttl_ms: crate::DEFAULT_CLAIMED_WORK_TTL_MS,
         }
     }
 }
@@ -68,6 +71,11 @@ impl PgStoreBuilder {
         self
     }
 
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.claimed_work_ttl_ms = value.max(0);
+        self
+    }
+
     pub async fn build(self) -> Result<PgStore> {
         let connection_string = self
             .connection_string
@@ -77,7 +85,10 @@ impl PgStoreBuilder {
             .connect(&connection_string)
             .await
             .map_err(crate::PersistenceError::PostgresConnect)?;
-        Ok(PgStore { pool })
+        Ok(PgStore {
+            pool,
+            claimed_work_ttl_ms: self.claimed_work_ttl_ms,
+        })
     }
 }
 
@@ -195,6 +206,109 @@ impl JungleStore for PgStore {
             history.push(decode_history_row(journey_id, row.kind, row.data)?);
         }
         Ok(history)
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage> {
+        let fetch_started_at = Instant::now();
+        let limit = limit.max(1);
+        let after_sequence_id = after_sequence_id
+            .map(|seq| {
+                i64::try_from(seq).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "sequence id exceeds i64 range for postgres: {seq}"
+                    ))
+                })
+            })
+            .transpose()?;
+        let snapshot_end_sequence_id = match snapshot_end_sequence_id {
+            Some(seq) => Some(i64::try_from(seq).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "sequence id exceeds i64 range for postgres: {seq}"
+                ))
+            })?),
+            None => sqlx::query_scalar::<_, Option<i64>>(
+                r#"
+                SELECT MAX(sequence_id)
+                FROM events
+                WHERE journey_id = $1
+                "#,
+            )
+            .bind(journey_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?,
+        };
+
+        let events = if let Some(snapshot_end_sequence_id) = snapshot_end_sequence_id {
+            let rows = sqlx::query(
+                r#"
+                SELECT sequence_id, kind, data
+                FROM events
+                WHERE journey_id = $1
+                  AND sequence_id > COALESCE($2, -1)
+                  AND sequence_id <= $3
+                ORDER BY sequence_id
+                LIMIT $4
+                "#,
+            )
+            .bind(journey_id)
+            .bind(after_sequence_id)
+            .bind(snapshot_end_sequence_id)
+            .bind(i64::from(limit))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+            let mut events = Vec::with_capacity(rows.len());
+            for row in rows {
+                let sequence_id_i64 = row
+                    .try_get::<i64, _>("sequence_id")
+                    .map_err(crate::PersistenceError::PostgresQuery)?;
+                let kind = row
+                    .try_get::<i16, _>("kind")
+                    .map_err(crate::PersistenceError::PostgresQuery)?;
+                let data = row
+                    .try_get::<Vec<u8>, _>("data")
+                    .map_err(crate::PersistenceError::PostgresQuery)?;
+                let sequence_id = u64::try_from(sequence_id_i64).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "negative sequence_id in postgres events: {}",
+                        sequence_id_i64
+                    ))
+                })?;
+                events.push(JourneyEvent {
+                    sequence_id,
+                    event: decode_history_row(journey_id, kind, data)?,
+                });
+            }
+            events
+        } else {
+            Vec::new()
+        };
+
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        if fetch_elapsed_ms > PG_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                after_sequence_id = after_sequence_id.unwrap_or(-1),
+                snapshot_end_sequence_id = snapshot_end_sequence_id.unwrap_or(-1),
+                limit,
+                events_len = events.len(),
+                fetch_elapsed_ms,
+                "slow postgres journey_replay_page query"
+            );
+        }
+
+        Ok(JourneyReplayPage {
+            snapshot_end_sequence_id: snapshot_end_sequence_id.map(|seq| seq as u64),
+            events,
+        })
     }
 
     async fn journey_update_events_since(
@@ -716,7 +830,7 @@ impl JungleStore for PgStore {
             claimed AS (
                 UPDATE work_items wi
                 SET status = $5,
-                    expiry = NOW() + INTERVAL '30 seconds'
+                    expiry = NOW() + ($8 * INTERVAL '1 millisecond')
                 FROM candidate c
                 WHERE wi.id = c.id
                 RETURNING wi.journey_id, wi.kind
@@ -733,6 +847,7 @@ impl JungleStore for PgStore {
         .bind(1_i16)
         .bind(encode_journey_status(JourneyStatus::Created))
         .bind(encode_journey_status(JourneyStatus::Alive))
+        .bind(self.claimed_work_ttl_ms)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;

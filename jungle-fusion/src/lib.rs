@@ -2,10 +2,11 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::stream;
 use jungle_client::{JourneyHandle, JourneyUpdateSubscription, JungleClient};
+use jungle_server::server::ServerBuilder as LocalServerBuilder;
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
 use jungle_types::{
     Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyRecord,
-    JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
+    JourneyReplayPage, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -39,6 +40,7 @@ pub struct FusedClient {
 pub struct FusedClientBuilder {
     namespace: String,
     backend: Option<Arc<dyn JungleServer>>,
+    local_backend: LocalServerBuilder,
 }
 
 impl Default for FusedClientBuilder {
@@ -46,6 +48,7 @@ impl Default for FusedClientBuilder {
         Self {
             namespace: DEFAULT_NAMESPACE.to_string(),
             backend: None,
+            local_backend: Server::builder().memory(),
         }
     }
 }
@@ -68,12 +71,17 @@ impl FusedClientBuilder {
         self
     }
 
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.local_backend = self.local_backend.claimed_work_ttl_ms(value);
+        self
+    }
+
     pub async fn build(self) -> Result<FusedClient, FusedClientError> {
         let backend = if let Some(backend) = self.backend {
             backend
         } else {
-            let server = Server::builder()
-                .memory()
+            let server = self
+                .local_backend
                 .build()
                 .await
                 .map_err(|err| FusedClientError::BuildServer(err.to_string()))?;
@@ -330,6 +338,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
     match input {
         WireIn::CreateJourney { .. } => "CreateJourney",
         WireIn::JourneyHistory(..) => "JourneyHistory",
+        WireIn::JourneyReplayPage { .. } => "JourneyReplayPage",
         WireIn::JourneyStatus(..) => "JourneyStatus",
         WireIn::ListJourneys { .. } => "ListJourneys",
         WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",
@@ -407,6 +416,29 @@ impl JungleClient for FusedClient {
             WireOut::JourneyHistory(history) => Ok(history),
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-history response for journey_history".to_string(),
+            )),
+        }
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::JourneyReplayPage {
+                journey_id,
+                after_sequence_id,
+                snapshot_end_sequence_id,
+                limit,
+            })
+            .await?;
+        match response {
+            WireOut::JourneyReplayPage(page) => Ok(page),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected non-journey-replay-page response for journey_replay_page".to_string(),
             )),
         }
     }

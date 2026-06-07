@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyRecord, JourneyReplayPage, JourneyStatus, JourneyUpdateEvent,
+    OwnerWake, RunnerOut, SupportedAnimal, Work,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -16,6 +16,7 @@ pub mod redb;
 
 pub type Error = PersistenceError;
 pub type Result<T> = std::result::Result<T, Error>;
+pub const DEFAULT_CLAIMED_WORK_TTL_MS: i64 = 30_000;
 
 #[derive(Debug, Clone)]
 pub enum Kind {
@@ -27,9 +28,19 @@ pub enum Kind {
     Memory,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct StoreBuilder {
     kind: Option<Kind>,
+    claimed_work_ttl_ms: i64,
+}
+
+impl Default for StoreBuilder {
+    fn default() -> Self {
+        Self {
+            kind: None,
+            claimed_work_ttl_ms: DEFAULT_CLAIMED_WORK_TTL_MS,
+        }
+    }
 }
 
 impl StoreBuilder {
@@ -44,6 +55,11 @@ impl StoreBuilder {
 
     pub fn has_kind(&self) -> bool {
         self.kind.is_some()
+    }
+
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.claimed_work_ttl_ms = value.max(0);
+        self
     }
 
     #[cfg(feature = "postgres")]
@@ -76,19 +92,29 @@ impl StoreBuilder {
         {
             match self.kind {
                 Some(Kind::Postgres(builder)) => {
-                    let store = builder.build().await?;
+                    let store = builder
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()
+                        .await?;
                     return Ok(Box::new(store));
                 }
                 Some(Kind::Redb(builder)) => {
-                    let store = builder.build()?;
+                    let store = builder
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()?;
                     return Ok(Box::new(store));
                 }
                 Some(Kind::Memory) => {
-                    let store = redb::RedbStore::in_memory()?;
+                    let store = redb::RedbStore::in_memory_with_claimed_work_ttl_ms(
+                        self.claimed_work_ttl_ms,
+                    )?;
                     return Ok(Box::new(store));
                 }
                 None => {
-                    let store = pg::PgStore::builder().build().await?;
+                    let store = pg::PgStore::builder()
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()
+                        .await?;
                     return Ok(Box::new(store));
                 }
             }
@@ -98,11 +124,17 @@ impl StoreBuilder {
         {
             match self.kind {
                 Some(Kind::Postgres(builder)) => {
-                    let store = builder.build().await?;
+                    let store = builder
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()
+                        .await?;
                     return Ok(Box::new(store));
                 }
                 None => {
-                    let store = pg::PgStore::builder().build().await?;
+                    let store = pg::PgStore::builder()
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()
+                        .await?;
                     return Ok(Box::new(store));
                 }
             }
@@ -112,15 +144,21 @@ impl StoreBuilder {
         {
             match self.kind {
                 Some(Kind::Redb(builder)) => {
-                    let store = builder.build()?;
+                    let store = builder
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()?;
                     return Ok(Box::new(store));
                 }
                 Some(Kind::Memory) => {
-                    let store = redb::RedbStore::in_memory()?;
+                    let store = redb::RedbStore::in_memory_with_claimed_work_ttl_ms(
+                        self.claimed_work_ttl_ms,
+                    )?;
                     return Ok(Box::new(store));
                 }
                 None => {
-                    let store = redb::RedbStore::builder().build()?;
+                    let store = redb::RedbStore::builder()
+                        .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
+                        .build()?;
                     return Ok(Box::new(store));
                 }
             }
@@ -166,6 +204,13 @@ pub trait JungleStore: DynClone + Send + Sync {
         seed: Vec<u8>,
     ) -> Result<Uuid>;
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>>;
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage>;
     async fn journey_update_events_since(
         &self,
         journey_id: Uuid,

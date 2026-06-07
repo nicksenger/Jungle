@@ -62,6 +62,11 @@ pub struct ServerBuilder {
 
 #[cfg(any(feature = "postgres", feature = "redb"))]
 impl ServerBuilder {
+    pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
+        self.db = self.db.claimed_work_ttl_ms(value);
+        self
+    }
+
     #[cfg(feature = "postgres")]
     pub fn postgres(mut self, builder: jungle_persist::pg::PgStoreBuilder) -> Self {
         self.db = self.db.kind(Kind::Postgres(builder));
@@ -170,6 +175,42 @@ impl JungleServer for Server {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
                         "journey_history is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::JourneyReplayPage {
+                journey_id,
+                after_sequence_id,
+                snapshot_end_sequence_id,
+                limit,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let page = self
+                        .store
+                        .journey_replay_page(
+                            journey_id,
+                            after_sequence_id,
+                            snapshot_end_sequence_id,
+                            limit,
+                        )
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::JourneyReplayPage(page)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (
+                        journey_id,
+                        after_sequence_id,
+                        snapshot_end_sequence_id,
+                        limit,
+                    );
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "journey_replay_page is unavailable without a persistence backend"
+                            .to_string(),
                     )));
                 }
             }
@@ -846,6 +887,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
     match input {
         WireIn::CreateJourney { .. } => "CreateJourney",
         WireIn::JourneyHistory(..) => "JourneyHistory",
+        WireIn::JourneyReplayPage { .. } => "JourneyReplayPage",
         WireIn::JourneyStatus(..) => "JourneyStatus",
         WireIn::ListJourneys { .. } => "ListJourneys",
         WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",

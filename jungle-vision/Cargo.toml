@@ -8,6 +8,7 @@ iced = { version = "0.14", features = ["tokio"] }
 iced-sugiyama = { git = "https://github.com/nicksenger/iced-sugiyama.git", branch = "jungle" }
 rust_sugiyama = { package = "iced-sugiyama-core", git = "https://github.com/nicksenger/iced-sugiyama.git", branch = "jungle" }
 jungle-client = { path = "../jungle-client" }
+jungle-core = { path = "../jungle-core" }
 jungle-types = { path = "../jungle-types" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 uuid = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "jungle-zoo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk" }
+serde = { workspace = true }
+tracing = "0.1"
+
+[lints]
+workspace = true

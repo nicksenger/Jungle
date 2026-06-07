@@ -21,15 +21,15 @@ impl<const EFFECT_ID: usize> IdValue for CompileEffectId<EFFECT_ID> {
     type Value = num::U0;
 }
 
-pub struct CompileNoop<const EFFECT_ID: usize>;
-impl<const EFFECT_ID: usize> EffectSchema for CompileNoop<EFFECT_ID> {
+pub struct CompileNoEffect<const EFFECT_ID: usize>;
+impl<const EFFECT_ID: usize> EffectSchema for CompileNoEffect<EFFECT_ID> {
     type Id = CompileEffectId<EFFECT_ID>;
     type In = ();
     type Out = ();
     type Err = ();
 }
 
-impl<J, const EFFECT_ID: usize> Effect<J> for CompileNoop<EFFECT_ID> {
+impl<J, const EFFECT_ID: usize> Effect<J> for CompileNoEffect<EFFECT_ID> {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -80,7 +80,7 @@ impl<const EFFECT_ID: usize> Action for TickSpec<EFFECT_ID> {
 pub struct FocusTickSpec<const EFFECT_ID: usize>;
 #[jungle::action]
 impl<const EFFECT_ID: usize> Action for FocusTickSpec<EFFECT_ID> {
-    type Effect = CompileNoop<EFFECT_ID>;
+    type Effect = CompileNoEffect<EFFECT_ID>;
     type Input = ();
     type Output = ();
 
@@ -91,7 +91,7 @@ impl<const EFFECT_ID: usize> Action for FocusTickSpec<EFFECT_ID> {
     fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Result<Self::Output, Failure> {
         let __absorb_out_2 = {
         black_box(EFFECT_ID);
-        output.map_err(|_err| Failure::from("focused noop effect should succeed"))?;
+        output.map_err(|_err| Failure::from("focused no-effect should succeed"))?;
         };
         Ok(__absorb_out_2)
     }
@@ -140,7 +140,7 @@ impl<const EFFECT_ID: usize> Action for JoinTickSpec<EFFECT_ID> {
 pub struct JoinFlattenSpec<const EFFECT_ID: usize>;
 #[jungle::action]
 impl<const EFFECT_ID: usize> Action for JoinFlattenSpec<EFFECT_ID> {
-    type Effect = CompileNoop<EFFECT_ID>;
+    type Effect = CompileNoEffect<EFFECT_ID>;
     type Input = ((), ());
     type Output = ();
 

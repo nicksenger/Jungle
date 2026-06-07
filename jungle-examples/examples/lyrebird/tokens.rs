@@ -442,6 +442,28 @@ mod tests {
     }
 
     #[test]
+    fn request_uses_configured_tokens_model() {
+        let ecosystem = PulseCodePurgatory::new(
+            Url::parse("https://api.openai.com/v1").unwrap(),
+            None,
+            Some(temp_db_path("request-model")),
+        )
+        .unwrap()
+        .with_tokens_model("gpt-5.4");
+        let request = ecosystem
+            .chat_completions_request(&Prompt {
+                messages: vec![Message {
+                    role: "user".to_owned(),
+                    contents: vec![Content::Text("hello".to_owned())],
+                }],
+                tools: Vec::new(),
+            })
+            .unwrap();
+
+        assert_eq!(request["model"], "gpt-5.4");
+    }
+
+    #[test]
     fn tool_calls_round_trip_through_postcard() {
         let tool_calls = vec![ToolCall {
             id: Some("call_123".to_owned()),

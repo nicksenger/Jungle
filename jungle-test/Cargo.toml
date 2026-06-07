@@ -11,9 +11,11 @@ postgres = []
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb", "fusion"] }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 jungle-persist = { path = "../jungle-persist", features = ["postgres"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures = { workspace = true }
+proptest = "1"
 uuid = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 postcard = { workspace = true, features = ["alloc"] }

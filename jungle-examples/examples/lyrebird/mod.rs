@@ -23,51 +23,58 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, FinalizeIterationRender, FlattenEither, FlattenLyrebirdPromptPhase,
+    BeginIteration, BuildOptimizationPromptFocused, CompareIterationCandidateMels, FlattenEither,
+    FlattenLyrebirdPromptPhase, GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
     InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
-    OptimizeSelectedInstrumentFocused, SeedLyrebirdState, SelectDspBranchFocused,
-    SetCurrentInstrument, SkipInstrumentPromptFocused, SkipInstrumentSubmit, SubmitDspBranch,
+    PreparePromptCandidatesFocused, RequestPromptCandidatesFocused, SeedLyrebirdState,
+    SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
+    SkipInstrumentSubmit, SubmitDspBranch,
 };
-use crate::tokens::Tool;
+use crate::tokens::{Prompt, Tool};
 
 const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 64;
 const DEFAULT_INSTRUMENT_PARALLELISM: usize = 1;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
+pub(crate) const DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE: &str =
+    "You are an experienced software engineer and an expert in digital signal processing.";
 pub(crate) const LYREBIRD_DURATION_SECS: f64 = 4.0;
-pub(crate) const GUITAR_INTRO_SCORE_SPEC: &str =
-    "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
+pub(crate) const GUITAR_INTRO_SCORE_SPEC: &str = "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
 pub(crate) const VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[346,68,288,'come'],[634,68,96,'to'],[730,66,96,'the'],[826,71,384,'jun'],[1210,68,192,'gol'],[1786,66,96,'weve'],[1882,68,288,'got'],[2170,68,96,'fun'],[2266,66,192,'and'],[2458,68,288,'games']";
 pub(crate) const BACKUP_VOCALS_SCORE_SPEC: &str = "vocals(group-harmony):[150,71,384],[534,70,384],[918,68,384],[1302,66,384],[1686,73,384],[2070,72,384],[2454,70,384],[2838,68,384]";
 pub(crate) const GUITAR_SOLO_SCORE_SPEC: &str = "electric-guitar(sustained):[240,60,192],[432,72,128],[560,75,129],[689,82,896],[1585,82,128],[1713,81,129],[1842,80,704],[2546,78,96],[2642,79,96],[2738,73,672],[3410,73,224]";
 pub(crate) const BASS_SCORE_SPEC: &str = "bass:[150,32,192],[342,32,192],[534,30,192],[726,27,96],[822,32,192],[1014,27,96],[1110,30,192],[1302,29,192],[1494,27,192],[1686,32,192],[1878,32,192],[2070,30,192],[2262,27,96],[2358,32,192],[2550,27,96],[2646,42,96],[2838,42,96],[3030,42,96]";
 pub(crate) const DRUMS_CYMBAL_SCORE_SPEC: &str =
     "cymbal:[150,57,192],[438,49,192],[726,57,192],[1686,57,192]";
-pub(crate) const DRUMS_HIHAT_SCORE_SPEC: &str =
-    "hihat:[1878,46,192],[2070,46,192],[2262,46,192],[2454,46,192],[2646,46,192],[2838,46,192],[3030,46,192],[3222,46,192]";
-pub(crate) const DRUMS_KICK_DRUM_SCORE_SPEC: &str =
-    "kick-drum:[150,36,192],[438,36,192],[726,36,192],[1110,36,192],[1686,36,48],[1686,36,192],[2454,36,192],[3030,36,192],[3222,36,192]";
+pub(crate) const DRUMS_HIHAT_SCORE_SPEC: &str = "hihat:[1878,46,192],[2070,46,192],[2262,46,192],[2454,46,192],[2646,46,192],[2838,46,192],[3030,46,192],[3222,46,192]";
+pub(crate) const DRUMS_KICK_DRUM_SCORE_SPEC: &str = "kick-drum:[150,36,192],[438,36,192],[726,36,192],[1110,36,192],[1686,36,48],[1686,36,192],[2454,36,192],[3030,36,192],[3222,36,192]";
 pub(crate) const DRUMS_SNARE_DRUM_SCORE_SPEC: &str =
     "snare-drum:[1302,38,48],[1350,38,192],[2070,38,192],[2838,38,192],[3606,38,192]";
+pub(crate) const DRUMS_TOMS_SCORE_SPEC: &str = "toms:[150,36,192],[438,36,192],[726,36,192],[1110,36,192],[1686,36,48],[1686,36,192],[2454,36,192],[3030,36,192],[3222,36,192]";
 
 const RHYTHM_GUITAR_SCORE_SPECS: [&str; 1] = [GUITAR_INTRO_SCORE_SPEC];
 const VOCALS_SCORE_SPECS: [&str; 1] = [VOCALS_SCORE_SPEC];
 const BACKUP_VOCALS_SCORE_SPECS: [&str; 1] = [BACKUP_VOCALS_SCORE_SPEC];
 const BASS_SCORE_SPECS: [&str; 1] = [BASS_SCORE_SPEC];
 const GUITAR_SOLO_SCORE_SPECS: [&str; 1] = [GUITAR_SOLO_SCORE_SPEC];
-const DRUMS_SCORE_SPECS: [&str; 4] = [
+const DRUMS_SCORE_SPECS: [&str; 5] = [
     DRUMS_CYMBAL_SCORE_SPEC,
     DRUMS_HIHAT_SCORE_SPEC,
     DRUMS_KICK_DRUM_SCORE_SPEC,
     DRUMS_SNARE_DRUM_SCORE_SPEC,
+    DRUMS_TOMS_SCORE_SPEC,
 ];
+
+pub(crate) fn lyrebird_system_prompt_override_text(override_text: Option<&str>) -> &str {
+    override_text.unwrap_or(DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE)
+}
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DspCode {
     pub iteration_id: String,
     pub source: String,
-    pub sample_path: String,
-    pub spectrogram_path: String,
+    pub sample_path: PathBuf,
+    pub spectrogram_path: PathBuf,
     #[serde(default, alias = "similarity")]
     pub mel_similarity: Option<f32>,
     #[serde(default)]
@@ -178,7 +185,7 @@ fn normalized_relative_error(target: f32, generated: f32) -> f32 {
 pub struct LyrebirdBranchNode {
     pub code: DspCode,
     pub patch: Option<LyrebirdPatch>,
-    pub mel_spectrogram_path: String,
+    pub mel_spectrogram_path: PathBuf,
 }
 
 impl LyrebirdBranchNode {
@@ -223,8 +230,8 @@ pub struct LyrebirdGeneratedCandidate {
 pub struct LyrebirdPreparedCandidate {
     pub patch: LyrebirdPatch,
     pub source: String,
-    pub sample_path: String,
-    pub spectrogram_path: String,
+    pub sample_path: PathBuf,
+    pub spectrogram_path: PathBuf,
 }
 
 #[derive(
@@ -264,8 +271,8 @@ impl LyrebirdInstrument {
     pub fn display_name(self) -> &'static str {
         match self {
             Self::RhythmGuitar => "Electric Guitar (Intro)",
-            Self::Vocals => "Vocals (Formant)",
-            Self::BackupVocals => "Vocals (Group Harmony)",
+            Self::Vocals => "Vocals (Lead)",
+            Self::BackupVocals => "Vocals (Backup)",
             Self::Bass => "Bass",
             Self::GuitarSolo => "Electric Guitar (Solo)",
             Self::Drums => "Drums",
@@ -302,9 +309,7 @@ impl LyrebirdInstrument {
             Self::Vocals => {
                 "jungle-examples/examples/welcome/audio/src/dsp/vocals/formant/speech_synthesis/singer.rs"
             }
-            Self::BackupVocals => {
-                "jungle-examples/examples/welcome/audio/src/dsp/vocals/backup.rs"
-            }
+            Self::BackupVocals => "jungle-examples/examples/welcome/audio/src/dsp/vocals/backup.rs",
             Self::Bass => "jungle-examples/examples/welcome/audio/src/dsp/bass.rs",
             Self::GuitarSolo => {
                 "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar/lead.rs"
@@ -358,9 +363,7 @@ impl LyrebirdInstrument {
             .collect::<String>();
 
         match normalized.as_str() {
-            "rhythmguitar" | "introguitar" | "guitarintro" | "intro" => {
-                Ok(Self::RhythmGuitar)
-            }
+            "rhythmguitar" | "introguitar" | "guitarintro" | "intro" => Ok(Self::RhythmGuitar),
             "vocals" | "leadvocals" | "leadvocal" | "vocal" => Ok(Self::Vocals),
             "backupvocals" | "backingvocals" | "harmonyvocals" | "groupharmony" => {
                 Ok(Self::BackupVocals)
@@ -385,22 +388,28 @@ pub struct LyrebirdInstrumentState {
     #[serde(default)]
     pub disabled: bool,
     #[serde(default)]
-    pub target_sample_path: String,
+    pub target_sample_path: PathBuf,
     #[serde(default)]
     pub target_audio_metrics: LyrebirdAudioMetrics,
-    pub target_spectrogram_path: String,
-    pub dsp_source_path: String,
+    pub target_spectrogram_path: PathBuf,
+    pub dsp_source_path: PathBuf,
     pub initial_dsp_code: DspCode,
     pub selected_branch: Vec<LyrebirdBranchNode>,
-    pub sample_path: String,
-    pub spectrogram_path: String,
+    pub sample_path: PathBuf,
+    pub spectrogram_path: PathBuf,
     pub last_similarity: f32,
     pub compile_ready: bool,
     #[serde(default)]
     pub instrument_parallelism: usize,
+    #[serde(default)]
+    pub system_prompt_override: Option<String>,
     pub prompt_attempt: u32,
     #[serde(default)]
     pub iteration_id: String,
+    #[serde(default)]
+    pub pending_prompt: Option<Prompt>,
+    #[serde(default)]
+    pub pending_prompt_candidates: Vec<crate::effect::PromptCandidateResponse>,
     pub skipped_this_iteration: bool,
     pub last_retry_reason: Option<String>,
     pub pending_generated_patch: Option<LyrebirdPatch>,
@@ -412,17 +421,17 @@ pub struct LyrebirdInstrumentState {
     pub pending_candidates: Vec<LyrebirdPreparedCandidate>,
     #[serde(default)]
     pub iteration_candidates: Vec<LyrebirdGeneratedCandidate>,
-    pub latest_generated_sample_path: Option<String>,
-    pub latest_generated_spectrogram_path: Option<String>,
+    pub latest_generated_sample_path: Option<PathBuf>,
+    pub latest_generated_spectrogram_path: Option<PathBuf>,
     pub latest_generated_similarity: Option<f32>,
     pub best_generated_code: Option<DspCode>,
-    pub best_generated_sample_path: Option<String>,
-    pub best_generated_spectrogram_path: Option<String>,
+    pub best_generated_sample_path: Option<PathBuf>,
+    pub best_generated_spectrogram_path: Option<PathBuf>,
     pub best_similarity: Option<f32>,
 }
 
 impl LyrebirdInstrumentState {
-    fn from_seed(seed: LyrebirdInstrumentSeed) -> Self {
+    fn from_seed(seed: LyrebirdInstrumentSeed, system_prompt_override: Option<&str>) -> Self {
         Self {
             instrument: seed.instrument,
             disabled: seed.disabled,
@@ -432,6 +441,7 @@ impl LyrebirdInstrumentState {
             dsp_source_path: seed.dsp_source_path,
             initial_dsp_code: seed.initial_dsp_code.clone(),
             selected_branch: vec![seed.initial_dsp_code.into()],
+            system_prompt_override: system_prompt_override.map(str::to_owned),
             ..Self::default()
         }
     }
@@ -439,10 +449,10 @@ impl LyrebirdInstrumentState {
     fn observation_placeholder(instrument: LyrebirdInstrument) -> Self {
         Self {
             instrument,
-            target_sample_path: instrument.relative_target_sample_path().to_owned(),
+            target_sample_path: PathBuf::from(instrument.relative_target_sample_path()),
             target_audio_metrics: LyrebirdAudioMetrics::default(),
-            target_spectrogram_path: String::new(),
-            dsp_source_path: instrument.relative_dsp_path().to_owned(),
+            target_spectrogram_path: PathBuf::new(),
+            dsp_source_path: PathBuf::from(instrument.relative_dsp_path()),
             initial_dsp_code: DspCode::placeholder_initial(),
             selected_branch: vec![DspCode::placeholder_initial().into()],
             ..Self::default()
@@ -451,24 +461,20 @@ impl LyrebirdInstrumentState {
 
     fn begin_iteration(
         &mut self,
-        output_root: &str,
+        output_root: &Path,
         iteration_id: &str,
         instrument_parallelism: usize,
     ) {
-        let iteration_dir = PathBuf::from(output_root).join(iteration_id);
+        let iteration_dir = output_root.join(iteration_id);
         let sample_stem = self.instrument.output_stem();
-        self.sample_path = iteration_dir
-            .join(format!("{sample_stem}.wav"))
-            .display()
-            .to_string();
-        self.spectrogram_path = iteration_dir
-            .join(format!("{sample_stem}.png"))
-            .display()
-            .to_string();
+        self.sample_path = iteration_dir.join(format!("{sample_stem}.wav"));
+        self.spectrogram_path = iteration_dir.join(format!("{sample_stem}.png"));
         self.compile_ready = false;
         self.instrument_parallelism = instrument_parallelism;
         self.prompt_attempt = 0;
         self.iteration_id = iteration_id.to_owned();
+        self.pending_prompt = None;
+        self.pending_prompt_candidates.clear();
         self.skipped_this_iteration = false;
         self.last_retry_reason = None;
         self.pending_generated_patch = None;
@@ -516,7 +522,7 @@ pub type DrumsPromptState = PromptInstrumentState<DrumsMarker>;
 
 #[derive(Optic, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdState {
-    pub output_root: String,
+    pub output_root: PathBuf,
     pub current_instrument: LyrebirdInstrument,
     #[jungle(focus)]
     pub rhythm_guitar: RhythmGuitarPromptState,
@@ -599,17 +605,26 @@ impl LyrebirdState {
     }
 
     pub fn matches_seed_instrument_selection(&self, seed: &LyrebirdSeed) -> bool {
-        LyrebirdInstrument::ALL.into_iter().all(|instrument| {
-            let state = self.instrument_state(instrument);
-            seed.instruments
-                .iter()
-                .find(|seed| seed.instrument == instrument)
-                .map(|seed_state| {
-                    state.disabled == seed_state.disabled
-                        && state.target_audio_metrics == seed_state.target_audio_metrics
-                })
-                .unwrap_or(false)
-        })
+        let prompt_override_matches = LyrebirdInstrument::ALL.into_iter().all(|instrument| {
+            lyrebird_system_prompt_override_text(
+                self.instrument_state(instrument)
+                    .system_prompt_override
+                    .as_deref(),
+            ) == lyrebird_system_prompt_override_text(seed.system_prompt_override.as_deref())
+        });
+
+        prompt_override_matches
+            && LyrebirdInstrument::ALL.into_iter().all(|instrument| {
+                let state = self.instrument_state(instrument);
+                seed.instruments
+                    .iter()
+                    .find(|seed| seed.instrument == instrument)
+                    .map(|seed_state| {
+                        state.disabled == seed_state.disabled
+                            && state.target_audio_metrics == seed_state.target_audio_metrics
+                    })
+                    .unwrap_or(false)
+            })
     }
 }
 
@@ -623,20 +638,22 @@ pub struct LyrebirdInstrumentSeed {
     #[serde(default)]
     pub disabled: bool,
     #[serde(default)]
-    pub target_sample_path: String,
+    pub target_sample_path: PathBuf,
     #[serde(default)]
     pub target_audio_metrics: LyrebirdAudioMetrics,
-    pub target_spectrogram_path: String,
-    pub dsp_source_path: String,
+    pub target_spectrogram_path: PathBuf,
+    pub dsp_source_path: PathBuf,
     pub initial_dsp_code: DspCode,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdSeed {
-    pub output_root: String,
+    pub output_root: PathBuf,
     pub instruments: Vec<LyrebirdInstrumentSeed>,
     #[serde(default = "default_instrument_parallelism")]
     pub instrument_parallelism: usize,
+    #[serde(default)]
+    pub system_prompt_override: Option<String>,
 }
 
 impl From<LyrebirdSeed> for LyrebirdState {
@@ -645,7 +662,9 @@ impl From<LyrebirdSeed> for LyrebirdState {
             output_root,
             instruments,
             instrument_parallelism,
+            system_prompt_override,
         } = seed;
+        let system_prompt_override = system_prompt_override.as_deref();
         let current_instrument = instruments
             .first()
             .map(|instrument| instrument.instrument)
@@ -655,7 +674,7 @@ impl From<LyrebirdSeed> for LyrebirdState {
             .into_iter()
             .map(|seed| {
                 let instrument = seed.instrument;
-                let mut state = LyrebirdInstrumentState::from_seed(seed);
+                let mut state = LyrebirdInstrumentState::from_seed(seed, system_prompt_override);
                 state.instrument_parallelism = instrument_parallelism;
                 (instrument, state)
             })
@@ -765,7 +784,9 @@ macro_rules! lyrebird_prompt_flow {
         #[derive(Flow)]
         pub struct $enabled(
             Step<SelectDspBranchFocused<$marker, $focus>>,
-            Step<OptimizeSelectedInstrumentFocused<$marker, $focus>>,
+            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
+            Step<RequestPromptCandidatesFocused<$marker, $focus>>,
+            Step<PreparePromptCandidatesFocused<$marker, $focus>>,
         );
 
         #[derive(Flow)]
@@ -848,6 +869,9 @@ pub struct LyrebirdPromptPhase(
 #[derive(Flow)]
 pub struct LyrebirdInstrumentSubmitEnabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
     Step<SetCurrentInstrument<Marker>>,
+    Step<GenerateIterationCandidateAudio<Marker>>,
+    Step<GenerateIterationCandidateMels<Marker>>,
+    Step<CompareIterationCandidateMels<Marker>>,
     Step<SubmitDspBranch<Marker>>,
 );
 
@@ -872,7 +896,6 @@ pub struct LyrebirdIteration(
     Step<LogIterationTiming>,
     Step<BeginIteration>,
     LyrebirdPromptPhase,
-    Step<FinalizeIterationRender>,
     LyrebirdInstrumentSubmit<RhythmGuitarMarker>,
     LyrebirdInstrumentSubmit<VocalsMarker>,
     LyrebirdInstrumentSubmit<BackupVocalsMarker>,
@@ -1093,6 +1116,11 @@ impl PulseCodePurgatory {
         self.instrument_parallelism = instrument_parallelism;
         self
     }
+
+    pub fn with_tokens_model(mut self, tokens_model: impl Into<String>) -> Self {
+        self.tokens_model = tokens_model.into();
+        self
+    }
 }
 
 impl Ecosystem for PulseCodePurgatory {
@@ -1178,6 +1206,16 @@ struct Cli {
     tokens_api: TokensApiConfig,
     #[arg(long = "tokens-token")]
     tokens_token: Option<String>,
+    #[arg(
+        long = "tokens-model",
+        help = "OpenAI-compatible model string for chat completions requests; defaults to LYREBIRD_TOKENS_MODEL or codemonkey-d-luffy"
+    )]
+    tokens_model: Option<String>,
+    #[arg(
+        long = "system-prompt-override",
+        help = "Override the first line of the lyrebird system prompt; defaults to the built-in DSP engineer prompt"
+    )]
+    system_prompt_override: Option<String>,
     #[arg(long = "db-path")]
     db_path: Option<PathBuf>,
     #[arg(long = "jungle-redb-path")]
@@ -1237,6 +1275,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
     let ecosystem = PulseCodePurgatory::new(cli.tokens_api, cli.tokens_token, cli.db_path)?
+        .with_tokens_model(
+            cli.tokens_model
+                .unwrap_or_else(PulseCodePurgatory::tokens_model_from_env),
+        )
         .with_tools(
             LyrebirdInstrument::ALL
                 .into_iter()
@@ -1255,6 +1297,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workers = cli.workers,
         tree_depth = cli.tree_depth,
         instrument_parallelism = cli.instrument_parallelism,
+        tokens_model = %ecosystem.tokens_model,
         instruments = %selected_instruments
             .iter()
             .map(|instrument| instrument.slug())
@@ -1293,6 +1336,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &instrument_seeds,
         cli.instrument_parallelism,
         &selected_instruments,
+        cli.system_prompt_override,
     );
     let journey_id = ensure_lyrebird_running(&client, &seed).await?;
 
@@ -1347,25 +1391,21 @@ async fn build_instrument_seeds(
         let target_spectrogram_path = output_root
             .join("target-mels")
             .join(format!("{}.png", instrument.output_stem()));
-        let target_audio_metrics = effect::analyze_audio_file(
-            &target_sample_path.display().to_string(),
-        )
-        .map_err(|err| {
-            PulseCodePurgatoryError::Bootstrap(format!(
-                "failed to analyze target sample for {}: {err}",
-                instrument.slug()
-            ))
-        })?;
-        effect::generate_mel_spectrogram(
-            &target_sample_path.display().to_string(),
-            &target_spectrogram_path.display().to_string(),
-        )
-        .map_err(|err| {
-            PulseCodePurgatoryError::Bootstrap(format!(
-                "failed to generate target mel spectrogram for {}: {err}",
-                instrument.slug()
-            ))
-        })?;
+        let target_audio_metrics =
+            effect::analyze_audio_file(&target_sample_path).map_err(|err| {
+                PulseCodePurgatoryError::Bootstrap(format!(
+                    "failed to analyze target sample for {}: {err}",
+                    instrument.slug()
+                ))
+            })?;
+        effect::generate_mel_spectrogram(&target_sample_path, &target_spectrogram_path).map_err(
+            |err| {
+                PulseCodePurgatoryError::Bootstrap(format!(
+                    "failed to generate target mel spectrogram for {}: {err}",
+                    instrument.slug()
+                ))
+            },
+        )?;
         let initial_dsp_code = effect::capture_current_dsp_code_snapshot(
             "initial",
             output_root,
@@ -1379,10 +1419,10 @@ async fn build_instrument_seeds(
         seeds.push(LyrebirdInstrumentSeed {
             instrument,
             disabled: false,
-            target_sample_path: target_sample_path.display().to_string(),
+            target_sample_path,
             target_audio_metrics,
-            target_spectrogram_path: target_spectrogram_path.display().to_string(),
-            dsp_source_path: dsp_source_path.display().to_string(),
+            target_spectrogram_path,
+            dsp_source_path,
             initial_dsp_code,
         });
     }
@@ -1394,6 +1434,7 @@ fn build_seed(
     instruments: &[LyrebirdInstrumentSeed],
     instrument_parallelism: usize,
     selected_instruments: &[LyrebirdInstrument],
+    system_prompt_override: Option<String>,
 ) -> LyrebirdSeed {
     let selected_lookup = selected_instruments
         .iter()
@@ -1401,7 +1442,7 @@ fn build_seed(
         .collect::<std::collections::BTreeSet<_>>();
 
     LyrebirdSeed {
-        output_root: output_root.display().to_string(),
+        output_root: output_root.to_path_buf(),
         instruments: instruments
             .iter()
             .cloned()
@@ -1411,6 +1452,7 @@ fn build_seed(
             })
             .collect(),
         instrument_parallelism,
+        system_prompt_override,
     }
 }
 
@@ -1418,7 +1460,7 @@ fn restore_instrument_sources(
     instruments: &[LyrebirdInstrumentSeed],
 ) -> Result<(), PulseCodePurgatoryError> {
     for instrument in instruments {
-        let path = PathBuf::from(&instrument.dsp_source_path);
+        let path = instrument.dsp_source_path.clone();
         std::fs::write(&path, &instrument.initial_dsp_code.source).map_err(|source| {
             PulseCodePurgatoryError::RestoreDspSource {
                 path: path.clone(),
@@ -1843,10 +1885,10 @@ mod tests {
         }
     }
 
-    struct HiddenJoinUntakenNoop1;
+    struct HiddenJoinUntakenNoEffect1;
     #[jungle::action]
-    impl Action for HiddenJoinUntakenNoop1 {
-        type Effect = Noop;
+    impl Action for HiddenJoinUntakenNoEffect1 {
+        type Effect = NoEffect;
         type Input = ();
         type Output = ();
 
@@ -1860,10 +1902,10 @@ mod tests {
         }
     }
 
-    struct HiddenJoinUntakenNoop2;
+    struct HiddenJoinUntakenNoEffect2;
     #[jungle::action]
-    impl Action for HiddenJoinUntakenNoop2 {
-        type Effect = Noop;
+    impl Action for HiddenJoinUntakenNoEffect2 {
+        type Effect = NoEffect;
         type Input = ();
         type Output = ();
 
@@ -1877,10 +1919,10 @@ mod tests {
         }
     }
 
-    struct HiddenJoinTakenNoop;
+    struct HiddenJoinTakenNoEffect;
     #[jungle::action]
-    impl Action for HiddenJoinTakenNoop {
-        type Effect = Noop;
+    impl Action for HiddenJoinTakenNoEffect {
+        type Effect = NoEffect;
         type Input = ();
         type Output = ();
 
@@ -1924,37 +1966,44 @@ mod tests {
     }
 
     #[derive(Flow)]
-    struct HiddenJoinUntakenNoopFlow(Step<HiddenJoinUntakenNoop1>, Step<HiddenJoinUntakenNoop2>);
+    struct HiddenJoinUntakenNoEffectFlow(
+        Step<HiddenJoinUntakenNoEffect1>,
+        Step<HiddenJoinUntakenNoEffect2>,
+    );
 
     #[derive(Flow)]
-    struct HiddenJoinTakenNoopFlow(Step<HiddenJoinTakenNoop>);
+    struct HiddenJoinTakenNoEffectFlow(Step<HiddenJoinTakenNoEffect>);
 
     #[derive(Flow)]
-    struct HiddenJoinConditionalNoopFlow(
-        Conditional<HiddenJoinAlwaysFalse, HiddenJoinUntakenNoopFlow, HiddenJoinTakenNoopFlow>,
+    struct HiddenJoinConditionalNoEffectFlow(
+        Conditional<
+            HiddenJoinAlwaysFalse,
+            HiddenJoinUntakenNoEffectFlow,
+            HiddenJoinTakenNoEffectFlow,
+        >,
         Step<FlattenEither<(), i32>>,
     );
 
     #[derive(Flow)]
-    struct HiddenJoinConditionalNoopJoin(
-        Join<HiddenJoinConditionalNoopFlow, Step<HiddenJoinDelayedPrompt>>,
+    struct HiddenJoinConditionalNoEffectJoin(
+        Join<HiddenJoinConditionalNoEffectFlow, Step<HiddenJoinDelayedPrompt>>,
     );
 
-    struct HiddenJoinConditionalNoopAnimal;
+    struct HiddenJoinConditionalNoEffectAnimal;
     #[jungle::animal(id = 91, generation = 0)]
-    impl Animal for HiddenJoinConditionalNoopAnimal {
+    impl Animal for HiddenJoinConditionalNoEffectAnimal {
         type State = i32;
         type Seed = ();
-        type Flow = HiddenJoinConditionalNoopJoin;
+        type Flow = HiddenJoinConditionalNoEffectJoin;
     }
 
     #[derive(Animals)]
-    struct HiddenJoinConditionalNoopZoo(HiddenJoinConditionalNoopAnimal);
+    struct HiddenJoinConditionalNoEffectZoo(HiddenJoinConditionalNoEffectAnimal);
 
-    struct HiddenJoinConditionalNoopEcosystem;
-    impl Ecosystem for HiddenJoinConditionalNoopEcosystem {
-        const NAME: &'static str = "lyrebird-hidden-join-noop-zoo";
-        type Animals = HiddenJoinConditionalNoopZoo;
+    struct HiddenJoinConditionalNoEffectEcosystem;
+    impl Ecosystem for HiddenJoinConditionalNoEffectEcosystem {
+        const NAME: &'static str = "lyrebird-hidden-join-no-effect-zoo";
+        type Animals = HiddenJoinConditionalNoEffectZoo;
     }
 
     macro_rules! nested_prompt_branch {
@@ -2277,8 +2326,8 @@ mod tests {
             latest_generated_code: Some(DspCode {
                 iteration_id: "00000007".to_owned(),
                 source: "fn bass() {}".to_owned(),
-                sample_path: "/tmp/old.wav".to_owned(),
-                spectrogram_path: "/tmp/old.png".to_owned(),
+                sample_path: "/tmp/old.wav".into(),
+                spectrogram_path: "/tmp/old.png".into(),
                 mel_similarity: Some(0.75),
                 score: Some(0.8),
                 audio_metrics: None,
@@ -2287,33 +2336,45 @@ mod tests {
             latest_rendered_code: Some(DspCode {
                 iteration_id: "00000007".to_owned(),
                 source: "fn bass() {}".to_owned(),
-                sample_path: "/tmp/old.wav".to_owned(),
-                spectrogram_path: "/tmp/old.png".to_owned(),
+                sample_path: "/tmp/old.wav".into(),
+                spectrogram_path: "/tmp/old.png".into(),
                 mel_similarity: Some(0.75),
                 score: Some(0.8),
                 audio_metrics: None,
                 audio_metric_errors: None,
             }),
-            latest_generated_sample_path: Some("/tmp/old.wav".to_owned()),
-            latest_generated_spectrogram_path: Some("/tmp/old.png".to_owned()),
+            latest_generated_sample_path: Some("/tmp/old.wav".into()),
+            latest_generated_spectrogram_path: Some("/tmp/old.png".into()),
             latest_generated_similarity: Some(0.8),
             compile_ready: true,
             prompt_attempt: 3,
+            pending_prompt: Some(Prompt {
+                messages: vec![crate::tokens::Message {
+                    role: "system".to_owned(),
+                    contents: vec![crate::tokens::Content::Text("pending".to_owned())],
+                }],
+                tools: Vec::new(),
+            }),
+            pending_prompt_candidates: vec![crate::effect::PromptCandidateResponse {
+                candidate_index: 0,
+                tool_calls: None,
+                retry_reason: Some("retry".to_owned()),
+            }],
             skipped_this_iteration: true,
             last_retry_reason: Some("oops".to_owned()),
             last_similarity: 0.8,
             ..LyrebirdInstrumentState::default()
         };
 
-        state.begin_iteration("/tmp/lyrebird", "00000008", 3);
+        state.begin_iteration(Path::new("/tmp/lyrebird"), "00000008", 3);
 
         assert_eq!(
             state.latest_generated_sample_path.as_deref(),
-            Some("/tmp/old.wav")
+            Some(Path::new("/tmp/old.wav"))
         );
         assert_eq!(
             state.latest_generated_spectrogram_path.as_deref(),
-            Some("/tmp/old.png")
+            Some(Path::new("/tmp/old.png"))
         );
         assert_eq!(state.latest_generated_similarity, Some(0.8));
         assert_eq!(
@@ -2332,6 +2393,8 @@ mod tests {
         );
         assert!(!state.compile_ready);
         assert_eq!(state.prompt_attempt, 0);
+        assert_eq!(state.pending_prompt, None);
+        assert!(state.pending_prompt_candidates.is_empty());
         assert!(!state.skipped_this_iteration);
         assert_eq!(state.last_retry_reason, None);
         assert_eq!(state.last_similarity, 0.0);
@@ -2394,10 +2457,10 @@ mod tests {
             .map(|instrument| LyrebirdInstrumentSeed {
                 instrument,
                 disabled: false,
-                target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()),
+                target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()).into(),
                 target_audio_metrics: LyrebirdAudioMetrics::default(),
-                target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()),
-                dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()),
+                target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()).into(),
+                dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()).into(),
                 initial_dsp_code: DspCode::placeholder_initial(),
             })
             .collect::<Vec<_>>();
@@ -2407,6 +2470,7 @@ mod tests {
             &seeds,
             DEFAULT_INSTRUMENT_PARALLELISM,
             &[LyrebirdInstrument::Vocals, LyrebirdInstrument::GuitarSolo],
+            Some("You are a mastering engineer.".to_owned()),
         );
 
         let disabled_by_instrument = seed
@@ -2439,6 +2503,43 @@ mod tests {
             disabled_by_instrument.get(&LyrebirdInstrument::Drums),
             Some(&true)
         );
+        assert_eq!(
+            seed.system_prompt_override.as_deref(),
+            Some("You are a mastering engineer.")
+        );
+    }
+
+    #[test]
+    fn matches_seed_instrument_selection_requires_matching_system_prompt_override() {
+        let seeds = LyrebirdInstrument::ALL
+            .into_iter()
+            .map(|instrument| LyrebirdInstrumentSeed {
+                instrument,
+                disabled: false,
+                target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()).into(),
+                target_audio_metrics: LyrebirdAudioMetrics::default(),
+                target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()).into(),
+                dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()).into(),
+                initial_dsp_code: DspCode::placeholder_initial(),
+            })
+            .collect::<Vec<_>>();
+
+        let seed = build_seed(
+            Path::new("/tmp/lyrebird"),
+            &seeds,
+            DEFAULT_INSTRUMENT_PARALLELISM,
+            &LyrebirdInstrument::ALL,
+            Some("You are a mastering engineer.".to_owned()),
+        );
+        let state = LyrebirdState::from(seed.clone());
+
+        assert!(state.matches_seed_instrument_selection(&seed));
+
+        let mismatched_seed = LyrebirdSeed {
+            system_prompt_override: Some("You are a DSP scientist.".to_owned()),
+            ..seed
+        };
+        assert!(!state.matches_seed_instrument_selection(&mismatched_seed));
     }
 
     #[test]
@@ -2552,8 +2653,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hidden_join_streams_taken_noop_conditional_branch_lifecycle_live() {
-        let mut executor = Executor::<HiddenJoinConditionalNoopAnimal>::new(7);
+    async fn hidden_join_streams_taken_no_effect_conditional_branch_lifecycle_live() {
+        let mut executor = Executor::<HiddenJoinConditionalNoEffectAnimal>::new(7);
         executor.set_journey_id(Uuid::new_v4());
         let mut request = executor
             .next_executable_request(())
@@ -2595,26 +2696,28 @@ mod tests {
             .expect("hidden join completion should still apply cleanly");
         assert!(
             seen_lifecycle_ids.len() >= 3,
-            "expected hidden join live history to include conditional/noop child lifecycles before completion, saw {seen_lifecycle_ids:?}"
+            "expected hidden join live history to include conditional/no-effect child lifecycles before completion, saw {seen_lifecycle_ids:?}"
         );
     }
 
     #[tokio::test]
-    async fn hidden_join_taken_noop_branch_lifecycle_reaches_step_update_subscription() {
+    async fn hidden_join_taken_no_effect_branch_lifecycle_reaches_step_update_subscription() {
         let client = jungle_sdk::FusedClient::builder()
-            .namespace("lyrebird-hidden-join-noop")
+            .namespace("lyrebird-hidden-join-no-effect")
             .build()
             .await
             .expect("local client should build");
 
-        let worker =
-            jungle_sdk::core::JungleWorker::new(HiddenJoinConditionalNoopEcosystem, client.clone());
+        let worker = jungle_sdk::core::JungleWorker::new(
+            HiddenJoinConditionalNoEffectEcosystem,
+            client.clone(),
+        );
         let worker_handle = tokio::spawn(async move {
             let _ = worker.spawn().await;
         });
 
         let journey_id = client
-            .spawn::<HiddenJoinConditionalNoopAnimal>(&())
+            .spawn::<HiddenJoinConditionalNoEffectAnimal>(&())
             .await
             .expect("journey should start")
             .journey_id;
@@ -2638,7 +2741,7 @@ mod tests {
 
         assert!(
             seen_lifecycle_ids.len() >= 4,
-            "expected subscription to include hidden-join conditional and taken Noop lifecycle nodes, saw {seen_lifecycle_ids:?}"
+            "expected subscription to include hidden-join conditional and taken NoEffect lifecycle nodes, saw {seen_lifecycle_ids:?}"
         );
 
         worker_handle.abort();
@@ -2733,7 +2836,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lyrebird-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("lyrebird test root should be created");
         let seed = LyrebirdSeed {
-            output_root: root.display().to_string(),
+            output_root: root.clone(),
             instruments: LyrebirdInstrument::ALL
                 .into_iter()
                 .map(|instrument| {
@@ -2746,15 +2849,15 @@ mod tests {
                             instrument,
                             LyrebirdInstrument::Vocals | LyrebirdInstrument::Bass
                         ),
-                        target_sample_path: sample_path.display().to_string(),
+                        target_sample_path: sample_path.clone(),
                         target_audio_metrics: LyrebirdAudioMetrics::default(),
-                        target_spectrogram_path: spectrogram_path.display().to_string(),
-                        dsp_source_path: dsp_source_path.display().to_string(),
+                        target_spectrogram_path: spectrogram_path.clone(),
+                        dsp_source_path: dsp_source_path.clone(),
                         initial_dsp_code: DspCode {
                             iteration_id: "initial".to_owned(),
                             source: format!("// {}\nfn main() {{}}\n", instrument.slug()),
-                            sample_path: sample_path.display().to_string(),
-                            spectrogram_path: spectrogram_path.display().to_string(),
+                            sample_path,
+                            spectrogram_path,
                             mel_similarity: Some(0.0),
                             score: Some(0.0),
                             audio_metrics: None,
@@ -2764,6 +2867,7 @@ mod tests {
                 })
                 .collect(),
             instrument_parallelism: 0,
+            system_prompt_override: None,
         };
 
         let ecosystem = Arc::new(
@@ -2882,7 +2986,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lyrebird-debug-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("debug root should be created");
         let seed = LyrebirdSeed {
-            output_root: root.display().to_string(),
+            output_root: root.clone(),
             instruments: LyrebirdInstrument::ALL
                 .into_iter()
                 .map(|instrument| {
@@ -2895,15 +2999,15 @@ mod tests {
                             instrument,
                             LyrebirdInstrument::Vocals | LyrebirdInstrument::Bass
                         ),
-                        target_sample_path: sample_path.display().to_string(),
+                        target_sample_path: sample_path.clone(),
                         target_audio_metrics: LyrebirdAudioMetrics::default(),
-                        target_spectrogram_path: spectrogram_path.display().to_string(),
-                        dsp_source_path: dsp_source_path.display().to_string(),
+                        target_spectrogram_path: spectrogram_path.clone(),
+                        dsp_source_path: dsp_source_path.clone(),
                         initial_dsp_code: DspCode {
                             iteration_id: "initial".to_owned(),
                             source: format!("// {}\nfn main() {{}}\n", instrument.slug()),
-                            sample_path: sample_path.display().to_string(),
-                            spectrogram_path: spectrogram_path.display().to_string(),
+                            sample_path,
+                            spectrogram_path,
                             mel_similarity: Some(0.0),
                             score: Some(0.0),
                             audio_metrics: None,
@@ -2913,6 +3017,7 @@ mod tests {
                 })
                 .collect(),
             instrument_parallelism: 0,
+            system_prompt_override: None,
         };
 
         let ecosystem = Arc::new(
@@ -3390,7 +3495,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(node.code.iteration_id, "00000002");
-        assert_eq!(node.mel_spectrogram_path, "/tmp/updated-mel.png");
+        assert_eq!(
+            node.mel_spectrogram_path,
+            PathBuf::from("/tmp/updated-mel.png")
+        );
         assert_eq!(
             node.patch.as_ref().map(|patch| patch.note.as_str()),
             Some("narrow resonance")
@@ -3406,8 +3514,8 @@ mod tests {
             DspCode {
                 iteration_id: "00000004".to_owned(),
                 source: "fn bass() { postcard(); }".to_owned(),
-                sample_path: "/tmp/postcard.wav".to_owned(),
-                spectrogram_path: "/tmp/postcard.png".to_owned(),
+                sample_path: "/tmp/postcard.wav".into(),
+                spectrogram_path: "/tmp/postcard.png".into(),
                 mel_similarity: Some(0.85),
                 score: Some(0.9),
                 audio_metrics: Some(LyrebirdAudioMetrics {
@@ -3436,5 +3544,36 @@ mod tests {
         let decoded = postcard::from_bytes::<LyrebirdBranchNode>(&bytes).unwrap();
 
         assert_eq!(decoded, node);
+    }
+
+    #[test]
+    fn cli_accepts_tokens_model_override() {
+        let cli = Cli::try_parse_from([
+            "lyrebird",
+            "--tokens-url",
+            "https://api.openai.com/v1",
+            "--tokens-model",
+            "gpt-5.4-mini",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.tokens_model.as_deref(), Some("gpt-5.4-mini"));
+    }
+
+    #[test]
+    fn cli_accepts_system_prompt_override() {
+        let cli = Cli::try_parse_from([
+            "lyrebird",
+            "--tokens-url",
+            "https://api.openai.com/v1",
+            "--system-prompt-override",
+            "You are a mastering engineer.",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            cli.system_prompt_override.as_deref(),
+            Some("You are a mastering engineer.")
+        );
     }
 }

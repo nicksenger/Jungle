@@ -1,3 +1,5 @@
+pub mod dag;
+
 mod executor;
 mod meta;
 mod runner;

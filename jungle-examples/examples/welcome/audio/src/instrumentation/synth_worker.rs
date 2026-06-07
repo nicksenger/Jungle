@@ -153,7 +153,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "toms",
             move |response| SynthRequest::Toms { note, response },
-            move || crate::dsp::toms::synthesize_toms(&to_dsp_note(note, ())),
+            move || crate::dsp::drums::toms::synthesize_toms(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -378,7 +378,10 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
             ));
         }
         SynthRequest::Toms { note, response } => {
-            let _ = response.send(crate::dsp::toms::synthesize_toms(&to_dsp_note(note, ())));
+            let _ = response.send(crate::dsp::drums::toms::synthesize_toms(&to_dsp_note(
+                note,
+                (),
+            )));
         }
         SynthRequest::Vocals { note, response } => {
             let _ = response.send(crate::dsp::vocals::synthesize_vocals(&to_dsp_note(

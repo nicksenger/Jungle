@@ -653,6 +653,23 @@ impl JungleClient for UiClient {
         self.inner.journey_history(id).await
     }
 
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<jungle_sdk::JourneyReplayPage, ExecutorError> {
+        self.inner
+            .journey_replay_page(
+                journey_id,
+                after_sequence_id,
+                snapshot_end_sequence_id,
+                limit,
+            )
+            .await
+    }
+
     async fn list_journeys(
         &self,
         namespace: String,

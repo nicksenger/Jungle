@@ -14,11 +14,11 @@ struct ElectricTone {
 fn lead_tone(articulation: ElectricGuitarArticulation) -> ElectricTone {
     match articulation {
         ElectricGuitarArticulation::Sustained => ElectricTone {
-            drive: 3.8,
-            pick_amount: 0.45,
+            drive: 24.0,
+            pick_amount: 0.65,
             cab_smoothing: 0.18,
             body_mix: 0.12,
-            high_freq: 0.25,
+            high_freq: 4.0,
         },
         ElectricGuitarArticulation::RhythmSustained => ElectricTone {
             drive: 3.2,
@@ -134,7 +134,7 @@ struct RhythmTone {
 }
 
 pub fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
-    let duration = rhythm_duration(note.duration, note.articulation);
+    let duration = lead_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let root_hz = midi_to_hz(note.n_midi).max(70.0);
     let velocity = note.velocity.clamp(0.0, 1.0);
@@ -143,7 +143,7 @@ pub fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[
         vibrato: 0.0,
     });
     let groove = groove_shape(note.duration, note.n_midi);
-    let tone = rhythm_tone(note.articulation, groove);
+    let tone = lead_tone(note.articulation);
 
     let mut pcm = Vec::with_capacity(frame_count);
     let mut cab_lowpass = 0.0;
@@ -154,11 +154,11 @@ pub fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
 
-        let raw = rhythm_sample(note.articulation, root_hz, phase, t, expression, groove);
-        let picked = raw + rhythm_pick_attack(root_hz, phase, t, tone.pick_amount, groove);
-        let env = rhythm_envelope(note.articulation, phase);
+        let raw = lead_sample(note.articulation, root_hz, phase, t, expression, tone);
+        let picked = raw + lead_pick_attack(root_hz, phase, t, tone.pick_amount);
+        let env = lead_envelope(note.articulation, phase);
 
-        let driven = rhythm_amp_distortion(picked * env * tone.pre_gain, tone.drive);
+        let driven = lead_amp_distortion(picked * env, tone.drive);
 
         cab_lowpass += tone.cab_smoothing * (driven - cab_lowpass);
         body_highpass = tone.body_mix * (body_highpass + cab_lowpass - prev_cab_lowpass);
@@ -168,7 +168,7 @@ pub fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[
         pcm.push(sample * velocity);
     }
 
-    let (gain, playback_rate) = rhythm_output_shape(note.articulation);
+    let (gain, playback_rate) = lead_output_shape(note.articulation);
     (Arc::from(pcm), gain, playback_rate)
 }
 

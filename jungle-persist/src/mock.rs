@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyRecord, JourneyReplayPage, JourneyStatus, JourneyUpdateEvent,
+    OwnerWake, RunnerOut, SupportedAnimal, Work,
 };
 use uuid::Uuid;
 
@@ -13,6 +13,12 @@ type ClaimWorkHandler =
     Arc<dyn Fn(String, Vec<SupportedAnimal>) -> Result<Option<Work>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(String, u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type JourneyHistoryHandler = Arc<dyn Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static>;
+type JourneyReplayPageHandler = Arc<
+    dyn Fn(Uuid, Option<u64>, Option<u64>, u32) -> Result<JourneyReplayPage>
+        + Send
+        + Sync
+        + 'static,
+>;
 type ListJourneysHandler =
     Arc<dyn Fn(String) -> Result<Vec<JourneyRecord>> + Send + Sync + 'static>;
 type JourneyUpdateEventsSinceHandler =
@@ -39,6 +45,7 @@ type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'sta
 pub struct MockStore {
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
+    on_journey_replay_page: JourneyReplayPageHandler,
     on_list_journeys: ListJourneysHandler,
     on_journey_update_events_since: JourneyUpdateEventsSinceHandler,
     on_flow_status: FlowStatusHandler,
@@ -89,6 +96,21 @@ impl JungleStore for MockStore {
 
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
         (self.on_journey_history)(journey_id)
+    }
+
+    async fn journey_replay_page(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+        snapshot_end_sequence_id: Option<u64>,
+        limit: u32,
+    ) -> Result<JourneyReplayPage> {
+        (self.on_journey_replay_page)(
+            journey_id,
+            after_sequence_id,
+            snapshot_end_sequence_id,
+            limit,
+        )
     }
 
     async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>> {
@@ -189,6 +211,7 @@ impl JungleStore for MockStore {
 pub struct MockStoreBuilder {
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
+    on_journey_replay_page: Option<JourneyReplayPageHandler>,
     on_list_journeys: Option<ListJourneysHandler>,
     on_journey_update_events_since: Option<JourneyUpdateEventsSinceHandler>,
     on_flow_status: Option<FlowStatusHandler>,
@@ -231,6 +254,17 @@ impl MockStoreBuilder {
         F: Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static,
     {
         self.on_journey_history = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_journey_replay_page<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Option<u64>, Option<u64>, u32) -> Result<JourneyReplayPage>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.on_journey_replay_page = Some(Arc::new(f));
         self
     }
 
@@ -373,6 +407,12 @@ impl MockStoreBuilder {
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _, _| Ok(Uuid::new_v4()));
         let default_journey_history: JourneyHistoryHandler = Arc::new(|_| Ok(Vec::new()));
+        let default_journey_replay_page: JourneyReplayPageHandler = Arc::new(|_, _, _, _| {
+            Ok(JourneyReplayPage {
+                snapshot_end_sequence_id: None,
+                events: Vec::new(),
+            })
+        });
         let default_list_journeys: ListJourneysHandler = Arc::new(|_| Ok(Vec::new()));
         let default_journey_update_events_since: JourneyUpdateEventsSinceHandler =
             Arc::new(|_, _| Ok(Vec::new()));
@@ -401,6 +441,9 @@ impl MockStoreBuilder {
             on_journey_history: self
                 .on_journey_history
                 .unwrap_or_else(|| default_journey_history.clone()),
+            on_journey_replay_page: self
+                .on_journey_replay_page
+                .unwrap_or_else(|| default_journey_replay_page.clone()),
             on_list_journeys: self
                 .on_list_journeys
                 .unwrap_or_else(|| default_list_journeys.clone()),

@@ -62,23 +62,43 @@ fn articulation_sample(base_hz: f32, t: f32) -> f32 {
     // Enhanced unison with wider detuning for better harmonic spread
     let unison = sine(f * 0.993, t) * 0.35 + sine(f, t) * 0.3 + sine(f * 1.005, t) * 0.35;
 
-    // Stronger harmonic content at target frequencies
-    // The target shows energy at ~150, 534, 918, 1302, 1686, 2070, 2454, 2838 Hz
-    // These are roughly integer multiples of a fundamental
-    let harmonic_2 = sine(f * 2.0, t) * 0.25;
-    let harmonic_3 = sine(f * 3.0, t) * 0.15;
-    let harmonic_4 = sine(f * 4.0, t) * 0.08;
+    // Formant-like resonances for vocal character - adjusted for target bands
+    let formant_1 = sine(f * 1.5, t) * 0.12 + sine(f * 2.0, t) * 0.08;
+    let formant_2 = sine(f * 3.0, t) * 0.15 + sine(f * 3.5, t) * 0.10;
+    let formant_3 = sine(f * 4.0, t) * 0.08 + sine(f * 4.5, t) * 0.05;
 
-    // Add some sub-harmonics and formant-like structure
-    let sub_harmonic = sine(f * 0.5, t) * 0.12;
+    // Boosted mid harmonics to raise spectral centroid toward 1713 Hz target
+    let harmonic_2 = sine(f * 2.0, t) * 0.22;
+    let harmonic_3 = sine(f * 3.0, t) * 0.16;
+    let harmonic_4 = sine(f * 4.0, t) * 0.10;
+    let harmonic_5 = sine(f * 5.0, t) * 0.06;
+    let harmonic_6 = sine(f * 6.0, t) * 0.03;
+    let harmonic_7 = sine(f * 7.0, t) * 0.015;
+    let harmonic_8 = sine(f * 8.0, t) * 0.008;
+    let harmonic_9 = sine(f * 9.0, t) * 0.004;
+    let harmonic_10 = sine(f * 10.0, t) * 0.002;
 
-    // Less noise, more musical content
+    // Reduced sub-harmonic to avoid lowering spectral centroid too much
+    let sub_harmonic = sine(f * 0.5, t) * 0.10;
+
+    // Add noise for spectral flatness and texture
+    let noise = hash_noise(t * 4_500.0) * 0.04;
+
     let total = unison
+        + formant_1
+        + formant_2
+        + formant_3
         + harmonic_2
         + harmonic_3
         + harmonic_4
+        + harmonic_5
+        + harmonic_6
+        + harmonic_7
+        + harmonic_8
+        + harmonic_9
+        + harmonic_10
         + sub_harmonic
-        + hash_noise(t * 4_500.0) * 0.05;
+        + noise;
 
     total
 }

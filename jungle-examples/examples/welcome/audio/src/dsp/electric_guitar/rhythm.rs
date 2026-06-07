@@ -68,12 +68,12 @@ pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc
 fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) -> RhythmTone {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => RhythmTone {
-            drive: 4.8 + groove.amp_jitter,
+            drive: 35.0 + groove.amp_jitter,
             pick_amount: 0.58 * groove.downstroke,
-            pre_gain: 1.18,
+            pre_gain: 2.0,
             cab_smoothing: 0.13,
             body_mix: 0.42,
-            presence_mix: 0.18,
+            presence_mix: 0.55,
         },
         ElectricGuitarArticulation::Sustained => RhythmTone {
             drive: 3.0,
@@ -169,9 +169,9 @@ fn rhythm_pick_attack(
 
 fn rhythm_amp_distortion(sample: f32, drive: f32) -> f32 {
     let pre = sample * drive;
-    let stage_one = (pre + pre * pre.abs() * 0.18).clamp(-3.0, 3.0);
-    let stage_two = (stage_one.tanh() * 1.3 + stage_one * 0.16).clamp(-1.9, 1.9);
-    (stage_two.tanh() * 1.04).clamp(-1.0, 1.0)
+    let stage_one = (pre + pre * pre.abs() * 2.0).clamp(-3.0, 3.0);
+    let stage_two = (stage_one.tanh() * 6.0 + stage_one * 0.8).clamp(-1.9, 1.9);
+    (stage_two.tanh() * 3.5).clamp(-1.0, 1.0)
 }
 
 #[derive(Clone, Copy)]
