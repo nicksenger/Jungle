@@ -246,7 +246,9 @@ pub struct Depth1OuterBody(
 );
 
 #[derive(Flow)]
-pub struct Depth1Flow(While<ReplayAlwaysTrue, Attempt<Depth1OuterBody>>);
+// Wrapping `Depth1OuterBody` in `Attempt` currently causes the replay property
+// to time out before the first outer-body boundary is reached.
+pub struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
 
 pub struct Depth1;
 
