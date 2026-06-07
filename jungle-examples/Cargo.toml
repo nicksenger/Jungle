@@ -68,6 +68,11 @@ name = "backoff"
 path = "examples/backoff/mod.rs"
 
 [[example]]
+name = "replay"
+path = "examples/replay/mod.rs"
+required-features = ["viewer"]
+
+[[example]]
 name = "lyrebird"
 path = "examples/lyrebird/mod.rs"
 required-features = ["image", "reqwest", "redb"]

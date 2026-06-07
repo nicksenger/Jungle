@@ -1,0 +1,400 @@
+use clap::Parser;
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::StreamExt;
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::*;
+use jungle_sdk::FusedClient;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tracing::{info, warn};
+use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
+
+mod ui;
+
+const DEFAULT_LOG_FILTER: &str = "warn,replay=info,jungle_vision=info";
+
+#[derive(Debug, Parser)]
+#[command(name = "replay")]
+struct Cli {
+    #[arg(long, value_parser = parse_query_bits)]
+    query: Vec<bool>,
+}
+
+fn parse_query_bits(input: &str) -> Result<Vec<bool>, String> {
+    if input.is_empty() {
+        return Ok(Vec::new());
+    }
+    if let Some((index, ch)) = input
+        .char_indices()
+        .find(|(_, ch)| !matches!(ch, '0' | '1'))
+    {
+        return Err(format!(
+            "query must contain only '0' or '1', found {ch:?} at position {index}"
+        ));
+    }
+
+    Ok(input.chars().rev().map(|ch| ch == '1').collect())
+}
+
+fn init_tracing() {
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_target(false)
+        .try_init();
+}
+
+struct ReplayRainforest(Arc<tokio::sync::Mutex<ReplayInner>>);
+
+struct ReplayInner {
+    query: Vec<bool>,
+    end: UnboundedSender<()>,
+    recv: UnboundedReceiver<bool>,
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayState {
+    color: bool,
+    history: String,
+}
+
+impl From<ReplayState> for () {
+    fn from(_value: ReplayState) -> Self {}
+}
+
+pub(crate) struct ReplayColorIsTrue;
+
+impl Predicate<(&ReplayState, &())> for ReplayColorIsTrue {
+    fn eval((state, _): &(&ReplayState, &())) -> bool {
+        state.color
+    }
+}
+
+impl Predicate<(ReplayState, ())> for ReplayColorIsTrue {
+    fn eval((state, _): &(ReplayState, ())) -> bool {
+        state.color
+    }
+}
+
+pub(crate) struct ReplayAlwaysTrue;
+
+impl Predicate<(&ReplayState, &())> for ReplayAlwaysTrue {
+    fn eval((_state, _): &(&ReplayState, &())) -> bool {
+        true
+    }
+}
+
+impl Ecosystem for ReplayRainforest {
+    const NAME: &'static str = "replay-rainforest-example";
+    type Animals = ReplayRainforestAnimals;
+}
+
+impl ReplayRainforest {
+    async fn next(&self) -> bool {
+        let mut inner = self.0.lock().await;
+        match inner.query.pop() {
+            Some(value) => value,
+            None => {
+                let _ = inner.end.unbounded_send(());
+                inner
+                    .recv
+                    .next()
+                    .await
+                    .expect("replay receiver should yield a bool after query exhaustion")
+            }
+        }
+    }
+}
+
+trait ReplayTockRuntime {
+    fn run_tock(&self) -> impl std::future::Future<Output = bool> + Send;
+}
+
+impl ReplayTockRuntime for () {
+    fn run_tock(&self) -> impl std::future::Future<Output = bool> + Send {
+        std::future::ready(false)
+    }
+}
+
+impl ReplayTockRuntime for ReplayRainforest {
+    fn run_tock(&self) -> impl std::future::Future<Output = bool> + Send {
+        self.next()
+    }
+}
+
+pub struct Tock;
+
+#[jungle::effect(id = 1003)]
+impl<J> Effect<J> for Tock
+where
+    J: ReplayTockRuntime + Sync,
+{
+    type In = ();
+    type Out = bool;
+    type Err = ();
+
+    fn effect(
+        jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async move { Ok(jungle.run_tock().await) }
+    }
+}
+
+pub struct Tick;
+
+#[jungle::action]
+impl Action for Tick {
+    type Effect = Tock;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
+        if tocked {
+            state.color = true;
+            state.history.push('1');
+        } else {
+            state.color = false;
+            state.history.push('0');
+        }
+        Ok(())
+    }
+}
+
+pub struct Label<const CH: char>;
+
+#[jungle::action]
+impl<const CH: char> Action for Label<CH> {
+    type Effect = NoEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("label should complete without effect"))?;
+        state.history.push(CH);
+        Ok(())
+    }
+}
+
+pub struct FlattenReplayChoice;
+
+#[jungle::action]
+impl Action for FlattenReplayChoice {
+    type Effect = NoEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+    type Carry = Either<(), ()>;
+
+    fn emit(_state: &ReplayState, input: Self::Input) -> ((), Self::Carry) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut ReplayState,
+        output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("flatten replay choice should succeed"))?;
+        match carry {
+            Either::Left(()) | Either::Right(()) => (),
+        }
+        Ok(())
+    }
+}
+
+#[derive(Flow)]
+struct Depth1LeftBranch(Step<Label<'L'>>, Step<Tick>, Step<Tick>, Step<Tick>);
+
+#[derive(Flow)]
+struct Depth1RightBranch(
+    Step<Label<'R'>>,
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+);
+
+#[derive(Flow)]
+struct Depth1InnerBody(
+    Step<Tick>,
+    Step<Tick>,
+    Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
+    Step<FlattenReplayChoice>,
+);
+
+#[derive(Flow)]
+struct Depth1OuterBody(
+    Step<Tick>,
+    Step<Tick>,
+    Step<Tick>,
+    While<ReplayColorIsTrue, Depth1InnerBody>,
+    Step<Tick>,
+    Step<Tick>,
+);
+
+#[derive(Flow)]
+struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
+
+pub(crate) struct Depth1;
+
+#[jungle::animal(id = 1004, generation = 0)]
+impl Animal for Depth1 {
+    type State = ReplayState;
+    type Seed = ReplayState;
+    type Flow = Depth1Flow;
+}
+
+#[derive(Animals)]
+struct ReplayRainforestAnimals(Depth1);
+
+fn replay_rainforest(
+    query: Vec<bool>,
+    end: UnboundedSender<()>,
+    recv: UnboundedReceiver<bool>,
+) -> ReplayRainforest {
+    ReplayRainforest(Arc::new(tokio::sync::Mutex::new(ReplayInner {
+        query,
+        end,
+        recv,
+    })))
+}
+
+fn spawn_depth1_worker(
+    client: FusedClient,
+    jungle: ReplayRainforest,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let worker = JungleWorker::new(jungle, client);
+        if let Err(err) = worker.spawn().await {
+            warn!(error = %err, "replay worker exited");
+        }
+    })
+}
+
+#[derive(Clone)]
+struct ShutdownFlag(Arc<AtomicBool>);
+
+impl ShutdownFlag {
+    fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    fn request_shutdown(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    fn should_shutdown(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+#[derive(Clone)]
+struct RestartFlag(Arc<AtomicBool>);
+
+impl RestartFlag {
+    fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    fn request_restart(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    fn should_restart(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_tracing();
+    let cli = Cli::parse();
+
+    let client = FusedClient::builder()
+        .namespace(format!("{}-{}", ReplayRainforest::NAME, Uuid::new_v4()))
+        .build()
+        .await?;
+
+    let (end_tx, mut end_rx) = futures::channel::mpsc::unbounded::<()>();
+    let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
+    let worker_one = spawn_depth1_worker(
+        client.clone(),
+        replay_rainforest(cli.query, end_tx.clone(), worker_one_resume_rx),
+    );
+    let worker_one_abort = worker_one.abort_handle();
+
+    let journey_id = client.spawn::<Depth1>(&ReplayState::default()).await?.journey_id;
+    info!(%journey_id, "started replay example journey");
+
+    let first_shutdown = ShutdownFlag::new();
+    let restart_requested = RestartFlag::new();
+    let shutdown_on_boundary = first_shutdown.clone();
+    let restart_on_boundary = restart_requested.clone();
+    let boundary_task = tokio::spawn(async move {
+        if end_rx.next().await.is_some() {
+            info!("initial execution hit replay boundary; restarting worker and viewer");
+            worker_one_abort.abort();
+            restart_on_boundary.request_restart();
+            shutdown_on_boundary.request_shutdown();
+        }
+    });
+
+    tokio::task::block_in_place(|| {
+        ui::run_ui(
+            client.clone(),
+            journey_id,
+            first_shutdown,
+            "Replay Example - Initial Execution",
+        )
+    })?;
+
+    worker_one.abort();
+    let _ = worker_one.await;
+    drop(worker_one_resume_tx);
+
+    if !restart_requested.should_restart() {
+        boundary_task.abort();
+        let _ = boundary_task.await;
+        info!("initial viewer closed before replay boundary; exiting");
+        return Ok(());
+    }
+    let _ = boundary_task.await;
+
+    let (_worker_two_resume_tx, worker_two_resume_rx) =
+        futures::channel::mpsc::unbounded::<bool>();
+    let worker_two = spawn_depth1_worker(
+        client.clone(),
+        replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
+    );
+
+    info!("replay worker started; launching replacement viewer");
+    let second_shutdown = ShutdownFlag::new();
+    let ui_result = tokio::task::block_in_place(|| {
+        ui::run_ui(
+            client.clone(),
+            journey_id,
+            second_shutdown,
+            "Replay Example - Replayed Worker",
+        )
+    });
+
+    worker_two.abort();
+    let _ = worker_two.await;
+
+    ui_result?;
+    Ok(())
+}
