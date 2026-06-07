@@ -574,11 +574,19 @@ where
 
 #[derive(Flow)]
 #[jungle(focus = Depth2LeftState)]
-pub struct Depth2LeftInnerFlow(Depth1InnerBody<Depth2LeftState>);
+pub struct Depth2LeftInnerFlow(
+    Step<Label<Depth2LeftState, '2'>>,
+    Step<Label<Depth2LeftState, 'L'>>,
+    Depth1InnerBody<Depth2LeftState>,
+);
 
 #[derive(Flow)]
 #[jungle(focus = Depth2RightState)]
-pub struct Depth2RightInnerFlow(Depth1InnerBody<Depth2RightState>);
+pub struct Depth2RightInnerFlow(
+    Step<Label<Depth2RightState, '2'>>,
+    Step<Label<Depth2RightState, 'R'>>,
+    Depth1InnerBody<Depth2RightState>,
+);
 
 #[derive(Flow)]
 pub struct Depth2JoinedInnerBody(
@@ -626,11 +634,19 @@ impl Observe for Depth2 {
 
 #[derive(Flow)]
 #[jungle(focus = Depth3LeftLeftState)]
-pub struct Depth3LeftNestedLeftFlow(Depth1InnerBody<Depth3LeftLeftState>);
+pub struct Depth3LeftNestedLeftFlow(
+    Step<Label<Depth3LeftLeftState, '3'>>,
+    Step<Label<Depth3LeftLeftState, 'L'>>,
+    Depth1InnerBody<Depth3LeftLeftState>,
+);
 
 #[derive(Flow)]
 #[jungle(focus = Depth3LeftRightState)]
-pub struct Depth3LeftNestedRightFlow(Depth1InnerBody<Depth3LeftRightState>);
+pub struct Depth3LeftNestedRightFlow(
+    Step<Label<Depth3LeftRightState, '3'>>,
+    Step<Label<Depth3LeftRightState, 'R'>>,
+    Depth1InnerBody<Depth3LeftRightState>,
+);
 
 #[derive(Flow)]
 pub struct Depth3LeftNestedJoin(
@@ -641,6 +657,8 @@ pub struct Depth3LeftNestedJoin(
 #[derive(Flow)]
 #[jungle(focus = Depth3LeftState)]
 pub struct Depth3OuterLeftFlow(
+    Step<Label<Depth3LeftState, '2'>>,
+    Step<Label<Depth3LeftState, 'L'>>,
     Step<Tick<Depth3LeftState>>,
     Step<SeedReplayBranches<Depth3LeftState>>,
     Depth3LeftNestedJoin,
@@ -649,11 +667,19 @@ pub struct Depth3OuterLeftFlow(
 
 #[derive(Flow)]
 #[jungle(focus = Depth3RightLeftState)]
-pub struct Depth3RightNestedLeftFlow(Depth1InnerBody<Depth3RightLeftState>);
+pub struct Depth3RightNestedLeftFlow(
+    Step<Label<Depth3RightLeftState, '3'>>,
+    Step<Label<Depth3RightLeftState, 'L'>>,
+    Depth1InnerBody<Depth3RightLeftState>,
+);
 
 #[derive(Flow)]
 #[jungle(focus = Depth3RightRightState)]
-pub struct Depth3RightNestedRightFlow(Depth1InnerBody<Depth3RightRightState>);
+pub struct Depth3RightNestedRightFlow(
+    Step<Label<Depth3RightRightState, '3'>>,
+    Step<Label<Depth3RightRightState, 'R'>>,
+    Depth1InnerBody<Depth3RightRightState>,
+);
 
 #[derive(Flow)]
 pub struct Depth3RightNestedJoin(
@@ -664,6 +690,8 @@ pub struct Depth3RightNestedJoin(
 #[derive(Flow)]
 #[jungle(focus = Depth3RightState)]
 pub struct Depth3OuterRightFlow(
+    Step<Label<Depth3RightState, '2'>>,
+    Step<Label<Depth3RightState, 'R'>>,
     Step<Tick<Depth3RightState>>,
     Step<SeedReplayBranches<Depth3RightState>>,
     Depth3RightNestedJoin,
