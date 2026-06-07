@@ -21,8 +21,8 @@ const REPLAY_VIEWER_LINGER_AFTER_END: Duration = Duration::from_secs(20);
 #[derive(Debug, Parser)]
 #[command(name = "replay")]
 struct Cli {
-    #[arg(long, value_parser = parse_query_bits)]
-    query: Vec<bool>,
+    #[arg(long, help = "Bitstring query, for example 01000101")]
+    query: String,
     #[arg(
         long = "img-dump",
         help = "Capture the replay UI to this PNG path and then exit"
@@ -348,6 +348,8 @@ impl RestartFlag {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
+    let query = parse_query_bits(&cli.query)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
     let image_dump = cli.img_dump.map(|output_path| {
         ui::ImageDumpConfig::new(
             output_path,
@@ -364,7 +366,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
     let worker_one = spawn_depth1_worker(
         client.clone(),
-        replay_rainforest(cli.query, end_tx.clone(), worker_one_resume_rx),
+        replay_rainforest(query, end_tx.clone(), worker_one_resume_rx),
     );
     let worker_one_abort = worker_one.abort_handle();
 
@@ -436,6 +438,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_query_bits() {
+        assert_eq!(parse_query_bits("").unwrap(), Vec::<bool>::new());
+        assert_eq!(parse_query_bits("0101").unwrap(), vec![true, false, true, false]);
+    }
+
+    #[test]
+    fn rejects_non_binary_query_bits() {
+        assert!(parse_query_bits("012").is_err());
+    }
+
+    #[test]
+    fn clap_accepts_query_as_string() {
+        let cli = Cli::try_parse_from(["replay", "--query", "0101"]).unwrap();
+        assert_eq!(cli.query, "0101");
+    }
 
     #[test]
     fn parses_non_negative_img_dump_time_secs() {
