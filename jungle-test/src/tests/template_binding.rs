@@ -2617,7 +2617,12 @@ async fn template_binding_focused_join_subflows_run_incrementally_in_parent_exec
         .next_executable_request(3)
         .expect("focused join should produce an executable request");
     let first_emitted = executor
-        .complete_serialized(first_request.run().await.expect("left branch effect should run"))
+        .complete_serialized(
+            first_request
+                .run()
+                .await
+                .expect("left branch effect should run"),
+        )
         .expect("left branch completion should apply cleanly");
     let left_emitted: i32 =
         postcard::from_bytes(&first_emitted).expect("left branch emitted value should deserialize");
@@ -2635,7 +2640,12 @@ async fn template_binding_focused_join_subflows_run_incrementally_in_parent_exec
         .next_executable_request(3)
         .expect("focused join should produce a second branch request");
     let final_emitted = executor
-        .complete_serialized(second_request.run().await.expect("right branch effect should run"))
+        .complete_serialized(
+            second_request
+                .run()
+                .await
+                .expect("right branch effect should run"),
+        )
         .expect("right branch completion should finish the join");
     let final_emitted: (i32, i32) =
         postcard::from_bytes(&final_emitted).expect("join final emitted tuple should deserialize");
@@ -2664,7 +2674,12 @@ async fn template_binding_nested_focused_join_subflows_run_incrementally_in_pare
         .next_executable_request(3)
         .expect("nested focused join should produce the left branch request");
     let first_emitted = executor
-        .complete_serialized(first_request.run().await.expect("left branch effect should run"))
+        .complete_serialized(
+            first_request
+                .run()
+                .await
+                .expect("left branch effect should run"),
+        )
         .expect("left branch completion should apply cleanly");
     let left_emitted: i32 =
         postcard::from_bytes(&first_emitted).expect("left branch output should deserialize");
@@ -2683,7 +2698,12 @@ async fn template_binding_nested_focused_join_subflows_run_incrementally_in_pare
         .next_executable_request(3)
         .expect("nested focused join should produce the middle branch request");
     let second_emitted = executor
-        .complete_serialized(second_request.run().await.expect("middle branch effect should run"))
+        .complete_serialized(
+            second_request
+                .run()
+                .await
+                .expect("middle branch effect should run"),
+        )
         .expect("middle branch completion should apply cleanly");
     let inner_join_emitted: (i32, i32) =
         postcard::from_bytes(&second_emitted).expect("inner join tuple should deserialize");
@@ -2702,10 +2722,15 @@ async fn template_binding_nested_focused_join_subflows_run_incrementally_in_pare
         .next_executable_request(3)
         .expect("nested focused join should produce the right branch request");
     let final_emitted = executor
-        .complete_serialized(third_request.run().await.expect("right branch effect should run"))
+        .complete_serialized(
+            third_request
+                .run()
+                .await
+                .expect("right branch effect should run"),
+        )
         .expect("right branch completion should finish the nested join");
-    let final_emitted: ((i32, i32), i32) =
-        postcard::from_bytes(&final_emitted).expect("nested focused join output should deserialize");
+    let final_emitted: ((i32, i32), i32) = postcard::from_bytes(&final_emitted)
+        .expect("nested focused join output should deserialize");
 
     assert_eq!(final_emitted, ((4, 32), 303));
     assert_eq!(
