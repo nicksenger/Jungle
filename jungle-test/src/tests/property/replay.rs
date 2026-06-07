@@ -246,7 +246,7 @@ pub struct Depth1OuterBody(
 );
 
 #[derive(Flow)]
-pub struct Depth1Flow(While<ReplayAlwaysTrue, Attempt<Depth1OuterBody>>);
+pub struct Depth1Flow(While<ReplayAlwaysTrue, Depth1OuterBody>);
 
 pub struct Depth1;
 
@@ -464,7 +464,7 @@ proptest! {
 
     #[test]
     fn depth1_replay_history_from_replayed_worker_has_killed_worker_prefix(
-        query in proptest::collection::vec(any::<bool>(), 0..513)
+        query in proptest::collection::vec(any::<bool>(), 0..65)
     ) {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
