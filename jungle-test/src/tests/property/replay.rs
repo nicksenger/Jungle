@@ -914,6 +914,15 @@ async fn assert_replayed_depth2_history_extends_prefix(query: Vec<bool>) {
     .await;
 }
 
+async fn assert_replayed_depth3_history_extends_prefix(query: Vec<bool>) {
+    assert_replayed_history_extends_prefix::<Depth3, Depth3State>(
+        query,
+        "depth3-property",
+        Depth3State::default(),
+    )
+    .await;
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 16,
@@ -940,6 +949,17 @@ proptest! {
             .build()
             .expect("tokio runtime should build for property test");
         runtime.block_on(assert_replayed_depth2_history_extends_prefix(query));
+    }
+
+    #[test]
+    fn depth3_replay_history_from_replayed_worker_has_killed_worker_prefix(
+        query in proptest::collection::vec(any::<bool>(), 0..65)
+    ) {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime should build for property test");
+        runtime.block_on(assert_replayed_depth3_history_extends_prefix(query));
     }
 }
 
