@@ -338,6 +338,11 @@ where
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
             let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
+            if tocked {
+                state.replay_history_mut().push('0');
+            } else {
+                state.replay_history_mut().push('1');
+            }
             *state.replay_color_mut() = tocked;
         };
         Ok(__absorb_out_1)
@@ -792,6 +797,7 @@ const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
 const REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_RECLAIM_TIMEOUT: Duration = Duration::from_secs(10);
 const REPLAY_TEST_APPEARANCE_TIMEOUT: Duration = Duration::from_secs(10);
+const REPLAY_TEST_KILLED_WORKER_APPEARANCE_DRAIN: Duration = Duration::from_secs(1);
 const REPLAY_TEST_RESUME_SEND_INTERVAL: Duration = Duration::from_millis(10);
 
 fn replay_rainforest(
@@ -851,6 +857,35 @@ async fn wait_for_replay_history_change(
     .expect("replay appearance should change before timeout")
 }
 
+async fn latest_replay_history_within_window(
+    client: &FusedClient,
+    journey_id: uuid::Uuid,
+    window: Duration,
+) -> String {
+    let deadline = tokio::time::Instant::now() + window;
+    let mut latest_history = current_replay_history(client, journey_id).await;
+
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            break latest_history;
+        }
+
+        let _ = client
+            .journey_details(journey_id)
+            .await
+            .expect("journey_details should succeed while draining killed worker appearance");
+
+        let sleep_for = std::cmp::min(Duration::from_millis(25), deadline - now);
+        tokio::time::sleep(sleep_for).await;
+
+        let history = current_replay_history(client, journey_id).await;
+        if history.len() >= latest_history.len() {
+            latest_history = history;
+        }
+    }
+}
+
 async fn assert_replayed_history_extends_prefix<A, S>(query: Vec<bool>, namespace: &str, seed: S)
 where
     A: Animal<State = S, Seed = S> + Observe<Appearance = String>,
@@ -884,7 +919,12 @@ where
         .expect("first replay end signal should arrive before timeout")
         .expect("first depth1 end signal channel should remain open");
 
-    let killed_worker_history = current_replay_history(&client, journey_id).await;
+    let killed_worker_history = latest_replay_history_within_window(
+        &client,
+        journey_id,
+        REPLAY_TEST_KILLED_WORKER_APPEARANCE_DRAIN,
+    )
+    .await;
 
     worker_one.abort();
     drop(worker_one_resume_tx);
