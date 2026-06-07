@@ -142,6 +142,63 @@ pub trait ReplayNodeState {
     fn replay_history_mut(&mut self) -> &mut String;
 }
 
+trait ReplayAppearance {
+    fn replay_appearance(&self) -> String;
+}
+
+impl ReplayAppearance for () {
+    fn replay_appearance(&self) -> String {
+        String::new()
+    }
+}
+
+macro_rules! impl_empty_replay_appearance {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl ReplayAppearance for $ty {
+                fn replay_appearance(&self) -> String {
+                    String::new()
+                }
+            }
+        )+
+    };
+}
+
+impl_empty_replay_appearance!(
+    Left,
+    Right,
+    Depth3LeftLeft,
+    Depth3LeftRight,
+    Depth3RightLeft,
+    Depth3RightRight,
+);
+
+impl<L, R> ReplayAppearance for ReplayFrame<L, R>
+where
+    L: ReplayAppearance,
+    R: ReplayAppearance,
+{
+    fn replay_appearance(&self) -> String {
+        let mut appearance = self.history.clone();
+        let left = self.left.replay_appearance();
+        let right = self.right.replay_appearance();
+        if !left.is_empty() && right.is_empty() {
+            appearance.push('(');
+            appearance.push_str(&left);
+        } else if left.is_empty() && !right.is_empty() {
+            appearance.push('(');
+            appearance.push('|');
+            appearance.push_str(&right);
+        } else if !left.is_empty() || !right.is_empty() {
+            appearance.push('(');
+            appearance.push_str(&left);
+            appearance.push('|');
+            appearance.push_str(&right);
+        }
+        appearance
+    }
+}
+
 impl<L, R> ReplayNodeState for ReplayFrame<L, R> {
     fn replay_color(&self) -> bool {
         self.color
@@ -503,7 +560,7 @@ impl Observe for Depth1 {
     type Appearance = String;
 
     fn observe(state: &Self::State) -> Self::Appearance {
-        state.replay_history().to_string()
+        state.replay_appearance()
     }
 }
 
@@ -634,7 +691,7 @@ impl Observe for Depth2 {
     type Appearance = String;
 
     fn observe(state: &Self::State) -> Self::Appearance {
-        state.replay_history().to_string()
+        state.replay_appearance()
     }
 }
 
@@ -744,7 +801,7 @@ impl Observe for Depth3 {
     type Appearance = String;
 
     fn observe(state: &Self::State) -> Self::Appearance {
-        state.replay_history().to_string()
+        state.replay_appearance()
     }
 }
 
@@ -1045,7 +1102,7 @@ async fn depth1_fixed_trace_applies_right_branch_label_before_next_effect_reques
         .next_executable_request(())
         .expect("fixed replay should reach the next executable request");
 
-    assert_eq!(executor.state().history, "OIR");
+    assert_eq!(executor.state().history, "O001I00R");
     assert_eq!(
         request.effect_type(),
         std::any::type_name::<Tock>(),
@@ -1074,7 +1131,7 @@ async fn conditional_probe_applies_right_branch_label_before_next_effect_request
         .next_executable_request(())
         .expect("probe should reach the next executable request");
 
-    assert_eq!(executor.state().history, "R");
+    assert_eq!(executor.state().history, "000R");
     assert_eq!(request.effect_type(), std::any::type_name::<Tock>());
 }
 
@@ -1099,6 +1156,6 @@ async fn conditional_probe_wraps_completed_right_branch_output_before_following_
         .next_executable_request(())
         .expect("completed conditional branch should feed the next Tick");
 
-    assert_eq!(executor.state().history, "R");
+    assert_eq!(executor.state().history, "100R");
     assert_eq!(request.effect_type(), std::any::type_name::<Tock>());
 }

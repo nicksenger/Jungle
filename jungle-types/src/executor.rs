@@ -1549,10 +1549,28 @@ enum SelectTraceEnvelope {
     Right(FlowCompletionTrace),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct JoinTraceEnvelope {
-    left: FlowCompletionTrace,
-    right: FlowCompletionTrace,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JoinSide {
+    Left,
+    Right,
+}
+
+struct JoinBranchProgress<State> {
+    state: State,
+    cursor: usize,
+    last_input: Serialized,
+    complete: bool,
+}
+
+impl<State> JoinBranchProgress<State> {
+    fn new(state: State, input: Serialized) -> Self {
+        Self {
+            state,
+            cursor: 0,
+            last_input: input,
+            complete: false,
+        }
+    }
 }
 
 trait JoinFocusMarker<State> {
@@ -3493,34 +3511,30 @@ where
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct JoinRequestEnvelope {
-    left: Serialized,
-    right: Serialized,
-}
-
 struct JoinErasedFlow<State> {
     lifecycle: LifecycleState,
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
-    build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
-    build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
-    pending_input: Option<Serialized>,
-    waiting_completion: bool,
     complete: bool,
     focused_merge: bool,
     merge_left: Box<dyn Fn(&mut State, State) + Send>,
     merge_right: Box<dyn Fn(&mut State, State) + Send>,
-    suppress_child_lifecycle_replay: bool,
+    join_input: Option<Serialized>,
+    base_state: Option<State>,
+    left_branch: Option<JoinBranchProgress<State>>,
+    right_branch: Option<JoinBranchProgress<State>>,
+    active_request: Option<JoinSide>,
+    completed_emitted: Option<Serialized>,
 }
 
-impl<State> JoinErasedFlow<State> {
+impl<State> JoinErasedFlow<State>
+where
+    State: Clone,
+{
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
-        build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
         focused_merge: bool,
         merge_left: Box<dyn Fn(&mut State, State) + Send>,
         merge_right: Box<dyn Fn(&mut State, State) + Send>,
@@ -3530,60 +3544,166 @@ impl<State> JoinErasedFlow<State> {
             node_id: 0,
             left,
             right,
-            build_left,
-            build_right,
-            pending_input: None,
-            waiting_completion: false,
             complete: false,
             focused_merge,
             merge_left,
             merge_right,
-            suppress_child_lifecycle_replay: false,
+            join_input: None,
+            base_state: None,
+            left_branch: None,
+            right_branch: None,
+            active_request: None,
+            completed_emitted: None,
         }
     }
-}
 
-struct JoinContextErasedFlow<State> {
-    lifecycle: LifecycleState,
-    node_id: u32,
-    left: DynFlow<State>,
-    right: DynFlow<State>,
-    build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
-    build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
-    pending_input: Option<Serialized>,
-    waiting_completion: bool,
-    complete: bool,
-    focused_merge: bool,
-    merge_left: Box<dyn Fn(&mut State, State) + Send>,
-    merge_right: Box<dyn Fn(&mut State, State) + Send>,
-    suppress_child_lifecycle_replay: bool,
-}
-
-impl<State> JoinContextErasedFlow<State> {
-    fn new(
-        left: DynFlow<State>,
-        right: DynFlow<State>,
-        build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
-        build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
-        focused_merge: bool,
-        merge_left: Box<dyn Fn(&mut State, State) + Send>,
-        merge_right: Box<dyn Fn(&mut State, State) + Send>,
-    ) -> Self {
-        Self {
-            lifecycle: LifecycleState::default(),
-            node_id: 0,
-            left,
-            right,
-            build_left,
-            build_right,
-            pending_input: None,
-            waiting_completion: false,
-            complete: false,
-            focused_merge,
-            merge_left,
-            merge_right,
-            suppress_child_lifecycle_replay: false,
+    fn initialize_if_needed(&mut self, state: State, input: Serialized) {
+        if self.join_input.is_some() {
+            return;
         }
+
+        self.join_input = Some(input.clone());
+        self.left_branch = Some(JoinBranchProgress::new(state.clone(), input.clone()));
+        if self.focused_merge {
+            self.base_state = Some(state.clone());
+            self.right_branch = Some(JoinBranchProgress::new(state, input));
+        }
+    }
+
+    fn ensure_right_branch_started(&mut self) {
+        if self.right_branch.is_some() {
+            return;
+        }
+
+        let right_input = self
+            .join_input
+            .clone()
+            .expect("join input should be initialized before right branch start");
+        let right_state = self
+            .left_branch
+            .as_ref()
+            .expect("left branch should exist before right branch start")
+            .state
+            .clone();
+        self.right_branch = Some(JoinBranchProgress::new(right_state, right_input));
+    }
+
+    fn current_state(&self, fallback: State) -> State {
+        if self.focused_merge {
+            let Some(base_state) = self.base_state.as_ref() else {
+                return fallback;
+            };
+            let mut merged = base_state.clone();
+            if let Some(left) = self.left_branch.as_ref() {
+                (self.merge_left)(&mut merged, left.state.clone());
+            }
+            if let Some(right) = self.right_branch.as_ref() {
+                (self.merge_right)(&mut merged, right.state.clone());
+            }
+            merged
+        } else if let Some(right) = self.right_branch.as_ref() {
+            right.state.clone()
+        } else if let Some(left) = self.left_branch.as_ref() {
+            left.state.clone()
+        } else {
+            fallback
+        }
+    }
+
+    fn child_parent_path(&self) -> Vec<u64> {
+        self.lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec()
+    }
+
+    fn apply_parent_path(&mut self) {
+        let parent_path = self.child_parent_path();
+        assign_flow_parent_activation_path(&mut self.left, &parent_path);
+        assign_flow_parent_activation_path(&mut self.right, &parent_path);
+    }
+
+    fn all_complete(&self) -> bool {
+        let left_complete = self
+            .left_branch
+            .as_ref()
+            .is_some_and(|branch| branch.complete);
+        let right_complete = self
+            .right_branch
+            .as_ref()
+            .is_some_and(|branch| branch.complete);
+        left_complete && right_complete
+    }
+
+    fn final_emitted(&self) -> Serialized {
+        let left = self
+            .left_branch
+            .as_ref()
+            .expect("left branch should exist when join completes");
+        let right = self
+            .right_branch
+            .as_ref()
+            .expect("right branch should exist when join completes");
+        let mut emitted = Vec::with_capacity(left.last_input.len() + right.last_input.len());
+        emitted.extend_from_slice(&left.last_input);
+        emitted.extend_from_slice(&right.last_input);
+        emitted
+    }
+
+    fn mark_complete(&mut self) {
+        if self.complete {
+            return;
+        }
+        self.complete = true;
+        self.completed_emitted = Some(self.final_emitted());
+        self.lifecycle.succeed();
+    }
+
+    fn settle_branch_without_progress(
+        flow: &mut DynFlow<State>,
+        branch: &mut JoinBranchProgress<State>,
+    ) -> Result<(), ExecutorError> {
+        if branch.complete {
+            return Ok(());
+        }
+
+        branch.state = settle_subflow_without_progress(
+            flow,
+            &mut branch.cursor,
+            branch.state.clone(),
+            &mut branch.last_input,
+        )?;
+        if branch.cursor >= flow.len() {
+            branch.complete = true;
+        }
+        Ok(())
+    }
+
+    fn settle_without_external_requests(&mut self, fallback: State) -> Result<State, ExecutorError> {
+        if self.focused_merge {
+            if let Some(left) = self.left_branch.as_mut() {
+                Self::settle_branch_without_progress(&mut self.left, left)?;
+            }
+            if let Some(right) = self.right_branch.as_mut() {
+                Self::settle_branch_without_progress(&mut self.right, right)?;
+            }
+        } else {
+            if let Some(left) = self.left_branch.as_mut() {
+                Self::settle_branch_without_progress(&mut self.left, left)?;
+                if left.complete {
+                    self.ensure_right_branch_started();
+                }
+            }
+            if let Some(right) = self.right_branch.as_mut() {
+                Self::settle_branch_without_progress(&mut self.right, right)?;
+            }
+        }
+
+        let current = self.current_state(fallback);
+        if self.all_complete() {
+            self.mark_complete();
+        }
+        Ok(current)
     }
 }
 
@@ -3606,66 +3726,65 @@ where
         if self.complete {
             return Err(ExecutorError::Complete);
         }
-        if !self.waiting_completion {
-            return Err(ExecutorError::NoPendingRequest);
-        }
 
-        let envelope: JoinTraceEnvelope = match completion {
-            Ok(bytes) => postcard::from_bytes(&bytes)
-                .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
-            Err(bytes) => {
-                return Err(ExecutorError::ErrorDeserialize(format!(
-                    "join completion envelope failed: {}",
-                    String::from_utf8_lossy(&bytes)
-                )))
+        let side = self
+            .active_request
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
+        self.apply_parent_path();
+
+        let (current_state, emitted) = match side {
+            JoinSide::Left => {
+                let left = self
+                    .left_branch
+                    .as_mut()
+                    .expect("left branch should exist while active");
+                let (next_state, emitted) = subflow_complete_serialized(
+                    &mut self.left,
+                    &mut left.cursor,
+                    left.state.clone(),
+                    &mut left.last_input,
+                    completion,
+                )?;
+                left.state = next_state;
+                if left.cursor >= self.left.len() {
+                    left.complete = true;
+                    if !self.focused_merge {
+                        self.ensure_right_branch_started();
+                    }
+                }
+                (self.current_state(state), emitted)
+            }
+            JoinSide::Right => {
+                let right = self
+                    .right_branch
+                    .as_mut()
+                    .expect("right branch should exist while active");
+                let (next_state, emitted) = subflow_complete_serialized(
+                    &mut self.right,
+                    &mut right.cursor,
+                    right.state.clone(),
+                    &mut right.last_input,
+                    completion,
+                )?;
+                right.state = next_state;
+                if right.cursor >= self.right.len() {
+                    right.complete = true;
+                }
+                (self.current_state(state), emitted)
             }
         };
 
-        let input = self
-            .pending_input
-            .take()
-            .ok_or(ExecutorError::NoPendingRequest)?;
-        let parent_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        assign_flow_parent_activation_path(&mut self.left, &parent_path);
-        assign_flow_parent_activation_path(&mut self.right, &parent_path);
-        let (merged_state, emitted) = if self.focused_merge {
-            let base_state = state.clone();
-            let (left_state, left_emitted) =
-                replay_subflow_trace(&mut self.left, state.clone(), input.clone(), envelope.left)?;
-            let (right_state, right_emitted) =
-                replay_subflow_trace(&mut self.right, state, input, envelope.right)?;
-            let mut merged_state = base_state;
-            (self.merge_left)(&mut merged_state, left_state);
-            (self.merge_right)(&mut merged_state, right_state);
-            (merged_state, {
-                let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-                emitted.extend_from_slice(&left_emitted);
-                emitted.extend_from_slice(&right_emitted);
-                emitted
-            })
-        } else {
-            let (left_state, left_emitted) =
-                replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
-            let (right_state, right_emitted) =
-                replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
-            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-            emitted.extend_from_slice(&left_emitted);
-            emitted.extend_from_slice(&right_emitted);
-            (right_state, emitted)
-        };
-        if self.suppress_child_lifecycle_replay {
-            let _ = take_flow_node_lifecycle_updates(&mut self.left);
-            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        let current_state = self.settle_without_external_requests(current_state)?;
+        if self.complete {
+            let emitted = self
+                .completed_emitted
+                .clone()
+                .expect("completed join should store its final emitted tuple");
+            return Ok((current_state, emitted));
         }
 
-        self.waiting_completion = false;
-        self.complete = true;
-        self.lifecycle.succeed();
-        Ok((merged_state, emitted))
+        Ok((current_state, emitted))
     }
 
     fn request_executable(
@@ -3676,345 +3795,216 @@ where
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
-        if self.waiting_completion {
+        if self.active_request.is_some() {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let payload = JoinRequestEnvelope {
-            left: input.clone(),
-            right: input.clone(),
-        };
         self.lifecycle.enter();
-        let request = match postcard::to_allocvec(&payload) {
-            Ok(request) => request,
-            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
-        };
-        let left_flow = (self.build_left)();
-        let right_flow = (self.build_right)();
-        let left_state = state.clone();
-        let right_state = if self.focused_merge {
-            state.clone()
-        } else {
-            left_state.clone()
-        };
-        let left_input = input.clone();
-        let right_input = input.clone();
-        let focused_merge = self.focused_merge;
-        let left_start_node_id = first_flow_node_id(&self.left);
-        let right_start_node_id = first_flow_node_id(&self.right);
-        let journey_id = self.lifecycle.journey_id();
-        let parent_activation_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
-        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
-        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
-
-        let runner: EffectRunner = Box::new(move || {
-            Box::pin(async move {
-                let (left_trace, right_trace) = if focused_merge {
-                    let left = run_subflow_to_end(
-                        left_flow,
-                        left_state,
-                        left_input,
-                        left_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    );
-                    let right = run_subflow_to_end(
-                        right_flow,
-                        right_state,
-                        right_input,
-                        right_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    );
-                    futures::future::try_join(left, right).await?
-                } else {
-                    let (left_state, left_trace) = run_subflow_to_end_with_state(
-                        left_flow,
-                        left_state,
-                        left_input,
-                        left_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    )
-                    .await?;
-                    let (_right_state, right_trace) = run_subflow_to_end_with_state(
-                        right_flow,
-                        left_state,
-                        right_input,
-                        right_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    )
-                    .await?;
-                    (left_trace, right_trace)
-                };
-                let envelope = JoinTraceEnvelope {
-                    left: left_trace,
-                    right: right_trace,
-                };
-                let bytes = postcard::to_allocvec(&envelope)
-                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
-                Ok(Ok(bytes))
-            })
-        });
-
-        self.waiting_completion = true;
-        self.pending_input = Some(input);
-        let request =
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner);
-        let request = match live_history {
-            Some((_tx, rx)) => request.with_live_history(rx),
-            None => request,
-        };
-        Ok((state, request))
-    }
-
-    fn is_waiting_completion(&self) -> bool {
-        self.waiting_completion
-    }
-
-    fn is_complete(&self) -> bool {
-        self.complete
-    }
-
-    fn set_parent_activation_path(&mut self, path: &[u64]) {
-        self.lifecycle.set_parent_activation_path(path);
-    }
-
-    fn set_journey_id(&mut self, journey_id: uuid::Uuid) {
-        self.lifecycle.set_journey_id(journey_id);
-        assign_flow_journey_id(&mut self.left, journey_id);
-        assign_flow_journey_id(&mut self.right, journey_id);
-    }
-
-    fn current_activation_path(&self) -> Option<&[u64]> {
-        self.lifecycle.current_activation_path()
-    }
-
-    fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
-        let mut updates = self.lifecycle.take_updates();
-        updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
-        updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
-        updates
-    }
-
-    fn node_id(&self) -> u32 {
-        self.node_id
-    }
-
-    fn assign_node_ids(&mut self, next_id: &mut u32) {
-        self.node_id = *next_id;
-        self.lifecycle.set_node_id(self.node_id);
-        *next_id = next_id.saturating_add(1);
-        for node in &mut self.left {
-            node.assign_node_ids(next_id);
-        }
-        for node in &mut self.right {
-            node.assign_node_ids(next_id);
-        }
-    }
-}
-
-impl<State> ErasedFlow<State> for JoinContextErasedFlow<State>
-where
-    State: Clone + Send + 'static,
-{
-    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
-        Err((
-            state,
-            ExecutorError::ClientTransport("Join requires executable request mode".to_string()),
-        ))
-    }
-
-    fn complete(
-        &mut self,
-        state: State,
-        completion: SerializedCompletion,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        if self.complete {
-            return Err(ExecutorError::Complete);
-        }
-        if !self.waiting_completion {
-            return Err(ExecutorError::NoPendingRequest);
-        }
-
-        let envelope: JoinTraceEnvelope = match completion {
-            Ok(bytes) => postcard::from_bytes(&bytes)
-                .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
-            Err(bytes) => {
-                return Err(ExecutorError::ErrorDeserialize(format!(
-                    "join completion envelope failed: {}",
-                    String::from_utf8_lossy(&bytes)
-                )))
+        self.initialize_if_needed(state.clone(), input);
+        self.apply_parent_path();
+        let mut current_state = match self.settle_without_external_requests(state.clone()) {
+            Ok(current_state) => current_state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.lifecycle.fail();
+                return Err((self.current_state(state), ExecutorError::ActionFailure(failure)));
             }
+            Err(err) => return Err((self.current_state(state), err)),
         };
-
-        let input = self
-            .pending_input
-            .take()
-            .ok_or(ExecutorError::NoPendingRequest)?;
-        let parent_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        assign_flow_parent_activation_path(&mut self.left, &parent_path);
-        assign_flow_parent_activation_path(&mut self.right, &parent_path);
-        let (merged_state, emitted) = if self.focused_merge {
-            let base_state = state.clone();
-            let (left_state, left_emitted) =
-                replay_subflow_trace(&mut self.left, state.clone(), input.clone(), envelope.left)?;
-            let (right_state, right_emitted) =
-                replay_subflow_trace(&mut self.right, state, input, envelope.right)?;
-            let mut merged_state = base_state;
-            (self.merge_left)(&mut merged_state, left_state);
-            (self.merge_right)(&mut merged_state, right_state);
-            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-            emitted.extend_from_slice(&left_emitted);
-            emitted.extend_from_slice(&right_emitted);
-            (merged_state, emitted)
-        } else {
-            let (left_state, left_emitted) =
-                replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
-            let (right_state, right_emitted) =
-                replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
-            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-            emitted.extend_from_slice(&left_emitted);
-            emitted.extend_from_slice(&right_emitted);
-            (right_state, emitted)
-        };
-        if self.suppress_child_lifecycle_replay {
-            let _ = take_flow_node_lifecycle_updates(&mut self.left);
-            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        if self.complete {
+            return Err((current_state, ExecutorError::Complete));
         }
 
-        self.waiting_completion = false;
-        self.complete = true;
-        self.lifecycle.succeed();
-        Ok((merged_state, emitted))
+        loop {
+            if self.focused_merge {
+                let left_complete = self
+                    .left_branch
+                    .as_ref()
+                    .is_some_and(|branch| branch.complete);
+                if !left_complete {
+                    let left = self
+                        .left_branch
+                        .as_mut()
+                        .expect("left branch should exist for focused join");
+                    match subflow_next_executable_request(
+                        &mut self.left,
+                        &mut left.cursor,
+                        left.state.clone(),
+                        &mut left.last_input,
+                    ) {
+                        Ok((next_state, request)) => {
+                            left.state = next_state;
+                            self.active_request = Some(JoinSide::Left);
+                            current_state = self.current_state(current_state);
+                            return Ok((current_state, request));
+                        }
+                        Err((next_state, ExecutorError::Complete)) => {
+                            left.state = next_state;
+                            left.complete = true;
+                            current_state = self.current_state(current_state);
+                            if self.all_complete() {
+                                self.mark_complete();
+                                return Err((current_state, ExecutorError::Complete));
+                            }
+                            continue;
+                        }
+                        Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                            left.state = next_state;
+                            self.lifecycle.fail();
+                            current_state = self.current_state(current_state);
+                            return Err((current_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err((next_state, err)) => {
+                            left.state = next_state;
+                            current_state = self.current_state(current_state);
+                            return Err((current_state, err));
+                        }
+                    }
+                }
+
+                let right = self
+                    .right_branch
+                    .as_mut()
+                    .expect("right branch should exist for focused join");
+                match subflow_next_executable_request(
+                    &mut self.right,
+                    &mut right.cursor,
+                    right.state.clone(),
+                    &mut right.last_input,
+                ) {
+                    Ok((next_state, request)) => {
+                        right.state = next_state;
+                        self.active_request = Some(JoinSide::Right);
+                        current_state = self.current_state(current_state);
+                        return Ok((current_state, request));
+                    }
+                    Err((next_state, ExecutorError::Complete)) => {
+                        right.state = next_state;
+                        right.complete = true;
+                        current_state = self.current_state(current_state);
+                        if self.all_complete() {
+                            self.mark_complete();
+                            return Err((current_state, ExecutorError::Complete));
+                        }
+                    }
+                    Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                        right.state = next_state;
+                        self.lifecycle.fail();
+                        current_state = self.current_state(current_state);
+                        return Err((current_state, ExecutorError::ActionFailure(failure)));
+                    }
+                    Err((next_state, err)) => {
+                        right.state = next_state;
+                        current_state = self.current_state(current_state);
+                        return Err((current_state, err));
+                    }
+                }
+            } else {
+                let left_complete = self
+                    .left_branch
+                    .as_ref()
+                    .is_some_and(|branch| branch.complete);
+                if !left_complete {
+                    let left = self
+                        .left_branch
+                        .as_mut()
+                        .expect("left branch should exist for sequential join");
+                    match subflow_next_executable_request(
+                        &mut self.left,
+                        &mut left.cursor,
+                        left.state.clone(),
+                        &mut left.last_input,
+                    ) {
+                        Ok((next_state, request)) => {
+                            left.state = next_state;
+                            self.active_request = Some(JoinSide::Left);
+                            current_state = self.current_state(current_state);
+                            return Ok((current_state, request));
+                        }
+                        Err((next_state, ExecutorError::Complete)) => {
+                            left.state = next_state;
+                            left.complete = true;
+                            self.ensure_right_branch_started();
+                            current_state = self.current_state(current_state);
+                            continue;
+                        }
+                        Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                            left.state = next_state;
+                            self.lifecycle.fail();
+                            current_state = self.current_state(current_state);
+                            return Err((current_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err((next_state, err)) => {
+                            left.state = next_state;
+                            current_state = self.current_state(current_state);
+                            return Err((current_state, err));
+                        }
+                    }
+                }
+
+                self.ensure_right_branch_started();
+                let right = self
+                    .right_branch
+                    .as_mut()
+                    .expect("right branch should exist once left completes");
+                match subflow_next_executable_request(
+                    &mut self.right,
+                    &mut right.cursor,
+                    right.state.clone(),
+                    &mut right.last_input,
+                ) {
+                    Ok((next_state, request)) => {
+                        right.state = next_state;
+                        self.active_request = Some(JoinSide::Right);
+                        current_state = self.current_state(current_state);
+                        return Ok((current_state, request));
+                    }
+                    Err((next_state, ExecutorError::Complete)) => {
+                        right.state = next_state;
+                        right.complete = true;
+                        current_state = self.current_state(current_state);
+                        if self.all_complete() {
+                            self.mark_complete();
+                            return Err((current_state, ExecutorError::Complete));
+                        }
+                    }
+                    Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                        right.state = next_state;
+                        self.lifecycle.fail();
+                        current_state = self.current_state(current_state);
+                        return Err((current_state, ExecutorError::ActionFailure(failure)));
+                    }
+                    Err((next_state, err)) => {
+                        right.state = next_state;
+                        current_state = self.current_state(current_state);
+                        return Err((current_state, err));
+                    }
+                }
+            }
+        }
     }
 
-    fn request_executable(
+    fn try_complete_without_progress(
         &mut self,
         state: State,
-        input: Serialized,
-    ) -> RequestResult<State, ExecutableEffectRequest> {
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if self.complete {
-            return Err((state, ExecutorError::Complete));
+            return Ok((state, self.completed_emitted.take(), true));
         }
-        if self.waiting_completion {
-            return Err((state, ExecutorError::AwaitingCompletion));
+        if self.active_request.is_some() || self.join_input.is_none() {
+            return Ok((state, None, false));
         }
 
-        let payload = JoinRequestEnvelope {
-            left: input.clone(),
-            right: input.clone(),
-        };
-        self.lifecycle.enter();
-        let request = match postcard::to_allocvec(&payload) {
-            Ok(request) => request,
-            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
-        };
-        let left_flow = (self.build_left)();
-        let right_flow = (self.build_right)();
-        let left_state = state.clone();
-        let right_state = if self.focused_merge {
-            state.clone()
-        } else {
-            left_state.clone()
-        };
-        let left_input = input.clone();
-        let right_input = input.clone();
-        let focused_merge = self.focused_merge;
-        let left_start_node_id = first_flow_node_id(&self.left);
-        let right_start_node_id = first_flow_node_id(&self.right);
-        let journey_id = self.lifecycle.journey_id();
-        let parent_activation_path = self
-            .lifecycle
-            .current_activation_path()
-            .unwrap_or(&[])
-            .to_vec();
-        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
-        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
-        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
+        self.apply_parent_path();
+        let current_state = self.settle_without_external_requests(state)?;
+        if self.complete {
+            return Ok((current_state, self.completed_emitted.take(), true));
+        }
 
-        let runner: EffectRunner = Box::new(move || {
-            Box::pin(async move {
-                let (left_trace, right_trace) = if focused_merge {
-                    let left = run_subflow_to_end(
-                        left_flow,
-                        left_state,
-                        left_input,
-                        left_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    );
-                    let right = run_subflow_to_end(
-                        right_flow,
-                        right_state,
-                        right_input,
-                        right_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    );
-                    futures::future::try_join(left, right).await?
-                } else {
-                    let (left_state, left_trace) = run_subflow_to_end_with_state(
-                        left_flow,
-                        left_state,
-                        left_input,
-                        left_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    )
-                    .await?;
-                    let (_right_state, right_trace) = run_subflow_to_end_with_state(
-                        right_flow,
-                        left_state,
-                        right_input,
-                        right_start_node_id,
-                        journey_id,
-                        &parent_activation_path,
-                        live_history_tx.clone(),
-                    )
-                    .await?;
-                    (left_trace, right_trace)
-                };
-                let envelope = JoinTraceEnvelope {
-                    left: left_trace,
-                    right: right_trace,
-                };
-                let bytes = postcard::to_allocvec(&envelope)
-                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
-                Ok(Ok(bytes))
-            })
-        });
-
-        self.waiting_completion = true;
-        self.pending_input = Some(input);
-        let request =
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner);
-        let request = match live_history {
-            Some((_tx, rx)) => request.with_live_history(rx),
-            None => request,
-        };
-        Ok((state, request))
+        Ok((current_state, None, false))
     }
 
     fn is_waiting_completion(&self) -> bool {
-        self.waiting_completion
+        self.active_request.is_some()
     }
 
     fn is_complete(&self) -> bool {
@@ -4157,16 +4147,26 @@ where
             match node.request(state, body_input.clone()) {
                 Ok((next_state, request)) => return Ok((next_state, request)),
                 Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
+                    let (next_state, emitted, completed) = node
+                        .try_complete_without_progress(next_state)
+                        .expect("while child inline completion should succeed");
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        body_input = emitted.clone();
+                        self.deferred_emitted = Some(emitted.clone());
+                        if completed && self.body_cursor + 1 >= self.active_body.len() {
+                            self.active_control_input = Some(emitted);
+                        }
+                    }
+                    if completed {
                         self.body_cursor += 1;
                         if self.body_cursor >= self.active_body.len() {
                             self.active_body.clear();
                             self.body_cursor = 0;
                         }
-                        state = next_state;
                         continue;
                     }
-                    return Err((next_state, ExecutorError::Complete));
+                    return Err((state, ExecutorError::Complete));
                 }
                 Err((next_state, ExecutorError::ActionFailure(failure))) => {
                     self.lifecycle.fail();
@@ -4829,8 +4829,6 @@ where
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        let build_left = Box::new(|| <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
-        let build_right = Box::new(|| <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         let focused_merge =
             <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
         let merge_left = Box::new(|target: &mut State, branch_state: State| {
@@ -4842,8 +4840,6 @@ where
         steps.push(Box::new(JoinErasedFlow::<State>::new(
             left,
             right,
-            build_left,
-            build_right,
             focused_merge,
             merge_left,
             merge_right,
@@ -6142,20 +6138,6 @@ where
             Arc::clone(&context),
             Vec::new(),
         ));
-        let context_for_left = Arc::clone(&context);
-        let context_for_right = Arc::clone(&context);
-        let build_left = Box::new(move || {
-            let (_, flow) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
-                (Arc::clone(&context_for_left), Vec::new()),
-            );
-            flow
-        });
-        let build_right = Box::new(move || {
-            let (_, flow) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
-                (Arc::clone(&context_for_right), Vec::new()),
-            );
-            flow
-        });
         let focused_merge =
             <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
         let merge_left = Box::new(|target: &mut State, branch_state: State| {
@@ -6164,11 +6146,9 @@ where
         let merge_right = Box::new(|target: &mut State, branch_state: State| {
             <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
         });
-        steps.push(Box::new(JoinContextErasedFlow::<State>::new(
+        steps.push(Box::new(JoinErasedFlow::<State>::new(
             left,
             right,
-            build_left,
-            build_right,
             focused_merge,
             merge_left,
             merge_right,

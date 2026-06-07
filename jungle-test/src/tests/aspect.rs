@@ -481,7 +481,7 @@ async fn executor_runs_aspected_steps() {
     assert!(!gorilla.is_complete());
 
     let mut gorilla_emitted: Vec<i32> = Vec::new();
-    for step in 0..8 {
+    for step in 0..9 {
         let request: i32 = gorilla
             .next_request()
             .expect("gorilla request should advance");
@@ -500,12 +500,12 @@ async fn executor_runs_aspected_steps() {
             .expect("gorilla completion should advance");
         gorilla_emitted.push(emitted);
     }
-    assert_eq!(gorilla_emitted, vec![6, 13, 1, 3, 7, 1, 3, 7]);
+    assert_eq!(gorilla_emitted, vec![6, 13, 1, 3, 7, 1, 3, 7, 1]);
     assert!(!gorilla.is_complete());
     assert!(gorilla.next_request::<i32>().is_err());
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
-    assert_eq!(gorilla_state.core.energy, 7);
+    assert_eq!(gorilla_state.core.energy, 1);
     assert_eq!(gorilla_state.core.age, 100);
     assert_eq!(gorilla_state.bananas, 2);
 
@@ -581,11 +581,13 @@ async fn executor_runs_aspected_steps() {
             SerializedTag::Int(52),
             SerializedTag::Int(53),
             SerializedTag::EitherInt(107),
+            SerializedTag::Int(108),
+            SerializedTag::Int(109),
         ]
     );
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 107);
+    assert_eq!(tiger_state.core.energy, 109);
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 98);
 }
@@ -651,11 +653,11 @@ async fn executor_advances_with_executable_requests_and_dynamic_effect_order() {
             .expect("tiger completion should process");
         emitted.push(emitted_step);
     }
-    assert_eq!(emitted.len(), 10);
+    assert_eq!(emitted.len(), 12);
     assert!(tiger.is_complete());
 
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 107);
+    assert_eq!(tiger_state.core.energy, 109);
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 98);
 }
