@@ -4,6 +4,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -13,7 +14,7 @@ pub struct ReplayRainforest(Arc<Mutex<ReplayInner>>);
 struct ReplayInner {
     query: Vec<bool>,
     end: UnboundedSender<()>,
-    recv: UnboundedReceiver<bool>,
+    recv: Arc<Mutex<UnboundedReceiver<bool>>>,
 }
 
 impl Ecosystem for ReplayRainforest {
@@ -23,49 +24,112 @@ impl Ecosystem for ReplayRainforest {
 
 impl ReplayRainforest {
     async fn next(&self) -> bool {
-        let mut inner = self.0.lock().await;
-        match inner.query.pop() {
-            Some(value) => value,
-            None => {
-                let _ = inner.end.unbounded_send(());
-                inner
-                    .recv
-                    .next()
-                    .await
-                    .expect("replay receiver should yield a bool after query exhaustion")
+        let recv = {
+            let mut inner = self.0.lock().await;
+            match inner.query.pop() {
+                Some(value) => return value,
+                None => {
+                    let _ = inner.end.unbounded_send(());
+                    Arc::clone(&inner.recv)
+                }
             }
-        }
+        };
+
+        let mut recv = recv.lock().await;
+        recv.next()
+            .await
+            .expect("replay receiver should yield a bool after query exhaustion")
     }
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReplayState {
+pub struct Left;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Right;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplayFrame<L, R> {
     color: bool,
     history: String,
+    left: L,
+    right: R,
 }
 
-impl From<ReplayState> for () {
-    fn from(_value: ReplayState) -> Self {}
+pub type ReplayState = ReplayFrame<Left, Right>;
+pub type Depth1State = ReplayState;
+pub type Depth2LeftState = ReplayFrame<Left, ()>;
+pub type Depth2RightState = ReplayFrame<(), Right>;
+pub type Depth2State = ReplayFrame<Depth2LeftState, Depth2RightState>;
+
+impl ViewProject<Depth2LeftState> for Depth2State {
+    fn project_view(state: &mut Self) -> &mut Depth2LeftState {
+        &mut state.left
+    }
+}
+
+impl ViewProject<Depth2RightState> for Depth2State {
+    fn project_view(state: &mut Self) -> &mut Depth2RightState {
+        &mut state.right
+    }
+}
+
+impl<L, R> From<ReplayFrame<L, R>> for () {
+    fn from(_value: ReplayFrame<L, R>) -> Self {}
+}
+
+pub trait ReplayNodeState {
+    fn replay_color(&self) -> bool;
+    fn replay_color_mut(&mut self) -> &mut bool;
+    fn replay_history(&self) -> &str;
+    fn replay_history_mut(&mut self) -> &mut String;
+}
+
+impl<L, R> ReplayNodeState for ReplayFrame<L, R> {
+    fn replay_color(&self) -> bool {
+        self.color
+    }
+
+    fn replay_color_mut(&mut self) -> &mut bool {
+        &mut self.color
+    }
+
+    fn replay_history(&self) -> &str {
+        &self.history
+    }
+
+    fn replay_history_mut(&mut self) -> &mut String {
+        &mut self.history
+    }
 }
 
 pub struct ReplayColorIsTrue;
 
-impl Predicate<(&ReplayState, &())> for ReplayColorIsTrue {
-    fn eval((state, _): &(&ReplayState, &())) -> bool {
-        state.color
+impl<St> Predicate<(&St, &())> for ReplayColorIsTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((state, _): &(&St, &())) -> bool {
+        state.replay_color()
     }
 }
 
-impl Predicate<(ReplayState, ())> for ReplayColorIsTrue {
-    fn eval((state, _): &(ReplayState, ())) -> bool {
-        state.color
+impl<St> Predicate<(St, ())> for ReplayColorIsTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((state, _): &(St, ())) -> bool {
+        state.replay_color()
     }
 }
 
 pub struct ReplayAlwaysTrue;
 
-impl Predicate<(&ReplayState, &())> for ReplayAlwaysTrue {
-    fn eval((_state, _): &(&ReplayState, &())) -> bool {
+impl<St> Predicate<(&St, &())> for ReplayAlwaysTrue
+where
+    St: ReplayNodeState,
+{
+    fn eval((_state, _): &(&St, &())) -> bool {
         true
     }
 }
@@ -105,71 +169,77 @@ where
     }
 }
 
-pub struct Tick;
+pub struct Tick<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for Tick {
+impl<St> Action for Tick<St>
+where
+    St: ReplayNodeState,
+{
     type Effect = Tock;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
-        state: &mut ReplayState,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
             let tocked = output.map_err(|_err| Failure::from("tock should succeed"))?;
-            if tocked {
-                state.color = true;
-            } else {
-                state.color = false;
-            }
+            *state.replay_color_mut() = tocked;
         };
         Ok(__absorb_out_1)
     }
 }
 
-pub struct Label<const CH: char>;
+pub struct Label<St, const CH: char>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl<const CH: char> Action for Label<CH> {
+impl<St, const CH: char> Action for Label<St, CH>
+where
+    St: ReplayNodeState,
+{
     type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
-        state: &mut ReplayState,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_2 = {
             output.map_err(|_err| Failure::from("label should complete without effect"))?;
-            state.history.push(CH);
+            state.replay_history_mut().push(CH);
         };
         Ok(__absorb_out_2)
     }
 }
 
-pub struct MaybeFail;
+#[allow(dead_code)]
+struct MaybeFail<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for MaybeFail {
+impl<St> Action for MaybeFail<St>
+where
+    St: ReplayNodeState,
+{
     type Effect = NoEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &St, _input: Self::Input) -> Self::Input {}
 
     fn absorb(
-        state: &mut ReplayState,
+        state: &mut St,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
             output.map_err(|_err| Failure::from("maybe fail should complete without effect"))?;
-            if !state.color {
+            if !state.replay_color() {
                 return Err(Failure::from("maybe fail should fail when replay color is false"));
             }
         };
@@ -177,21 +247,24 @@ impl Action for MaybeFail {
     }
 }
 
-pub struct FlattenReplayChoice;
+pub struct FlattenReplayChoice<St>(PhantomData<fn() -> St>);
 
 #[jungle::action]
-impl Action for FlattenReplayChoice {
+impl<St> Action for FlattenReplayChoice<St>
+where
+    St: ReplayNodeState,
+{
     type Effect = NoEffect;
     type Input = Either<(), ()>;
     type Output = ();
     type Carry = Either<(), ()>;
 
-    fn emit(_state: &ReplayState, input: Self::Input) -> ((), Self::Carry) {
+    fn emit(_state: &St, input: Self::Input) -> ((), Self::Carry) {
         ((), input)
     }
 
     fn absorb(
-        _state: &mut ReplayState,
+        _state: &mut St,
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
@@ -206,43 +279,52 @@ impl Action for FlattenReplayChoice {
 }
 
 #[derive(Flow)]
-pub struct Depth1LeftBranch(Step<Label<'L'>>, Step<Tick>, Step<Tick>, Step<Tick>);
-
-#[derive(Flow)]
-pub struct Depth1RightBranch(
-    Step<Label<'R'>>,
-    Step<Tick>,
-    Step<Tick>,
-    Step<Tick>,
-    Step<Tick>,
+pub struct Depth1LeftBranch<St: ReplayNodeState>(
+    Step<Label<St, 'L'>>,
+    Step<Tick<St>>,
+    Step<Tick<St>>,
+    Step<Tick<St>>,
 );
 
 #[derive(Flow)]
-pub struct Depth1InnerBody(
-    Step<Label<'I'>>,
-    Step<Tick>,
-    Step<Tick>,
-    Conditional<ReplayColorIsTrue, Depth1LeftBranch, Depth1RightBranch>,
-    Step<FlattenReplayChoice>,
+pub struct Depth1RightBranch<St: ReplayNodeState>(
+    Step<Label<St, 'R'>>,
+    Step<Tick<St>>,
+    Step<Tick<St>>,
+    Step<Tick<St>>,
+    Step<Tick<St>>,
 );
 
 #[derive(Flow)]
-pub struct Depth1TailLeftBranch(Step<Label<'A'>>);
+pub struct Depth1InnerBody<St: ReplayNodeState>(
+    Step<Label<St, 'I'>>,
+    Step<Tick<St>>,
+    Step<Tick<St>>,
+    Conditional<ReplayColorIsTrue, Depth1LeftBranch<St>, Depth1RightBranch<St>>,
+    Step<FlattenReplayChoice<St>>,
+);
 
 #[derive(Flow)]
-pub struct Depth1TailRightBranch(Step<Label<'B'>>);
+pub struct Depth1TailLeftBranch<St: ReplayNodeState>(Step<Label<St, 'A'>>);
+
+#[derive(Flow)]
+pub struct Depth1TailRightBranch<St: ReplayNodeState>(Step<Label<St, 'B'>>);
 
 #[derive(Flow)]
 pub struct Depth1OuterBody(
-    Step<Label<'O'>>,
-    Step<Tick>,
-    Step<Tick>,
-    Step<Tick>,
-    While<ReplayColorIsTrue, Depth1InnerBody>,
-    Step<Tick>,
-    Step<Tick>,
-    Conditional<ReplayColorIsTrue, Depth1TailLeftBranch, Depth1TailRightBranch>,
-    Step<FlattenReplayChoice>,
+    Step<Label<ReplayState, 'O'>>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    While<ReplayColorIsTrue, Depth1InnerBody<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    Conditional<
+        ReplayColorIsTrue,
+        Depth1TailLeftBranch<ReplayState>,
+        Depth1TailRightBranch<ReplayState>,
+    >,
+    Step<FlattenReplayChoice<ReplayState>>,
 );
 
 #[derive(Flow)]
@@ -254,8 +336,8 @@ pub struct Depth1;
 
 #[jungle::animal(observe, id = 1002, generation = 0)]
 impl Animal for Depth1 {
-    type State = ReplayState;
-    type Seed = ReplayState;
+    type State = Depth1State;
+    type Seed = Depth1State;
     type Flow = Depth1Flow;
 }
 
@@ -263,21 +345,127 @@ impl Observe for Depth1 {
     type Appearance = String;
 
     fn observe(state: &Self::State) -> Self::Appearance {
-        state.history.clone()
+        state.replay_history().to_string()
+    }
+}
+
+pub struct SeedReplayBranches;
+
+#[jungle::action]
+impl Action for SeedReplayBranches {
+    type Effect = NoEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &Depth2State, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut Depth2State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_5 = {
+            output.map_err(|_err| Failure::from("seed replay branches should succeed"))?;
+            state.left.color = state.color;
+            state.right.color = state.color;
+            state.left.history.clear();
+            state.right.history.clear();
+        };
+        Ok(__absorb_out_5)
+    }
+}
+
+pub struct MergeReplayJoin;
+
+#[jungle::action]
+impl Action for MergeReplayJoin {
+    type Effect = NoEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &Depth2State, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut Depth2State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_6 = {
+            output.map_err(|_err| Failure::from("merge replay join should succeed"))?;
+            state.history.push('(');
+            state.history.push_str(&state.left.history);
+            state.history.push('|');
+            state.history.push_str(&state.right.history);
+            state.history.push(')');
+            state.color = state.left.color || state.right.color;
+            state.left.history.clear();
+            state.right.history.clear();
+        };
+        Ok(__absorb_out_6)
     }
 }
 
 #[derive(Flow)]
-struct ConditionalProbeLeft(Step<Label<'L'>>, Step<Tick>);
+#[jungle(focus = Depth2LeftState)]
+pub struct Depth2LeftInnerFlow(Depth1InnerBody<Depth2LeftState>);
 
 #[derive(Flow)]
-struct ConditionalProbeRight(Step<Label<'R'>>, Step<Tick>);
+#[jungle(focus = Depth2RightState)]
+pub struct Depth2RightInnerFlow(Depth1InnerBody<Depth2RightState>);
+
+#[derive(Flow)]
+pub struct Depth2JoinedInnerBody(
+    Join<Depth2LeftInnerFlow, Depth2RightInnerFlow>,
+    Step<MergeReplayJoin>,
+);
+
+#[derive(Flow)]
+pub struct Depth2OuterBody(
+    Step<Label<Depth2State, 'O'>>,
+    Step<Tick<Depth2State>>,
+    Step<Tick<Depth2State>>,
+    Step<Tick<Depth2State>>,
+    Step<SeedReplayBranches>,
+    While<ReplayColorIsTrue, Depth2JoinedInnerBody>,
+    Step<Tick<Depth2State>>,
+    Step<Tick<Depth2State>>,
+    Conditional<
+        ReplayColorIsTrue,
+        Depth1TailLeftBranch<Depth2State>,
+        Depth1TailRightBranch<Depth2State>,
+    >,
+    Step<FlattenReplayChoice<Depth2State>>,
+);
+
+#[derive(Flow)]
+pub struct Depth2Flow(While<ReplayAlwaysTrue, Depth2OuterBody>);
+
+pub struct Depth2;
+
+#[jungle::animal(observe, id = 1005, generation = 0)]
+impl Animal for Depth2 {
+    type State = Depth2State;
+    type Seed = Depth2State;
+    type Flow = Depth2Flow;
+}
+
+impl Observe for Depth2 {
+    type Appearance = String;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        state.replay_history().to_string()
+    }
+}
+
+#[derive(Flow)]
+struct ConditionalProbeLeft(Step<Label<ReplayState, 'L'>>, Step<Tick<ReplayState>>);
+
+#[derive(Flow)]
+struct ConditionalProbeRight(Step<Label<ReplayState, 'R'>>, Step<Tick<ReplayState>>);
 
 #[derive(Flow)]
 struct ConditionalProbeFlow(
-    Step<Tick>,
-    Step<Tick>,
-    Step<Tick>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
     Conditional<ReplayColorIsTrue, ConditionalProbeLeft, ConditionalProbeRight>,
 );
 
@@ -292,12 +480,16 @@ impl Animal for ConditionalProbe {
 
 #[derive(Flow)]
 struct ConditionalCompleteProbeFlow(
-    Step<Tick>,
-    Step<Tick>,
-    Step<Tick>,
-    Conditional<ReplayColorIsTrue, Step<Label<'L'>>, Step<Label<'R'>>>,
-    Step<FlattenReplayChoice>,
-    Step<Tick>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    Step<Tick<ReplayState>>,
+    Conditional<
+        ReplayColorIsTrue,
+        Step<Label<ReplayState, 'L'>>,
+        Step<Label<ReplayState, 'R'>>,
+    >,
+    Step<FlattenReplayChoice<ReplayState>>,
+    Step<Tick<ReplayState>>,
 );
 
 struct ConditionalCompleteProbe;
@@ -310,7 +502,7 @@ impl Animal for ConditionalCompleteProbe {
 }
 
 #[derive(Animals)]
-pub struct ReplayRainforestAnimals(Depth1);
+pub struct ReplayRainforestAnimals(Depth1, Depth2);
 
 const REPLAY_TEST_OWNER_LEASE_TTL_MS: i64 = 250;
 const REPLAY_TEST_CLAIMED_WORK_TTL_MS: i64 = 1_000;
@@ -324,10 +516,14 @@ fn replay_rainforest(
     end: UnboundedSender<()>,
     recv: UnboundedReceiver<bool>,
 ) -> ReplayRainforest {
-    ReplayRainforest(Arc::new(Mutex::new(ReplayInner { query, end, recv })))
+    ReplayRainforest(Arc::new(Mutex::new(ReplayInner {
+        query,
+        end,
+        recv: Arc::new(Mutex::new(recv)),
+    })))
 }
 
-fn spawn_depth1_worker(
+fn spawn_replay_worker(
     client: FusedClient,
     jungle: ReplayRainforest,
     owner_lease_ttl_ms: i64,
@@ -338,7 +534,7 @@ fn spawn_depth1_worker(
     })
 }
 
-async fn current_depth1_history(client: &FusedClient, journey_id: uuid::Uuid) -> String {
+async fn current_replay_history(client: &FusedClient, journey_id: uuid::Uuid) -> String {
     let Some(appearance_bytes) = client
         .animal_appearance(journey_id)
         .await
@@ -347,17 +543,17 @@ async fn current_depth1_history(client: &FusedClient, journey_id: uuid::Uuid) ->
         return String::new();
     };
     postcard::from_bytes::<String>(&appearance_bytes)
-        .expect("depth1 appearance should deserialize as a String")
+        .expect("replay appearance should deserialize as a String")
 }
 
-async fn wait_for_depth1_history_change(
+async fn wait_for_replay_history_change(
     client: &FusedClient,
     journey_id: uuid::Uuid,
     previous: &str,
 ) -> String {
     tokio::time::timeout(REPLAY_TEST_APPEARANCE_TIMEOUT, async {
         loop {
-            let history = current_depth1_history(client, journey_id).await;
+            let history = current_replay_history(client, journey_id).await;
             if history != previous {
                 break history;
             }
@@ -369,68 +565,61 @@ async fn wait_for_depth1_history_change(
         }
     })
     .await
-    .expect("depth1 appearance should change before timeout")
+    .expect("replay appearance should change before timeout")
 }
 
-async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
+async fn assert_replayed_history_extends_prefix<A, S>(
+    query: Vec<bool>,
+    namespace: &str,
+    seed: S,
+) where
+    A: Animal<State = S, Seed = S> + Observe<Appearance = String>,
+    A::Id: AnimalIdValue,
+    A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+    S: Serialize + Sync,
+{
     let client = FusedClient::builder()
         .claimed_work_ttl_ms(REPLAY_TEST_CLAIMED_WORK_TTL_MS)
-        .namespace(format!("depth1-property-{}", uuid::Uuid::new_v4()))
+        .namespace(format!("{namespace}-{}", uuid::Uuid::new_v4()))
         .build()
         .await
         .expect("fused client should build");
 
     let (end_tx, mut end_rx) = futures::channel::mpsc::unbounded::<()>();
     let (worker_one_resume_tx, worker_one_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
-    let worker_one = spawn_depth1_worker(
+    let worker_one = spawn_replay_worker(
         client.clone(),
         replay_rainforest(query, end_tx.clone(), worker_one_resume_rx),
         REPLAY_TEST_OWNER_LEASE_TTL_MS,
     );
 
     let journey_id = client
-        .spawn::<Depth1>(&ReplayState::default())
+        .spawn::<A>(&seed)
         .await
-        .expect("depth1 journey should start")
+        .expect("replay journey should start")
         .journey_id;
 
     tokio::time::timeout(REPLAY_TEST_FIRST_BOUNDARY_TIMEOUT, end_rx.next())
         .await
-        .expect("first depth1 end signal should arrive before timeout")
+        .expect("first replay end signal should arrive before timeout")
         .expect("first depth1 end signal channel should remain open");
 
-    let killed_worker_history = current_depth1_history(&client, journey_id).await;
+    let killed_worker_history = current_replay_history(&client, journey_id).await;
 
     worker_one.abort();
-    let _ = worker_one.await;
     drop(worker_one_resume_tx);
 
     let (worker_two_resume_tx, worker_two_resume_rx) = futures::channel::mpsc::unbounded::<bool>();
-    let worker_two = spawn_depth1_worker(
+    let worker_two = spawn_replay_worker(
         client.clone(),
         replay_rainforest(Vec::new(), end_tx, worker_two_resume_rx),
         REPLAY_TEST_OWNER_LEASE_TTL_MS,
     );
 
-    tokio::time::timeout(REPLAY_TEST_RECLAIM_TIMEOUT, async {
-        loop {
-            tokio::select! {
-                maybe_end = end_rx.next() => {
-                    if maybe_end.is_some() {
-                        break;
-                    }
-                }
-                _ = tokio::time::sleep(Duration::from_millis(25)) => {
-                    let _ = client
-                        .journey_details(journey_id)
-                        .await
-                        .expect("journey_details should succeed while waiting for replay boundary");
-                }
-            }
-        }
-    })
-    .await
-    .expect("replayed depth1 end signal should arrive before timeout");
+    tokio::time::timeout(REPLAY_TEST_RECLAIM_TIMEOUT, end_rx.next())
+        .await
+        .expect("replayed end signal should arrive before timeout")
+        .expect("replayed end signal channel should remain open");
 
     let replay_sender = tokio::spawn(async move {
         loop {
@@ -442,11 +631,9 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
     });
 
     let replayed_history =
-        wait_for_depth1_history_change(&client, journey_id, &killed_worker_history).await;
+        wait_for_replay_history_change(&client, journey_id, &killed_worker_history).await;
 
-    eprintln!(
-        "depth1 replay case: old={killed_worker_history:?} new={replayed_history:?}"
-    );
+    eprintln!("{namespace} replay case: old={killed_worker_history:?} new={replayed_history:?}");
 
     assert!(
         replayed_history.starts_with(&killed_worker_history),
@@ -454,8 +641,25 @@ async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
     );
 
     worker_two.abort();
-    let _ = worker_two.await;
     let _ = replay_sender.await;
+}
+
+async fn assert_replayed_depth1_history_extends_prefix(query: Vec<bool>) {
+    assert_replayed_history_extends_prefix::<Depth1, Depth1State>(
+        query,
+        "depth1-property",
+        Depth1State::default(),
+    )
+    .await;
+}
+
+async fn assert_replayed_depth2_history_extends_prefix(query: Vec<bool>) {
+    assert_replayed_history_extends_prefix::<Depth2, Depth2State>(
+        query,
+        "depth2-property",
+        Depth2State::default(),
+    )
+    .await;
 }
 
 proptest! {
@@ -473,6 +677,17 @@ proptest! {
             .build()
             .expect("tokio runtime should build for property test");
         runtime.block_on(assert_replayed_depth1_history_extends_prefix(query));
+    }
+
+    #[test]
+    fn depth2_replay_history_from_replayed_worker_has_killed_worker_prefix(
+        query in proptest::collection::vec(any::<bool>(), 0..65)
+    ) {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime should build for property test");
+        runtime.block_on(assert_replayed_depth2_history_extends_prefix(query));
     }
 }
 

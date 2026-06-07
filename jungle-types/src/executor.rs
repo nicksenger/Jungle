@@ -1766,12 +1766,7 @@ fn emit_subflow_history(
     event: RunnerOut,
 ) -> Result<(), ExecutorError> {
     if let Some(tx) = live_history_tx {
-        tx.unbounded_send(event).map_err(|_| {
-            ExecutorError::ClientTransport(
-                "subflow live history receiver dropped before nested history could be forwarded"
-                    .to_string(),
-            )
-        })?;
+        let _ = tx.unbounded_send(event);
     }
     Ok(())
 }
