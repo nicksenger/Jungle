@@ -248,12 +248,12 @@ impl<const T: u64> Action for SleepMillis<T> {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &ReplayState, input: Self::Input) -> Duration {
+    fn emit(_state: &ReplayState, _input: Self::Input) -> Duration {
         Duration::from_millis(T)
     }
     fn absorb(
         _state: &mut ReplayState,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         Ok(())
     }

@@ -1,5 +1,5 @@
 use crate::{Depth1, ReplayLifecycle};
-use iced::widget::container;
+use iced::widget::{container, text};
 use iced::window;
 use iced::{window::Screenshot, Element, Font, Length, Subscription, Task};
 use jungle_sdk::JungleClient;
@@ -57,6 +57,7 @@ where
 enum Message {
     Tick,
     AppStarted,
+    RebuildViewer,
     Viewer(jungle_vision::EjectedViewerMessage),
     CaptureView,
     ViewCaptured(Screenshot),
@@ -71,7 +72,9 @@ where
     journey_id: Uuid,
     lifecycle: ReplayLifecycle,
     replayed: bool,
-    viewer: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
+    viewer_generation: u64,
+    viewer:
+        Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     image_dump: Option<ImageDumpConfig>,
 }
 
@@ -93,7 +96,8 @@ where
                 journey_id,
                 lifecycle,
                 replayed: false,
-                viewer,
+                viewer_generation: 0,
+                viewer: Some(viewer),
                 image_dump,
             },
             Task::done(Message::AppStarted),
@@ -131,8 +135,13 @@ where
         match message {
             Message::Tick => {
                 if self.lifecycle.take_replay_viewer_request() {
-                    self.viewer = Self::build_viewer(self.client.clone(), self.journey_id);
+                    // Drop the first viewer completely before constructing the replay viewer.
+                    // This guarantees a brand-new JourneyEvents subscription and a fresh
+                    // graph/live-state rebuild from that second stream.
+                    self.viewer = None;
                     self.replayed = true;
+                    self.viewer_generation = self.viewer_generation.saturating_add(1);
+                    return Task::done(Message::RebuildViewer);
                 }
                 Task::none()
             }
@@ -141,7 +150,15 @@ where
                 .as_ref()
                 .map(|image_dump| schedule_capture(image_dump.delay))
                 .unwrap_or_else(Task::none),
-            Message::Viewer(event) => self.viewer.update(event).map(Message::Viewer),
+            Message::RebuildViewer => {
+                self.viewer = Some(Self::build_viewer(self.client.clone(), self.journey_id));
+                Task::none()
+            }
+            Message::Viewer(event) => self
+                .viewer
+                .as_mut()
+                .map(|viewer| viewer.update(event).map(Message::Viewer))
+                .unwrap_or_else(Task::none),
             Message::CaptureView => window::latest().then(|id| match id {
                 Some(id) => window::screenshot(id).map(Message::ViewCaptured),
                 None => Task::none(),
@@ -168,15 +185,30 @@ where
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::time::every(UI_TICK_INTERVAL).map(|_| Message::Tick),
-            self.viewer.subscription().map(Message::Viewer),
+            self.viewer
+                .as_ref()
+                .map(|viewer| viewer.subscription().map(Message::Viewer))
+                .unwrap_or_else(Subscription::none),
         ])
     }
 
     fn view(&self) -> Element<'_, Message> {
-        container(self.viewer.view().map(Message::Viewer))
+        if let Some(viewer) = self.viewer.as_ref() {
+            container(viewer.view().map(Message::Viewer))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        } else {
+            container(text(format!(
+                "Rebuilding replay viewer from fresh JourneyEvents stream (generation {})",
+                self.viewer_generation
+            )))
             .width(Length::Fill)
             .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
+        }
     }
 }
 
