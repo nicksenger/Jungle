@@ -339,4 +339,3 @@ proptest! {
         runtime.block_on(assert_replayed_depth3_graph_matches_live(query));
     }
 }
-

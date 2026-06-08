@@ -270,4 +270,3 @@ fn optic_view_marker_generates_direct_projection_impls() {
     assert_eq!(root.wrapped.0.value, 10);
     assert_eq!(root.wrapped.0.noise, 7);
 }
-

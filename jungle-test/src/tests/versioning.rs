@@ -306,4 +306,3 @@ async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::client::Cl
     }
     unreachable!("retry loop always returns or panics")
 }
-

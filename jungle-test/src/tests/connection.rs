@@ -882,4 +882,3 @@ async fn connect_client_with_retry_namespace(
 
     unreachable!("retry loop always returns or panics")
 }
-

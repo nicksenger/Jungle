@@ -1375,4 +1375,3 @@ async fn combinator_attempt_successes_complete_and_emit_expected_events() {
     assert_eq!(decode_i32_effect_inputs(&history), vec![100, 800, 800]);
     assert_history_effect_counts(&history, 6, 6);
 }
-

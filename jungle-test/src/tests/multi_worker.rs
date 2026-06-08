@@ -495,4 +495,3 @@ async fn consume_journey_updates(
         failed,
     }
 }
-

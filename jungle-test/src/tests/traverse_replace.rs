@@ -232,4 +232,3 @@ impl Animal for TraverseAnimal {
     type Seed = i32;
     type Flow = SourceFlow;
 }
-

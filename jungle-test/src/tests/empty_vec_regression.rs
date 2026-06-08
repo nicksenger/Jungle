@@ -299,4 +299,3 @@ fn manual_executor_threads_empty_vec_inside_while_body() {
         .expect("empty emitted vec should still reach the trailing step inside the while body");
     assert!(third_request.is_empty());
 }
-

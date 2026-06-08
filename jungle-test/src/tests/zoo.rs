@@ -1146,4 +1146,3 @@ async fn jungle_worker_can_run_multiple_journeys_in_parallel_when_configured() {
     worker_handle.abort();
     let _ = worker_handle.await;
 }
-

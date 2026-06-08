@@ -102,4 +102,3 @@ async fn no_effect_step_is_completed_inline_before_next_effect_request() {
         .expect("echo completion should advance executor");
     assert_eq!(executor.state().seen, 1);
 }
-

@@ -183,4 +183,3 @@ fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool
         work_items_exists,
     ))
 }
-

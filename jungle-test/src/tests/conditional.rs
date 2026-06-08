@@ -356,4 +356,3 @@ fn conditional_output_is_routed_as_either_for_follow_up_step() {
     assert!(right.is_complete());
     assert_eq!(right.into_state(), -2);
 }
-

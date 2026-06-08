@@ -16,4 +16,3 @@ jungle-sdk = { path = "../../jungle-sdk" }
 serde = { version = "1", features = ["derive"] }
 
 [workspace]
-

@@ -199,4 +199,3 @@ fn act_attr_supports_carry_attribute() {
     assert_eq!(emitted, 8);
     assert_eq!(executor.into_state(), 8);
 }
-

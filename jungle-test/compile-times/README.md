@@ -26,4 +26,3 @@ Each tier keeps a single animal and doubles journey length from a 24-step baseli
 - `BoundAnimalJourney + BuildFlowWithContext + ArgputForState`
 
 through a concrete `JungleWorker::new(CompileZoo, MockClient::default())` instantiation.
-

@@ -577,4 +577,3 @@ fn main() {
     force_worker_typecheck();
     force_journey_ast_typecheck();
 }
-

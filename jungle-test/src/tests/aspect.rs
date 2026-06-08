@@ -661,4 +661,3 @@ async fn executor_advances_with_executable_requests_and_dynamic_effect_order() {
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 98);
 }
-
