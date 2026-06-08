@@ -1,4 +1,4 @@
-use crate::{Depth1, ReplayLifecycle};
+use crate::{Depth2, ReplayLifecycle};
 use iced::widget::{container, text};
 use iced::window;
 use iced::{window::Screenshot, Element, Font, Length, Subscription, Task};
@@ -118,14 +118,13 @@ where
     ) -> jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal> {
         jungle_vision::JungleViewerBuilder::new()
             .title("Replay Journey")
-            .eject_live_animal_with_theme::<Depth1, _, _, jungle_vision::AnyAnimal>(
+            .eject_live_animal_with_theme::<Depth2, _, _, jungle_vision::AnyAnimal>(
                 client,
                 journey_id,
                 jungle_vision::DefaultTheme::default().with_cluster_expansion_config(
                     jungle_vision::ClusterExpansionConfig {
                         while_clusters: jungle_vision::ClusterExpansionMode::AlwaysExpanded,
-                        transparent_clusters:
-                            jungle_vision::ClusterExpansionMode::AlwaysExpanded,
+                        transparent_clusters: jungle_vision::ClusterExpansionMode::AlwaysExpanded,
                     },
                 ),
             )

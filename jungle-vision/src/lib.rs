@@ -9,14 +9,14 @@ use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
 use jungle_client::client::JourneyUpdateSubscription;
 use jungle_client::JungleClient;
-use jungle_core::dag::{Dag as GraphModel, DagProjection, DagSnapshot, LiveDagState as LiveData};
 #[cfg(test)]
 use jungle_core::dag::NodeDisplay;
+use jungle_core::dag::{Dag as GraphModel, DagProjection, DagSnapshot, LiveDagState as LiveData};
+#[cfg(test)]
+use jungle_types::JourneyAst;
 use jungle_types::{
     Animal, JourneyAstSource, JourneyUpdateEvent, NodeLifecyclePhase, RunnerUpdateOut,
 };
-#[cfg(test)]
-use jungle_types::JourneyAst;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -1668,18 +1668,10 @@ fn sidebar<'a>(
         text("While: clustered body + condition label")
             .size(12)
             .color(jungle_text_muted()),
-        text("Green: completed")
-            .size(12)
-            .color(jungle_text_muted()),
-        text("Yellow: running")
-            .size(12)
-            .color(jungle_text_muted()),
-        text("Red: failed")
-            .size(12)
-            .color(jungle_text_muted()),
-        text("Gray: pending")
-            .size(12)
-            .color(jungle_text_muted()),
+        text("Green: completed").size(12).color(jungle_text_muted()),
+        text("Yellow: running").size(12).color(jungle_text_muted()),
+        text("Red: failed").size(12).color(jungle_text_muted()),
+        text("Gray: pending").size(12).color(jungle_text_muted()),
     ]
     .spacing(2);
 

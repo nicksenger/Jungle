@@ -1,4 +1,4 @@
-use crate::runner::{JungleRunner, RunnerAdvance};
+use crate::runner::{JungleRunner, PendingSleep, RunnerAdvance};
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
@@ -8,9 +8,9 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
-    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure,
-    JourneyEvent, JourneyStatus, NoEffect, Observable, Perturbable, RunnerOut, Sleep,
-    StripAnimalHeaders, SupportedAnimal, Work,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutableEffectRequest,
+    ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, Observable, OwnerWake,
+    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -148,8 +148,9 @@ where
 
         let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
         let mut active_journeys: HashSet<Uuid> = HashSet::new();
-        let mut pending_wakes = VecDeque::<Uuid>::new();
-        let mut pending_wake_ids = HashSet::<Uuid>::new();
+        let mut pending_wakes = HashMap::<Uuid, VecDeque<Uuid>>::new();
+        let mut pending_wake_journeys = VecDeque::<Uuid>::new();
+        let mut pending_wake_journey_ids = HashSet::<Uuid>::new();
         let mut in_flight: FuturesUnordered<InFlightFuture<'_, T>> = FuturesUnordered::new();
         let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
         let mut should_poll = true;
@@ -165,8 +166,9 @@ where
                 for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
                     if is_terminal_journey_status(self.client.journey_details(journey_id).await?) {
                         suspended.remove(&journey_id);
-                        pending_wake_ids.remove(&journey_id);
-                        pending_wakes.retain(|id| *id != journey_id);
+                        pending_wakes.remove(&journey_id);
+                        pending_wake_journey_ids.remove(&journey_id);
+                        pending_wake_journeys.retain(|id| *id != journey_id);
                         continue;
                     }
                     self.client
@@ -183,28 +185,51 @@ where
 
             if should_poll {
                 if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
-                    if !pending_wake_ids.contains(&wake.journey_id) {
-                        pending_wake_ids.insert(wake.journey_id);
-                        pending_wakes.push_back(wake.journey_id);
-                    }
+                    enqueue_owner_wake(
+                        &mut pending_wakes,
+                        &mut pending_wake_journeys,
+                        &mut pending_wake_journey_ids,
+                        wake,
+                    );
                 }
 
                 while in_flight.len() < self.max_in_flight_journeys {
-                    if let Some(wake_journey_id) = pending_wakes.pop_front() {
-                        pending_wake_ids.remove(&wake_journey_id);
+                    if let Some(wake_journey_id) = pending_wake_journeys.pop_front() {
+                        pending_wake_journey_ids.remove(&wake_journey_id);
                         if active_journeys.contains(&wake_journey_id) {
+                            if pending_wakes
+                                .get(&wake_journey_id)
+                                .is_some_and(|timer_ids| !timer_ids.is_empty())
+                            {
+                                pending_wake_journey_ids.insert(wake_journey_id);
+                                pending_wake_journeys.push_back(wake_journey_id);
+                            }
                             continue;
                         }
                         if is_terminal_journey_status(
                             self.client.journey_details(wake_journey_id).await?,
                         ) {
                             suspended.remove(&wake_journey_id);
+                            pending_wakes.remove(&wake_journey_id);
                             continue;
                         }
                         if let Some(journey) = suspended.remove(&wake_journey_id) {
+                            let Some(timer_id) = pending_wakes
+                                .get_mut(&wake_journey_id)
+                                .and_then(|timer_ids| timer_ids.pop_front())
+                            else {
+                                continue;
+                            };
+                            if pending_wakes
+                                .get(&wake_journey_id)
+                                .is_some_and(|timer_ids| timer_ids.is_empty())
+                            {
+                                pending_wakes.remove(&wake_journey_id);
+                            }
                             active_journeys.insert(wake_journey_id);
                             in_flight.push(run_resume_suspended(
                                 wake_journey_id,
+                                timer_id,
                                 journey,
                                 &self.runner,
                                 tx.clone(),
@@ -296,6 +321,9 @@ where
                     result?,
                     &mut active_journeys,
                     &mut suspended,
+                    &mut pending_wakes,
+                    &mut pending_wake_journeys,
+                    &mut pending_wake_journey_ids,
                     self.client.as_ref(),
                     owner_id,
                     self.owner_lease_ttl_ms,
@@ -321,6 +349,9 @@ where
                         result?,
                         &mut active_journeys,
                         &mut suspended,
+                        &mut pending_wakes,
+                        &mut pending_wake_journeys,
+                        &mut pending_wake_journey_ids,
                         self.client.as_ref(),
                         owner_id,
                         self.owner_lease_ttl_ms,
@@ -419,38 +450,6 @@ fn is_journey_history_event(history: Option<&RunnerOut>, journey_id: Uuid) -> bo
     )
 }
 
-async fn drain_live_history_until_parent_completion(
-    replay: &mut ReplayCursor,
-    journey_id: Uuid,
-    request_node_id: u32,
-) -> Result<Option<Result<Vec<u8>, Vec<u8>>>, ExecutorError> {
-    loop {
-        match replay.peek().await? {
-            Some(RunnerOut::EffectSuccessOutput {
-                node_id,
-                data,
-                uuid,
-            }) if uuid == journey_id && node_id == request_node_id => {
-                let _ = replay.discard_front().await?;
-                return Ok(Some(Ok(data)));
-            }
-            Some(RunnerOut::EffectFailureOutput {
-                node_id,
-                data,
-                uuid,
-            }) if uuid == journey_id && node_id == request_node_id => {
-                let _ = replay.discard_front().await?;
-                return Ok(Some(Err(data)));
-            }
-            history if is_journey_history_event(history.as_ref(), journey_id) => {
-                let _ = replay.discard_front().await?;
-            }
-            None => return Ok(None),
-            _ => return Ok(None),
-        }
-    }
-}
-
 fn is_terminal_journey_status(status: JourneyStatus) -> bool {
     matches!(
         status,
@@ -458,10 +457,28 @@ fn is_terminal_journey_status(status: JourneyStatus) -> bool {
     )
 }
 
+fn enqueue_owner_wake(
+    pending_wakes: &mut HashMap<Uuid, VecDeque<Uuid>>,
+    pending_wake_journeys: &mut VecDeque<Uuid>,
+    pending_wake_journey_ids: &mut HashSet<Uuid>,
+    wake: OwnerWake,
+) {
+    pending_wakes
+        .entry(wake.journey_id)
+        .or_default()
+        .push_back(wake.timer_id);
+    if pending_wake_journey_ids.insert(wake.journey_id) {
+        pending_wake_journeys.push_back(wake.journey_id);
+    }
+}
+
 async fn handle_in_flight_result<T>(
     result: InFlightJourneyResult<T>,
     active_journeys: &mut HashSet<Uuid>,
     suspended: &mut HashMap<Uuid, Box<dyn SuspendedJourney<T>>>,
+    pending_wakes: &mut HashMap<Uuid, VecDeque<Uuid>>,
+    pending_wake_journeys: &mut VecDeque<Uuid>,
+    pending_wake_journey_ids: &mut HashSet<Uuid>,
     client: &dyn JungleClient,
     owner_id: Uuid,
     owner_lease_ttl_ms: i64,
@@ -491,26 +508,36 @@ async fn handle_in_flight_result<T>(
                     }
                 }
                 JourneyStartOutcome::Sleeping {
-                    wake_at_unix_ms,
-                    journey,
+                    sleeps,
+                    mut journey,
                 } => {
                     if is_terminal_journey_status(client.journey_details(journey_id).await?) {
                         return Ok(());
                     }
-                    let timer_id = Uuid::new_v4();
-                    client
-                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
-                        .await?;
+                    for sleep in sleeps {
+                        let timer_id = Uuid::new_v4();
+                        client
+                            .schedule_sleep_timer(journey_id, timer_id, sleep.wake_at_unix_ms)
+                            .await?;
+                        journey.record_sleep(timer_id, sleep);
+                    }
                     client
                         .heartbeat_journey_lease(journey_id, owner_id, owner_lease_ttl_ms)
                         .await?;
                     suspended.insert(journey_id, journey);
+                    if pending_wakes
+                        .get(&journey_id)
+                        .is_some_and(|timer_ids| !timer_ids.is_empty())
+                        && pending_wake_journey_ids.insert(journey_id)
+                    {
+                        pending_wake_journeys.push_back(journey_id);
+                    }
                 }
             }
         }
         InFlightJourneyResult::ResumedWake {
             journey_id,
-            journey,
+            mut journey,
             outcome,
         } => {
             active_journeys.remove(&journey_id);
@@ -525,21 +552,28 @@ async fn handle_in_flight_result<T>(
                         client.dead_journey(journey_id).await?;
                     }
                 }
-                SuspendedOutcome::Sleeping {
-                    wake_at_unix_ms,
-                    node_id: _,
-                } => {
+                SuspendedOutcome::Sleeping { new_sleeps } => {
                     if is_terminal_journey_status(client.journey_details(journey_id).await?) {
                         return Ok(());
                     }
-                    let timer_id = Uuid::new_v4();
-                    client
-                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
-                        .await?;
+                    for sleep in new_sleeps {
+                        let timer_id = Uuid::new_v4();
+                        client
+                            .schedule_sleep_timer(journey_id, timer_id, sleep.wake_at_unix_ms)
+                            .await?;
+                        journey.record_sleep(timer_id, sleep);
+                    }
                     client
                         .heartbeat_journey_lease(journey_id, owner_id, owner_lease_ttl_ms)
                         .await?;
                     suspended.insert(journey_id, journey);
+                    if pending_wakes
+                        .get(&journey_id)
+                        .is_some_and(|timer_ids| !timer_ids.is_empty())
+                        && pending_wake_journey_ids.insert(journey_id)
+                    {
+                        pending_wake_journeys.push_back(journey_id);
+                    }
                 }
             }
         }
@@ -604,6 +638,7 @@ where
 
 fn run_resume_suspended<'a, T>(
     journey_id: Uuid,
+    timer_id: Uuid,
     mut journey: Box<dyn SuspendedJourney<T>>,
     runner: &'a JungleRunner<T>,
     tx: RunnerChannelTx,
@@ -616,7 +651,7 @@ where
     AnimalSet<T::Animals>: SupportedAnimalGenerations<T>,
 {
     Box::pin(async move {
-        let outcome = journey.resume(runner, tx).await?;
+        let outcome = journey.resume(timer_id, runner, tx).await?;
         Ok(InFlightJourneyResult::ResumedWake {
             journey_id,
             journey,
@@ -632,7 +667,7 @@ pub enum JourneyStartOutcome<T> {
         failure: Failure,
     },
     Sleeping {
-        wake_at_unix_ms: i64,
+        sleeps: Vec<PendingSleep>,
         journey: Box<dyn SuspendedJourney<T> + Send>,
     },
 }
@@ -640,15 +675,24 @@ pub enum JourneyStartOutcome<T> {
 pub enum SuspendedOutcome {
     Completed,
     Failed { failure: Failure },
-    Sleeping { wake_at_unix_ms: i64, node_id: u32 },
+    Sleeping { new_sleeps: Vec<PendingSleep> },
 }
 
 pub trait SuspendedJourney<T>: Send {
+    fn record_sleep(&mut self, timer_id: Uuid, sleep: PendingSleep);
+
     fn resume<'a>(
         &'a mut self,
+        timer_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>>;
+}
+
+#[derive(Debug, Clone)]
+struct ScheduledSleep {
+    timer_id: Uuid,
+    sleep: PendingSleep,
 }
 
 struct SuspendedAnimalJourney<T, A>
@@ -659,7 +703,7 @@ where
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     journey_id: Uuid,
-    sleep_node_id: u32,
+    pending_sleeps: Vec<ScheduledSleep>,
     executor: ContextExecutor<T, A>,
 }
 
@@ -671,32 +715,65 @@ where
     BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
+    fn record_sleep(&mut self, timer_id: Uuid, sleep: PendingSleep) {
+        self.pending_sleeps.push(ScheduledSleep { timer_id, sleep });
+    }
+
     fn resume<'a>(
         &'a mut self,
+        timer_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>> {
         Box::pin(async move {
+            let sleep_index = self
+                .pending_sleeps
+                .iter()
+                .position(|scheduled| scheduled.timer_id == timer_id)
+                .ok_or_else(|| {
+                    ExecutorError::ClientTransport(format!(
+                        "unknown sleep wake timer for journey {}: {timer_id}",
+                        self.journey_id
+                    ))
+                })?;
+            let scheduled = self.pending_sleeps.remove(sleep_index);
+            let pending_sleeps = self
+                .pending_sleeps
+                .iter()
+                .map(|scheduled| scheduled.sleep.clone())
+                .collect::<Vec<_>>();
             let advance = runner
                 .resume_after_sleep::<A>(
                     &mut self.executor,
                     self.journey_id,
-                    self.sleep_node_id,
+                    scheduled.sleep,
+                    pending_sleeps.clone(),
                     &mut tx,
                 )
                 .await?;
             match advance {
                 RunnerAdvance::Completed => Ok(SuspendedOutcome::Completed),
                 RunnerAdvance::Failed { failure } => Ok(SuspendedOutcome::Failed { failure }),
-                RunnerAdvance::SuspendedSleep {
-                    wake_at_unix_ms,
-                    node_id,
-                } => {
-                    self.sleep_node_id = node_id;
-                    Ok(SuspendedOutcome::Sleeping {
-                        wake_at_unix_ms,
-                        node_id,
-                    })
+                RunnerAdvance::SuspendedSleep { sleeps } => {
+                    let mut unmatched_pending = pending_sleeps;
+                    let mut new_sleeps = Vec::new();
+                    for sleep in sleeps {
+                        if let Some(index) = unmatched_pending
+                            .iter()
+                            .position(|pending| *pending == sleep)
+                        {
+                            unmatched_pending.remove(index);
+                        } else {
+                            new_sleeps.push(sleep);
+                        }
+                    }
+                    if !unmatched_pending.is_empty() {
+                        return Err(ExecutorError::ClientTransport(format!(
+                            "runner dropped pending sleeps for journey {}",
+                            self.journey_id
+                        )));
+                    }
+                    Ok(SuspendedOutcome::Sleeping { new_sleeps })
                 }
             }
         })
@@ -821,17 +898,14 @@ where
                     RunnerAdvance::Failed { failure } => {
                         Ok(JourneyStartOutcome::Failed { failure })
                     }
-                    RunnerAdvance::SuspendedSleep {
-                        wake_at_unix_ms,
-                        node_id,
-                    } => {
+                    RunnerAdvance::SuspendedSleep { sleeps } => {
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
-                            sleep_node_id: node_id,
+                            pending_sleeps: Vec::new(),
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
+                            sleeps,
                             journey: Box::new(suspended),
                         })
                     }
@@ -898,17 +972,14 @@ where
                     RunnerAdvance::Failed { failure } => {
                         Ok(JourneyStartOutcome::Failed { failure })
                     }
-                    RunnerAdvance::SuspendedSleep {
-                        wake_at_unix_ms,
-                        node_id,
-                    } => {
+                    RunnerAdvance::SuspendedSleep { sleeps } => {
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
-                            sleep_node_id: node_id,
+                            pending_sleeps: Vec::new(),
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
+                            sleeps,
                             journey: Box::new(suspended),
                         })
                     }
@@ -1103,191 +1174,266 @@ where
 {
     let no_effect_type = core::any::type_name::<NoEffect>();
     let sleep_effect_type = core::any::type_name::<Sleep>();
-    while !executor.is_complete() {
-        if replay.peek().await?.is_none() {
+    let mut pending = HashMap::<u32, ReplayPendingRequest>::new();
+    let mut pending_order = VecDeque::<u32>::new();
+    while !executor.is_complete() || !pending.is_empty() {
+        if pending.is_empty() && replay.peek().await?.is_none() {
             break;
         }
-
-        let request = match executor.next_executable_request(initial_input.clone()) {
-            Ok(request) => request,
-            Err(ExecutorError::Complete) => break,
-            Err(err) => return Err(err),
-        };
-        let request_node_id = request.node_id();
-        let expected_input = request.request_bytes();
-        let effect_type = request.effect_type();
-        let request_has_live_history = request.has_live_history();
-
-        // Appearance snapshots are informational and can interleave with step history.
-        while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
-            let _ = replay.discard_front().await?;
-        }
-        // Non-sleep requests should ignore stale sleep bookkeeping records that may remain
-        // after restart recovery.
-        while effect_type != sleep_effect_type
-            && (matches!(
-                replay.peek().await?,
-                Some(RunnerOut::SleepScheduled { uuid, .. }) if uuid == journey_id
-            ) || matches!(
-                replay.peek().await?,
-                Some(RunnerOut::SleepFired { uuid, .. }) if uuid == journey_id
-            ))
-        {
-            let _ = replay.discard_front().await?;
-        }
-
-        let current_event = replay.peek().await?;
-        let matched_effect_input = matches!(
-            current_event.as_ref(),
-            Some(RunnerOut::EffectInput {
-                node_id,
-                data,
-                uuid
-            }) if *uuid == journey_id && *node_id == request_node_id && data.as_slice() == expected_input
-        );
-        if matched_effect_input {
-            let _ = replay.discard_front().await?;
-        } else {
-            // Recovery path: tolerate history records where EffectInput is missing but completion/sleep bookkeeping exists.
-            let has_recoverable_cursor_event = matches!(
-                current_event.as_ref(),
-                Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
-                    if *uuid == journey_id && *node_id == request_node_id
-            ) || matches!(
-                current_event.as_ref(),
-                Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
-                    if *uuid == journey_id && *node_id == request_node_id
-            ) || (effect_type == sleep_effect_type
-                && matches!(
-                    current_event.as_ref(),
-                    Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
-                ))
-                || (effect_type == sleep_effect_type
-                    && matches!(
-                        current_event.as_ref(),
-                    Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
-                    ));
-
-            if effect_type == no_effect_type
-                || has_recoverable_cursor_event
-                || (request_has_live_history
-                    && is_journey_history_event(current_event.as_ref(), journey_id))
-            {
-                send_recovered_effect_input(tx, journey_id, request_node_id, expected_input)
-                    .await?;
-            } else {
-                return Err(ExecutorError::ClientTransport(
-                    format!(
-                        "history replay expected EffectInput event (journey={journey_id}, node_id={request_node_id}, effect_type={effect_type}, after_sequence_id={:?}, history_event={current_event:?})",
-                        replay.after_sequence_id
-                    ),
-                ));
-            }
+        loop {
+            let request = match executor.next_executable_request(initial_input.clone()) {
+                Ok(request) => request,
+                Err(ExecutorError::Complete) | Err(ExecutorError::AwaitingCompletion) => break,
+                Err(err) => return Err(err),
+            };
+            let request_node_id = request.node_id();
+            let request_effect_type = request.effect_type();
+            let request_has_live_history = request.has_live_history();
+            reconcile_replay_effect_input(
+                replay,
+                tx,
+                journey_id,
+                request_node_id,
+                request.request_bytes(),
+                request_effect_type,
+                request_has_live_history,
+                no_effect_type,
+                sleep_effect_type,
+            )
+            .await?;
+            pending_order.push_back(request_node_id);
+            pending.insert(
+                request_node_id,
+                ReplayPendingRequest {
+                    request,
+                    effect_type: request_effect_type,
+                    has_live_history: request_has_live_history,
+                },
+            );
         }
 
-        // Appearance snapshots can also be emitted after completion events.
-        while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
-            let _ = replay.discard_front().await?;
-        }
-
-        let completion = if effect_type == sleep_effect_type {
-            while matches!(
-                replay.peek().await?,
-                Some(RunnerOut::SleepScheduled { uuid, .. }) if uuid == journey_id
-            ) || matches!(
-                replay.peek().await?,
-                Some(RunnerOut::NodeLifecycle(node)) if node.uuid == journey_id
-            ) || matches!(
-                replay.peek().await?,
-                Some(RunnerOut::Appearance { uuid, .. }) if uuid == journey_id
-            ) {
-                let _ = replay.discard_front().await?;
-            }
-
-            match replay.peek().await? {
-                Some(RunnerOut::SleepFired { uuid, .. }) if uuid == journey_id => {
-                    let _ = replay.discard_front().await?;
-                    while matches!(
-                        replay.peek().await?,
-                        Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
-                            if uuid == journey_id && node_id == request_node_id
-                    ) || matches!(
-                        replay.peek().await?,
-                        Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
-                            if uuid == journey_id && node_id == request_node_id
-                    ) {
-                        let _ = replay.discard_front().await?;
-                    }
-                    let sleep_out = postcard::to_allocvec(&())
-                        .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
-                    Ok(sleep_out)
-                }
-                Some(RunnerOut::EffectSuccessOutput {
-                    node_id,
-                    data,
-                    uuid,
-                }) if uuid == journey_id && node_id == request_node_id => {
-                    let _ = replay.discard_front().await?;
-                    Ok(data)
-                }
-                Some(RunnerOut::EffectFailureOutput {
-                    node_id,
-                    data,
-                    uuid,
-                }) if uuid == journey_id && node_id == request_node_id => {
-                    let _ = replay.discard_front().await?;
-                    Err(data)
-                }
-                _ => {
-                    let completion = request.run().await?;
-                    send_recovered_completion(tx, journey_id, request_node_id, &completion).await?;
-                    completion
-                }
-            }
-        } else {
-            if request_has_live_history {
-                if let Some(completion) =
-                    drain_live_history_until_parent_completion(replay, journey_id, request_node_id)
-                        .await?
-                {
-                    completion
-                } else {
-                    let completion = request.run().await?;
-                    send_recovered_completion(tx, journey_id, request_node_id, &completion).await?;
-                    completion
-                }
-            } else {
-                match replay.peek().await? {
-                    Some(RunnerOut::EffectSuccessOutput {
-                        node_id,
-                        data,
-                        uuid,
-                    }) if uuid == journey_id && node_id == request_node_id => {
-                        let _ = replay.discard_front().await?;
-                        Ok(data)
-                    }
-                    Some(RunnerOut::EffectFailureOutput {
-                        node_id,
-                        data,
-                        uuid,
-                    }) if uuid == journey_id && node_id == request_node_id => {
-                        let _ = replay.discard_front().await?;
-                        Err(data)
-                    }
-                    _ => {
-                        let completion = request.run().await?;
-                        send_recovered_completion(tx, journey_id, request_node_id, &completion)
-                            .await?;
-                        completion
-                    }
-                }
-            }
+        let Some((_, completion)) = resolve_next_replay_completion(
+            replay,
+            tx,
+            journey_id,
+            &mut pending,
+            &mut pending_order,
+            sleep_effect_type,
+        )
+        .await?
+        else {
+            break;
         };
 
         let _emitted = executor.complete_serialized(completion)?;
     }
 
     Ok(())
+}
+
+struct ReplayPendingRequest {
+    request: ExecutableEffectRequest,
+    effect_type: &'static str,
+    has_live_history: bool,
+}
+
+async fn reconcile_replay_effect_input(
+    replay: &mut ReplayCursor,
+    tx: &mut RunnerChannelTx,
+    journey_id: Uuid,
+    request_node_id: u32,
+    expected_input: &[u8],
+    effect_type: &'static str,
+    request_has_live_history: bool,
+    no_effect_type: &'static str,
+    sleep_effect_type: &'static str,
+) -> Result<(), ExecutorError> {
+    while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
+        let _ = replay.discard_front().await?;
+    }
+    while effect_type != sleep_effect_type
+        && (matches!(
+            replay.peek().await?,
+            Some(RunnerOut::SleepScheduled { uuid, .. }) if uuid == journey_id
+        ) || matches!(
+            replay.peek().await?,
+            Some(RunnerOut::SleepFired { uuid, .. }) if uuid == journey_id
+        ))
+    {
+        let _ = replay.discard_front().await?;
+    }
+
+    let current_event = replay.peek().await?;
+    let matched_effect_input = matches!(
+        current_event.as_ref(),
+        Some(RunnerOut::EffectInput {
+            node_id,
+            data,
+            uuid
+        }) if *uuid == journey_id && *node_id == request_node_id && data.as_slice() == expected_input
+    );
+    if matched_effect_input {
+        let _ = replay.discard_front().await?;
+        return Ok(());
+    }
+
+    let has_recoverable_cursor_event = matches!(
+        current_event.as_ref(),
+        Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+            if *uuid == journey_id && *node_id == request_node_id
+    ) || matches!(
+        current_event.as_ref(),
+        Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
+            if *uuid == journey_id && *node_id == request_node_id
+    ) || (effect_type == sleep_effect_type
+        && matches!(
+            current_event.as_ref(),
+            Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+        ))
+        || (effect_type == sleep_effect_type
+            && matches!(
+                current_event.as_ref(),
+                Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
+            ));
+
+    if effect_type == no_effect_type
+        || has_recoverable_cursor_event
+        || (request_has_live_history
+            && is_journey_history_event(current_event.as_ref(), journey_id))
+    {
+        send_recovered_effect_input(tx, journey_id, request_node_id, expected_input).await
+    } else {
+        Err(ExecutorError::ClientTransport(format!(
+            "history replay expected EffectInput event (journey={journey_id}, node_id={request_node_id}, effect_type={effect_type}, after_sequence_id={:?}, history_event={current_event:?})",
+            replay.after_sequence_id
+        )))
+    }
+}
+
+async fn resolve_next_replay_completion(
+    replay: &mut ReplayCursor,
+    tx: &mut RunnerChannelTx,
+    journey_id: Uuid,
+    pending: &mut HashMap<u32, ReplayPendingRequest>,
+    pending_order: &mut VecDeque<u32>,
+    sleep_effect_type: &'static str,
+) -> Result<Option<(u32, Result<Vec<u8>, Vec<u8>>)>, ExecutorError> {
+    loop {
+        let Some(current_event) = replay.peek().await? else {
+            return recover_oldest_replay_completion(tx, journey_id, pending, pending_order).await;
+        };
+
+        if is_informational_history_event(Some(&current_event), journey_id) {
+            let _ = replay.discard_front().await?;
+            continue;
+        }
+
+        match current_event {
+            RunnerOut::EffectSuccessOutput {
+                node_id,
+                data,
+                uuid,
+            } if uuid == journey_id && pending.contains_key(&node_id) => {
+                let _ = replay.discard_front().await?;
+                remove_pending_order(pending_order, node_id);
+                let _ = pending.remove(&node_id);
+                return Ok(Some((node_id, Ok(data))));
+            }
+            RunnerOut::EffectFailureOutput {
+                node_id,
+                data,
+                uuid,
+            } if uuid == journey_id && pending.contains_key(&node_id) => {
+                let _ = replay.discard_front().await?;
+                remove_pending_order(pending_order, node_id);
+                let _ = pending.remove(&node_id);
+                return Ok(Some((node_id, Err(data))));
+            }
+            RunnerOut::SleepScheduled { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
+            }
+            RunnerOut::SleepFired { uuid, .. } if uuid == journey_id => {
+                let Some(node_id) =
+                    take_pending_sleep_request_node(pending, pending_order, sleep_effect_type)
+                else {
+                    let _ = replay.discard_front().await?;
+                    continue;
+                };
+                let _ = replay.discard_front().await?;
+                while matches!(
+                    replay.peek().await?,
+                    Some(RunnerOut::EffectSuccessOutput {
+                        node_id: completion_node_id,
+                        uuid,
+                        ..
+                    }) if uuid == journey_id && completion_node_id == node_id
+                ) || matches!(
+                    replay.peek().await?,
+                    Some(RunnerOut::EffectFailureOutput {
+                        node_id: completion_node_id,
+                        uuid,
+                        ..
+                    }) if uuid == journey_id && completion_node_id == node_id
+                ) {
+                    let _ = replay.discard_front().await?;
+                }
+                let sleep_out = postcard::to_allocvec(&())
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
+                return Ok(Some((node_id, Ok(sleep_out))));
+            }
+            history
+                if pending.values().any(|request| request.has_live_history)
+                    && is_journey_history_event(Some(&history), journey_id) =>
+            {
+                let _ = replay.discard_front().await?;
+            }
+            _ => {
+                return recover_oldest_replay_completion(tx, journey_id, pending, pending_order)
+                    .await;
+            }
+        }
+    }
+}
+
+fn remove_pending_order(pending_order: &mut VecDeque<u32>, node_id: u32) {
+    pending_order.retain(|pending_node_id| *pending_node_id != node_id);
+}
+
+fn take_pending_sleep_request_node(
+    pending: &mut HashMap<u32, ReplayPendingRequest>,
+    pending_order: &mut VecDeque<u32>,
+    sleep_effect_type: &'static str,
+) -> Option<u32> {
+    let node_id = pending_order.iter().copied().find(|pending_node_id| {
+        pending
+            .get(pending_node_id)
+            .is_some_and(|request| request.effect_type == sleep_effect_type)
+    })?;
+    remove_pending_order(pending_order, node_id);
+    let _ = pending.remove(&node_id);
+    Some(node_id)
+}
+
+async fn recover_oldest_replay_completion(
+    tx: &mut RunnerChannelTx,
+    journey_id: Uuid,
+    pending: &mut HashMap<u32, ReplayPendingRequest>,
+    pending_order: &mut VecDeque<u32>,
+) -> Result<Option<(u32, Result<Vec<u8>, Vec<u8>>)>, ExecutorError> {
+    while let Some(node_id) = pending_order.pop_front() {
+        let Some(request) = pending.remove(&node_id) else {
+            continue;
+        };
+        if request.effect_type == core::any::type_name::<Sleep>() {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay reached Sleep without a backend wake event (journey={journey_id}, node_id={node_id})"
+            )));
+        }
+        let completion = request.request.run().await?;
+        send_recovered_completion(tx, journey_id, node_id, &completion).await?;
+        return Ok(Some((node_id, completion)));
+    }
+    Ok(None)
 }
 
 async fn send_recovered_completion(

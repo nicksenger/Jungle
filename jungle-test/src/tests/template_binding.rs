@@ -2404,7 +2404,7 @@ impl Animal for JoinFocusedAnimal {
 struct JoinFocusedConcurrentLeftSpec;
 #[jungle::action]
 impl Action for JoinFocusedConcurrentLeftSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect = TemplateConcurrentJoinEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2425,7 +2425,7 @@ impl Action for JoinFocusedConcurrentLeftSpec {
 struct JoinFocusedConcurrentRightSpec;
 #[jungle::action]
 impl Action for JoinFocusedConcurrentRightSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect = TemplateConcurrentJoinEffect;
     type Input = i32;
     type Output = i32;
 
@@ -2606,21 +2606,43 @@ fn template_binding_join_merges_distinct_focused_branch_states() {
 }
 
 #[tokio::test]
-async fn template_binding_focused_join_subflows_run_incrementally_in_parent_executor() {
+async fn template_binding_focused_join_subflows_run_concurrently_in_parent_executor() {
+    let runtime = join_concurrent_runtime();
+    runtime.reset(2);
     let mut executor = Executor::<JoinFocusedConcurrentAnimal>::new(JoinFocusedHostState {
         left: JoinFocusedLeftState { value: 1 },
         right: JoinFocusedRightState { value: 2 },
         marker: 99,
     });
 
-    let first_request = executor
+    let left_request = executor
         .next_executable_request(3)
-        .expect("focused join should produce an executable request");
-    let first_emitted = executor
-        .complete_serialized(first_request.run().await.expect("left branch effect should run"))
+        .expect("focused join should produce the left branch request");
+    let right_request = executor
+        .next_executable_request(3)
+        .expect("focused join should produce the right branch request");
+    assert_ne!(
+        left_request.node_id(),
+        right_request.node_id(),
+        "focused join branches should keep distinct node ids when dispatched concurrently"
+    );
+    assert!(matches!(
+        executor.next_executable_request(3),
+        Err(ExecutorError::AwaitingCompletion)
+    ));
+
+    let (left_completion, right_completion) =
+        tokio::time::timeout(Duration::from_secs(2), async move {
+            tokio::join!(left_request.run(), right_request.run())
+        })
+        .await
+        .expect("focused join branch effects should run concurrently without stalling");
+
+    let left_emitted = executor
+        .complete_serialized(left_completion.expect("left branch effect should run"))
         .expect("left branch completion should apply cleanly");
     let left_emitted: i32 =
-        postcard::from_bytes(&first_emitted).expect("left branch emitted value should deserialize");
+        postcard::from_bytes(&left_emitted).expect("left branch emitted value should deserialize");
     assert_eq!(
         executor.state(),
         &JoinFocusedHostState {
@@ -2631,11 +2653,8 @@ async fn template_binding_focused_join_subflows_run_incrementally_in_parent_exec
     );
     assert_eq!(left_emitted, 4);
 
-    let second_request = executor
-        .next_executable_request(3)
-        .expect("focused join should produce a second branch request");
     let final_emitted = executor
-        .complete_serialized(second_request.run().await.expect("right branch effect should run"))
+        .complete_serialized(right_completion.expect("right branch effect should run"))
         .expect("right branch completion should finish the join");
     let final_emitted: (i32, i32) =
         postcard::from_bytes(&final_emitted).expect("join final emitted tuple should deserialize");
@@ -2649,10 +2668,11 @@ async fn template_binding_focused_join_subflows_run_incrementally_in_parent_exec
             marker: 99,
         }
     );
+    assert_eq!(runtime.max_active.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
-async fn template_binding_nested_focused_join_subflows_run_incrementally_in_parent_executor() {
+async fn template_binding_nested_focused_join_subflows_complete_after_parallel_dispatch() {
     let mut executor = Executor::<NestedJoinFocusedAnimal>::new(NestedJoinFocusedHostState {
         left: NestedJoinFocusedLeftState { value: 1 },
         middle: NestedJoinFocusedMiddleState { value: 2 },
@@ -2663,49 +2683,49 @@ async fn template_binding_nested_focused_join_subflows_run_incrementally_in_pare
     let first_request = executor
         .next_executable_request(3)
         .expect("nested focused join should produce the left branch request");
-    let first_emitted = executor
-        .complete_serialized(first_request.run().await.expect("left branch effect should run"))
-        .expect("left branch completion should apply cleanly");
-    let left_emitted: i32 =
-        postcard::from_bytes(&first_emitted).expect("left branch output should deserialize");
-    assert_eq!(left_emitted, 4);
-    assert_eq!(
-        executor.state(),
-        &NestedJoinFocusedHostState {
-            left: NestedJoinFocusedLeftState { value: 4 },
-            middle: NestedJoinFocusedMiddleState { value: 2 },
-            right: NestedJoinFocusedRightState { value: 3 },
-            marker: 99,
-        }
-    );
-
     let second_request = executor
         .next_executable_request(3)
-        .expect("nested focused join should produce the middle branch request");
-    let second_emitted = executor
-        .complete_serialized(second_request.run().await.expect("middle branch effect should run"))
-        .expect("middle branch completion should apply cleanly");
-    let inner_join_emitted: (i32, i32) =
-        postcard::from_bytes(&second_emitted).expect("inner join tuple should deserialize");
-    assert_eq!(inner_join_emitted, (4, 32));
-    assert_eq!(
-        executor.state(),
-        &NestedJoinFocusedHostState {
-            left: NestedJoinFocusedLeftState { value: 4 },
-            middle: NestedJoinFocusedMiddleState { value: 32 },
-            right: NestedJoinFocusedRightState { value: 3 },
-            marker: 99,
-        }
-    );
-
+        .expect("nested focused join should produce the inner join's second concurrent request");
     let third_request = executor
         .next_executable_request(3)
-        .expect("nested focused join should produce the right branch request");
+        .expect("nested focused join should also keep the outer sibling branch concurrent");
+    assert!(matches!(
+        executor.next_executable_request(3),
+        Err(ExecutorError::AwaitingCompletion)
+    ));
+
+    let first_completion = first_request
+        .run()
+        .await
+        .expect("first concurrent branch effect should run");
+    let second_completion = second_request
+        .run()
+        .await
+        .expect("second concurrent branch effect should run");
+    let third_completion = third_request
+        .run()
+        .await
+        .expect("third concurrent branch effect should run");
+
+    let first_emitted = executor
+        .complete_serialized(first_completion)
+        .expect("first nested join completion should apply cleanly");
+    let first_emitted: i32 =
+        postcard::from_bytes(&first_emitted).expect("first nested join output should deserialize");
+    assert_eq!(first_emitted, 4);
+
+    let second_emitted = executor
+        .complete_serialized(second_completion)
+        .expect("second nested join completion should finish the inner join branch");
+    let second_emitted: (i32, i32) = postcard::from_bytes(&second_emitted)
+        .expect("inner nested join should emit its completed tuple");
+    assert_eq!(second_emitted, (4, 32));
+
     let final_emitted = executor
-        .complete_serialized(third_request.run().await.expect("right branch effect should run"))
+        .complete_serialized(third_completion)
         .expect("right branch completion should finish the nested join");
-    let final_emitted: ((i32, i32), i32) =
-        postcard::from_bytes(&final_emitted).expect("nested focused join output should deserialize");
+    let final_emitted: ((i32, i32), i32) = postcard::from_bytes(&final_emitted)
+        .expect("nested focused join output should deserialize");
 
     assert_eq!(final_emitted, ((4, 32), 303));
     assert_eq!(

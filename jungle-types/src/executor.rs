@@ -1,7 +1,7 @@
 use crate::{
     Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
     Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NoEffect,
-    NodeLifecycle, NodeLifecyclePhase, RunnerOut, Running, Scoped, Select, StateCarrier,
+    NodeLifecycle, NodeLifecyclePhase, RunnerOut, Running, Scoped, Select, Sleep, StateCarrier,
     Transparent, While,
 };
 use futures::channel::{
@@ -353,6 +353,7 @@ pub struct ExecutableEffectRequest {
     request: Serialized,
     runner: EffectRunner,
     live_history_rx: Option<UnboundedReceiver<RunnerOut>>,
+    suspended_completion: Option<SerializedCompletion>,
 }
 
 impl ExecutableEffectRequest {
@@ -368,6 +369,7 @@ impl ExecutableEffectRequest {
             request,
             runner,
             live_history_rx: None,
+            suspended_completion: None,
         }
     }
 
@@ -402,8 +404,17 @@ impl ExecutableEffectRequest {
         self.live_history_rx.is_some()
     }
 
+    pub fn suspended_completion(&self) -> Option<&SerializedCompletion> {
+        self.suspended_completion.as_ref()
+    }
+
     fn with_live_history(mut self, live_history_rx: UnboundedReceiver<RunnerOut>) -> Self {
         self.live_history_rx = Some(live_history_rx);
+        self
+    }
+
+    fn with_suspended_completion(mut self, completion: SerializedCompletion) -> Self {
+        self.suspended_completion = Some(completion);
         self
     }
 }
@@ -1553,6 +1564,12 @@ enum SelectTraceEnvelope {
 enum JoinSide {
     Left,
     Right,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+enum JoinCompletionEnvelope {
+    Left(SerializedCompletion),
+    Right(SerializedCompletion),
 }
 
 struct JoinBranchProgress<State> {
@@ -3525,6 +3542,8 @@ struct JoinErasedFlow<State> {
     left_branch: Option<JoinBranchProgress<State>>,
     right_branch: Option<JoinBranchProgress<State>>,
     active_request: Option<JoinSide>,
+    left_requests_in_flight: usize,
+    right_requests_in_flight: usize,
     completed_emitted: Option<Serialized>,
 }
 
@@ -3553,6 +3572,8 @@ where
             left_branch: None,
             right_branch: None,
             active_request: None,
+            left_requests_in_flight: 0,
+            right_requests_in_flight: 0,
             completed_emitted: None,
         }
     }
@@ -3659,6 +3680,54 @@ where
         self.lifecycle.succeed();
     }
 
+    fn wrap_branch_request(
+        side: JoinSide,
+        mut request: ExecutableEffectRequest,
+    ) -> Result<ExecutableEffectRequest, ExecutorError> {
+        let node_id = request.node_id();
+        let effect_type = request.effect_type();
+        let sleep_effect_type = core::any::type_name::<Sleep>();
+        let request_bytes = request.request_bytes().to_vec();
+        let live_history = request.take_live_history();
+        let suspended_completion = if effect_type == sleep_effect_type {
+            let child_completion = Ok(postcard::to_allocvec(&())
+                .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+            let envelope = match side {
+                JoinSide::Left => JoinCompletionEnvelope::Left(child_completion),
+                JoinSide::Right => JoinCompletionEnvelope::Right(child_completion),
+            };
+            Some(
+                postcard::to_allocvec(&envelope)
+                    .map(Ok)
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?,
+            )
+        } else {
+            None
+        };
+        let runner: EffectRunner = Box::new(move || {
+            Box::pin(async move {
+                let completion = request.run().await?;
+                let envelope = match side {
+                    JoinSide::Left => JoinCompletionEnvelope::Left(completion),
+                    JoinSide::Right => JoinCompletionEnvelope::Right(completion),
+                };
+                let bytes = postcard::to_allocvec(&envelope)
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
+                Ok(Ok(bytes))
+            })
+        });
+        let wrapped = ExecutableEffectRequest::new(node_id, effect_type, request_bytes, runner);
+        let wrapped = if let Some(completion) = suspended_completion {
+            wrapped.with_suspended_completion(completion)
+        } else {
+            wrapped
+        };
+        Ok(match live_history {
+            Some(rx) => wrapped.with_live_history(rx),
+            None => wrapped,
+        })
+    }
+
     fn settle_branch_without_progress(
         flow: &mut DynFlow<State>,
         branch: &mut JoinBranchProgress<State>,
@@ -3679,7 +3748,10 @@ where
         Ok(())
     }
 
-    fn settle_without_external_requests(&mut self, fallback: State) -> Result<State, ExecutorError> {
+    fn settle_without_external_requests(
+        &mut self,
+        fallback: State,
+    ) -> Result<State, ExecutorError> {
         if self.focused_merge {
             if let Some(left) = self.left_branch.as_mut() {
                 Self::settle_branch_without_progress(&mut self.left, left)?;
@@ -3721,16 +3793,66 @@ where
     fn complete(
         &mut self,
         state: State,
-        completion: SerializedCompletion,
+        mut completion: SerializedCompletion,
     ) -> Result<(State, Serialized), ExecutorError> {
         if self.complete {
             return Err(ExecutorError::Complete);
         }
 
-        let side = self
-            .active_request
-            .take()
-            .ok_or(ExecutorError::NoPendingRequest)?;
+        let side = if self.focused_merge {
+            match &completion {
+                Ok(bytes) => {
+                    if let Ok(envelope) = postcard::from_bytes::<JoinCompletionEnvelope>(bytes) {
+                        match envelope {
+                            JoinCompletionEnvelope::Left(child_completion) => {
+                                completion = child_completion;
+                                self.left_requests_in_flight =
+                                    self.left_requests_in_flight.saturating_sub(1);
+                                JoinSide::Left
+                            }
+                            JoinCompletionEnvelope::Right(child_completion) => {
+                                completion = child_completion;
+                                self.right_requests_in_flight =
+                                    self.right_requests_in_flight.saturating_sub(1);
+                                JoinSide::Right
+                            }
+                        }
+                    } else if self.left_requests_in_flight + self.right_requests_in_flight == 1 {
+                        if self.left_requests_in_flight == 1 {
+                            self.left_requests_in_flight = 0;
+                            JoinSide::Left
+                        } else {
+                            self.right_requests_in_flight = 0;
+                            JoinSide::Right
+                        }
+                    } else {
+                        return Err(ExecutorError::OutputDeserialize(
+                            "focused join completion envelope failed".to_string(),
+                        ));
+                    }
+                }
+                Err(bytes) => {
+                    if self.left_requests_in_flight + self.right_requests_in_flight == 1 {
+                        if self.left_requests_in_flight == 1 {
+                            self.left_requests_in_flight = 0;
+                            JoinSide::Left
+                        } else {
+                            self.right_requests_in_flight = 0;
+                            JoinSide::Right
+                        }
+                    } else {
+                        return Err(ExecutorError::ErrorDeserialize(format!(
+                            "join completion envelope failed: {}",
+                            String::from_utf8_lossy(bytes)
+                        )));
+                    }
+                }
+            }
+        } else {
+            self.active_request
+                .take()
+                .ok_or(ExecutorError::NoPendingRequest)?
+        };
         self.apply_parent_path();
 
         let (current_state, emitted) = match side {
@@ -3795,7 +3917,7 @@ where
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
-        if self.active_request.is_some() {
+        if !self.focused_merge && self.active_request.is_some() {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
@@ -3806,7 +3928,10 @@ where
             Ok(current_state) => current_state,
             Err(ExecutorError::ActionFailure(failure)) => {
                 self.lifecycle.fail();
-                return Err((self.current_state(state), ExecutorError::ActionFailure(failure)));
+                return Err((
+                    self.current_state(state),
+                    ExecutorError::ActionFailure(failure),
+                ));
             }
             Err(err) => return Err((self.current_state(state), err)),
         };
@@ -3833,8 +3958,13 @@ where
                     ) {
                         Ok((next_state, request)) => {
                             left.state = next_state;
-                            self.active_request = Some(JoinSide::Left);
+                            self.left_requests_in_flight =
+                                self.left_requests_in_flight.saturating_add(1);
                             current_state = self.current_state(current_state);
+                            let request = match Self::wrap_branch_request(JoinSide::Left, request) {
+                                Ok(request) => request,
+                                Err(err) => return Err((current_state, err)),
+                            };
                             return Ok((current_state, request));
                         }
                         Err((next_state, ExecutorError::Complete)) => {
@@ -3853,6 +3983,10 @@ where
                             current_state = self.current_state(current_state);
                             return Err((current_state, ExecutorError::ActionFailure(failure)));
                         }
+                        Err((next_state, ExecutorError::AwaitingCompletion)) => {
+                            left.state = next_state;
+                            current_state = self.current_state(current_state);
+                        }
                         Err((next_state, err)) => {
                             left.state = next_state;
                             current_state = self.current_state(current_state);
@@ -3861,43 +3995,61 @@ where
                     }
                 }
 
-                let right = self
+                if !self
                     .right_branch
-                    .as_mut()
-                    .expect("right branch should exist for focused join");
-                match subflow_next_executable_request(
-                    &mut self.right,
-                    &mut right.cursor,
-                    right.state.clone(),
-                    &mut right.last_input,
-                ) {
-                    Ok((next_state, request)) => {
-                        right.state = next_state;
-                        self.active_request = Some(JoinSide::Right);
-                        current_state = self.current_state(current_state);
-                        return Ok((current_state, request));
-                    }
-                    Err((next_state, ExecutorError::Complete)) => {
-                        right.state = next_state;
-                        right.complete = true;
-                        current_state = self.current_state(current_state);
-                        if self.all_complete() {
-                            self.mark_complete();
-                            return Err((current_state, ExecutorError::Complete));
+                    .as_ref()
+                    .is_some_and(|branch| branch.complete)
+                {
+                    let right = self
+                        .right_branch
+                        .as_mut()
+                        .expect("right branch should exist for focused join");
+                    match subflow_next_executable_request(
+                        &mut self.right,
+                        &mut right.cursor,
+                        right.state.clone(),
+                        &mut right.last_input,
+                    ) {
+                        Ok((next_state, request)) => {
+                            right.state = next_state;
+                            self.right_requests_in_flight =
+                                self.right_requests_in_flight.saturating_add(1);
+                            current_state = self.current_state(current_state);
+                            let request = match Self::wrap_branch_request(JoinSide::Right, request)
+                            {
+                                Ok(request) => request,
+                                Err(err) => return Err((current_state, err)),
+                            };
+                            return Ok((current_state, request));
+                        }
+                        Err((next_state, ExecutorError::Complete)) => {
+                            right.state = next_state;
+                            right.complete = true;
+                            current_state = self.current_state(current_state);
+                            if self.all_complete() {
+                                self.mark_complete();
+                                return Err((current_state, ExecutorError::Complete));
+                            }
+                        }
+                        Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                            right.state = next_state;
+                            self.lifecycle.fail();
+                            current_state = self.current_state(current_state);
+                            return Err((current_state, ExecutorError::ActionFailure(failure)));
+                        }
+                        Err((next_state, ExecutorError::AwaitingCompletion)) => {
+                            right.state = next_state;
+                            current_state = self.current_state(current_state);
+                        }
+                        Err((next_state, err)) => {
+                            right.state = next_state;
+                            current_state = self.current_state(current_state);
+                            return Err((current_state, err));
                         }
                     }
-                    Err((next_state, ExecutorError::ActionFailure(failure))) => {
-                        right.state = next_state;
-                        self.lifecycle.fail();
-                        current_state = self.current_state(current_state);
-                        return Err((current_state, ExecutorError::ActionFailure(failure)));
-                    }
-                    Err((next_state, err)) => {
-                        right.state = next_state;
-                        current_state = self.current_state(current_state);
-                        return Err((current_state, err));
-                    }
                 }
+
+                return Err((current_state, ExecutorError::AwaitingCompletion));
             } else {
                 let left_complete = self
                     .left_branch
@@ -3990,7 +4142,11 @@ where
         if self.complete {
             return Ok((state, self.completed_emitted.take(), true));
         }
-        if self.active_request.is_some() || self.join_input.is_none() {
+        if self.active_request.is_some()
+            || self.left_requests_in_flight > 0
+            || self.right_requests_in_flight > 0
+            || self.join_input.is_none()
+        {
             return Ok((state, None, false));
         }
 
@@ -4005,6 +4161,8 @@ where
 
     fn is_waiting_completion(&self) -> bool {
         self.active_request.is_some()
+            || self.left_requests_in_flight > 0
+            || self.right_requests_in_flight > 0
     }
 
     fn is_complete(&self) -> bool {

@@ -1718,10 +1718,7 @@ fn repaired_live_states_for_display(
     states
 }
 
-fn runtime_sequence_floors_for_display(
-    dag: &Dag,
-    live: &LiveDagState,
-) -> HashMap<u32, usize> {
+fn runtime_sequence_floors_for_display(dag: &Dag, live: &LiveDagState) -> HashMap<u32, usize> {
     let mut floors = HashMap::<u32, usize>::new();
     for (index, cluster) in dag.cluster_info.iter().enumerate() {
         if !matches!(cluster.kind, ClusterKind::While) {

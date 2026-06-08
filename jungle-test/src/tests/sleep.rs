@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::{Animals, JungleClient, Optic};
+use jungle_sdk::{Animals, JungleClient, Optic, RunnerOut};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -198,6 +198,257 @@ impl From<SleepState> for () {
     fn from(_value: SleepState) -> Self {}
 }
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FocusedJoinSleepLeftState {
+    ran: bool,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FocusedJoinSleepRightState {
+    sleep_for_ms: u64,
+    woke: bool,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FocusedJoinSleepState {
+    #[jungle(focus)]
+    left: FocusedJoinSleepLeftState,
+    #[jungle(focus)]
+    right: FocusedJoinSleepRightState,
+    tail_ran: bool,
+}
+
+pub struct FocusedJoinSleepLeftSpec;
+#[jungle::action]
+impl Action for FocusedJoinSleepLeftSpec {
+    type Effect = AddEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &FocusedJoinSleepLeftState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut FocusedJoinSleepLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("focused join left add should succeed"))?;
+        state.ran = true;
+        Ok(())
+    }
+}
+
+pub struct FocusedJoinSleepRightSpec;
+#[jungle::action]
+impl Action for FocusedJoinSleepRightSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &FocusedJoinSleepRightState, _input: Self::Input) -> Duration {
+        Duration::from_millis(state.sleep_for_ms)
+    }
+
+    fn absorb(
+        state: &mut FocusedJoinSleepRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("focused join sleep should resume successfully"))?;
+        state.woke = true;
+        Ok(())
+    }
+}
+
+pub struct FocusedJoinSleepTailSpec;
+#[jungle::action]
+impl Action for FocusedJoinSleepTailSpec {
+    type Effect = MergeEitherUnitEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &FocusedJoinSleepState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut FocusedJoinSleepState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("focused join tail should succeed"))?;
+        state.tail_ran = true;
+        Ok(())
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = FocusedJoinSleepLeftState)]
+pub struct FocusedJoinSleepLeftFlow(Step<FocusedJoinSleepLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = FocusedJoinSleepRightState)]
+pub struct FocusedJoinSleepRightFlow(Step<FocusedJoinSleepRightSpec>);
+
+#[derive(Flow)]
+pub struct FocusedJoinSleepJourney(
+    Join<FocusedJoinSleepLeftFlow, FocusedJoinSleepRightFlow>,
+    Step<FocusedJoinSleepTailSpec>,
+);
+
+pub struct FocusedJoinSleepAnimal;
+
+#[jungle::animal(observe, id = 1, generation = 0)]
+impl Animal for FocusedJoinSleepAnimal {
+    type State = FocusedJoinSleepState;
+    type Seed = FocusedJoinSleepState;
+    type Flow = FocusedJoinSleepJourney;
+}
+
+impl Observe for FocusedJoinSleepAnimal {
+    type Appearance = FocusedJoinSleepState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+pub struct FocusedJoinSleepAnimals(FocusedJoinSleepAnimal);
+
+pub struct FocusedJoinSleepZoo;
+impl Ecosystem for FocusedJoinSleepZoo {
+    const NAME: &'static str = "focused-join-sleep-zoo";
+    type Animals = FocusedJoinSleepAnimals;
+}
+
+impl From<FocusedJoinSleepState> for () {
+    fn from(_value: FocusedJoinSleepState) -> Self {}
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParallelFocusedJoinSleepLeftState {
+    sleep_for_ms: u64,
+    woke: bool,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParallelFocusedJoinSleepRightState {
+    sleep_for_ms: u64,
+    woke: bool,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParallelFocusedJoinSleepState {
+    #[jungle(focus)]
+    left: ParallelFocusedJoinSleepLeftState,
+    #[jungle(focus)]
+    right: ParallelFocusedJoinSleepRightState,
+    tail_ran: bool,
+}
+
+pub struct ParallelFocusedJoinSleepLeftSpec;
+#[jungle::action]
+impl Action for ParallelFocusedJoinSleepLeftSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &ParallelFocusedJoinSleepLeftState, _input: Self::Input) -> Duration {
+        Duration::from_millis(state.sleep_for_ms)
+    }
+
+    fn absorb(
+        state: &mut ParallelFocusedJoinSleepLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output
+            .map_err(|_err| Failure::from("left focused join sleep should resume successfully"))?;
+        state.woke = true;
+        Ok(())
+    }
+}
+
+pub struct ParallelFocusedJoinSleepRightSpec;
+#[jungle::action]
+impl Action for ParallelFocusedJoinSleepRightSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &ParallelFocusedJoinSleepRightState, _input: Self::Input) -> Duration {
+        Duration::from_millis(state.sleep_for_ms)
+    }
+
+    fn absorb(
+        state: &mut ParallelFocusedJoinSleepRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output
+            .map_err(|_err| Failure::from("right focused join sleep should resume successfully"))?;
+        state.woke = true;
+        Ok(())
+    }
+}
+
+pub struct ParallelFocusedJoinSleepTailSpec;
+#[jungle::action]
+impl Action for ParallelFocusedJoinSleepTailSpec {
+    type Effect = MergeEitherUnitEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &ParallelFocusedJoinSleepState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut ParallelFocusedJoinSleepState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("parallel focused join tail should succeed"))?;
+        state.tail_ran = true;
+        Ok(())
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = ParallelFocusedJoinSleepLeftState)]
+pub struct ParallelFocusedJoinSleepLeftFlow(Step<ParallelFocusedJoinSleepLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = ParallelFocusedJoinSleepRightState)]
+pub struct ParallelFocusedJoinSleepRightFlow(Step<ParallelFocusedJoinSleepRightSpec>);
+
+#[derive(Flow)]
+pub struct ParallelFocusedJoinSleepJourney(
+    Join<ParallelFocusedJoinSleepLeftFlow, ParallelFocusedJoinSleepRightFlow>,
+    Step<ParallelFocusedJoinSleepTailSpec>,
+);
+
+pub struct ParallelFocusedJoinSleepAnimal;
+
+#[jungle::animal(observe, id = 2, generation = 0)]
+impl Animal for ParallelFocusedJoinSleepAnimal {
+    type State = ParallelFocusedJoinSleepState;
+    type Seed = ParallelFocusedJoinSleepState;
+    type Flow = ParallelFocusedJoinSleepJourney;
+}
+
+impl Observe for ParallelFocusedJoinSleepAnimal {
+    type Appearance = ParallelFocusedJoinSleepState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+pub struct ParallelFocusedJoinSleepAnimals(ParallelFocusedJoinSleepAnimal);
+
+pub struct ParallelFocusedJoinSleepZoo;
+impl Ecosystem for ParallelFocusedJoinSleepZoo {
+    const NAME: &'static str = "parallel-focused-join-sleep-zoo";
+    type Animals = ParallelFocusedJoinSleepAnimals;
+}
+
+impl From<ParallelFocusedJoinSleepState> for () {
+    fn from(_value: ParallelFocusedJoinSleepState) -> Self {}
+}
+
 #[tokio::test]
 async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
@@ -259,6 +510,23 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
         panic!("sleep flow did not complete before timeout");
     }
 
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed at completion");
+    assert!(
+        history
+            .iter()
+            .any(|event| matches!(event, RunnerOut::SleepScheduled { .. })),
+        "root sleep should be scheduled through the backend"
+    );
+    assert!(
+        history
+            .iter()
+            .any(|event| matches!(event, RunnerOut::SleepFired { .. })),
+        "root sleep should resume from a backend wake event"
+    );
+
     let appearance_bytes = client
         .animal_appearance(journey_id)
         .await
@@ -267,6 +535,259 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let appearance: SleepState =
         postcard::from_bytes(&appearance_bytes).expect("sleep appearance should deserialize");
     assert_eq!(appearance.counter, 2);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn focused_join_sleep_suspends_until_backend_wake() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let worker_client = connect_client_with_retry(listen_addr).await;
+    let worker = JungleWorker::new(FocusedJoinSleepZoo, worker_client);
+    let worker_handle = tokio::spawn(async move { worker.spawn().await });
+
+    let seed = FocusedJoinSleepState {
+        left: FocusedJoinSleepLeftState { ran: false },
+        right: FocusedJoinSleepRightState {
+            sleep_for_ms: 400,
+            woke: false,
+        },
+        tail_ran: false,
+    };
+    let journey_id = client
+        .spawn::<FocusedJoinSleepAnimal>(&seed)
+        .await
+        .expect("spawn should succeed for focused join sleep flow")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let history = client
+                .journey_history(journey_id)
+                .await
+                .expect("journey_history should succeed");
+            if history
+                .iter()
+                .any(|event| matches!(event, RunnerOut::SleepScheduled { .. }))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("focused join sleep should be scheduled through the backend");
+
+    let worker_exited_early = Arc::new(AtomicBool::new(false));
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        let worker_exited_early = Arc::clone(&worker_exited_early);
+        loop {
+            if worker_handle.is_finished() {
+                worker_exited_early.store(true, Ordering::Relaxed);
+                break;
+            }
+
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            if status == JourneyStatus::Completed {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    if worker_exited_early.load(Ordering::Relaxed) {
+        let joined = worker_handle.await;
+        panic!("worker exited before focused join sleep completion: {joined:?}");
+    }
+    if completion.is_err() {
+        panic!("focused join sleep flow did not complete before timeout");
+    }
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed at focused join completion");
+    assert!(
+        history
+            .iter()
+            .any(|event| matches!(event, RunnerOut::SleepScheduled { .. })),
+        "focused join sleep should be scheduled through the backend"
+    );
+    assert!(
+        history
+            .iter()
+            .any(|event| matches!(event, RunnerOut::SleepFired { .. })),
+        "focused join sleep should resume from a backend wake event"
+    );
+
+    let final_appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("animal_appearance should succeed at completion")
+        .expect("animal_appearance should be present at focused join completion");
+    let final_appearance: FocusedJoinSleepState = postcard::from_bytes(&final_appearance_bytes)
+        .expect("focused join final appearance should deserialize");
+    assert!(final_appearance.left.ran);
+    assert!(final_appearance.right.woke);
+    assert!(final_appearance.tail_ran);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn focused_join_sleep_schedules_parallel_branch_wakes_before_first_resume() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let worker_client = connect_client_with_retry(listen_addr).await;
+    let worker = JungleWorker::new(ParallelFocusedJoinSleepZoo, worker_client);
+    let worker_handle = tokio::spawn(async move { worker.spawn().await });
+
+    let seed = ParallelFocusedJoinSleepState {
+        left: ParallelFocusedJoinSleepLeftState {
+            sleep_for_ms: 250,
+            woke: false,
+        },
+        right: ParallelFocusedJoinSleepRightState {
+            sleep_for_ms: 250,
+            woke: false,
+        },
+        tail_ran: false,
+    };
+    let journey_id = client
+        .spawn::<ParallelFocusedJoinSleepAnimal>(&seed)
+        .await
+        .expect("spawn should succeed for parallel focused join sleep flow")
+        .journey_id;
+
+    let history = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let history = client
+                .journey_history(journey_id)
+                .await
+                .expect("journey_history should succeed");
+            let scheduled_count = history
+                .iter()
+                .filter(|event| matches!(event, RunnerOut::SleepScheduled { .. }))
+                .count();
+            if scheduled_count >= 2 {
+                break history;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("parallel focused join should schedule both branch sleeps");
+
+    let scheduled_before_first_fired = history
+        .iter()
+        .take_while(|event| !matches!(event, RunnerOut::SleepFired { .. }))
+        .filter(|event| matches!(event, RunnerOut::SleepScheduled { .. }))
+        .count();
+    assert_eq!(
+        scheduled_before_first_fired, 2,
+        "both focused join branch sleeps should be scheduled before the first wake fires"
+    );
+
+    let worker_exited_early = Arc::new(AtomicBool::new(false));
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        let worker_exited_early = Arc::clone(&worker_exited_early);
+        loop {
+            if worker_handle.is_finished() {
+                worker_exited_early.store(true, Ordering::Relaxed);
+                break;
+            }
+
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            if status == JourneyStatus::Completed {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    if worker_exited_early.load(Ordering::Relaxed) {
+        let joined = worker_handle.await;
+        panic!("worker exited before parallel focused join sleep completion: {joined:?}");
+    }
+    if completion.is_err() {
+        panic!("parallel focused join sleep flow did not complete before timeout");
+    }
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed at parallel focused join completion");
+    assert_eq!(
+        history
+            .iter()
+            .filter(|event| matches!(event, RunnerOut::SleepScheduled { .. }))
+            .count(),
+        2,
+        "parallel focused join should schedule each branch sleep exactly once"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|event| matches!(event, RunnerOut::SleepFired { .. }))
+            .count(),
+        2,
+        "parallel focused join should resume each branch sleep exactly once"
+    );
+
+    let final_appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("animal_appearance should succeed at completion")
+        .expect("animal_appearance should be present at parallel focused join completion");
+    let final_appearance: ParallelFocusedJoinSleepState =
+        postcard::from_bytes(&final_appearance_bytes)
+            .expect("parallel focused join final appearance should deserialize");
+    assert!(final_appearance.left.woke);
+    assert!(final_appearance.right.woke);
+    assert!(final_appearance.tail_ran);
 
     worker_handle.abort();
     let _ = worker_handle.await;
