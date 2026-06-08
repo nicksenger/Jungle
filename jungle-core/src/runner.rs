@@ -182,6 +182,7 @@ where
         let sleep_effect_type = core::any::type_name::<Sleep>();
         let mut in_flight = FuturesUnordered::new();
         let mut replay_pending_in_flight = pending_requests.len();
+        let defer_appearance_until_stable = replay_pending_in_flight > 0;
         let mut pending_wave_settle = false;
         for request in pending_requests {
             in_flight.push(run_request_task(tx.clone(), request));
@@ -284,7 +285,7 @@ where
                 tx,
                 node_id,
                 completion?,
-                false,
+                !defer_appearance_until_stable,
             )
             .await
             {
@@ -296,7 +297,7 @@ where
             if replay_pending_in_flight > 0 {
                 replay_pending_in_flight -= 1;
             }
-            if in_flight.is_empty() {
+            if defer_appearance_until_stable && in_flight.is_empty() {
                 pending_wave_settle = true;
             }
         }

@@ -7,8 +7,9 @@ use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+use tokio::sync::Notify;
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
 #[cfg(feature = "postgres")]
@@ -429,8 +430,141 @@ impl Ecosystem for IntegrationZoo {
     type Animals = IntegrationAnimals;
 }
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveAppearanceState {
+    first_done: bool,
+    second_done: bool,
+}
+
+pub struct LiveAppearanceFirstEffect;
+
+#[jungle::effect(id = 10)]
+impl<J> Effect<J> for LiveAppearanceFirstEffect {
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct LiveAppearanceSecondEffect;
+
+#[derive(Clone)]
+struct LiveAppearanceHooks {
+    second_started: Arc<AtomicBool>,
+    second_started_notify: Arc<Notify>,
+    release_second: Arc<Notify>,
+}
+
+fn live_appearance_hooks() -> &'static Mutex<Option<LiveAppearanceHooks>> {
+    static LIVE_APPEARANCE_HOOKS: OnceLock<Mutex<Option<LiveAppearanceHooks>>> = OnceLock::new();
+    LIVE_APPEARANCE_HOOKS.get_or_init(|| Mutex::new(None))
+}
+
+#[jungle::effect(id = 11)]
+impl<J> Effect<J> for LiveAppearanceSecondEffect {
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let hooks = live_appearance_hooks()
+            .lock()
+            .expect("live appearance hooks mutex should not be poisoned")
+            .as_ref()
+            .cloned()
+            .expect("live appearance hooks should be installed before the effect runs");
+        async move {
+            hooks.second_started.store(true, Ordering::SeqCst);
+            hooks.second_started_notify.notify_waiters();
+            hooks.release_second.notified().await;
+            Ok(())
+        }
+    }
+}
+
+pub struct MarkFirstDoneSpec;
+#[jungle::action]
+impl Action for MarkFirstDoneSpec {
+    type Effect = LiveAppearanceFirstEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LiveAppearanceState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut LiveAppearanceState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("first live appearance step should succeed"))?;
+        state.first_done = true;
+        Ok(())
+    }
+}
+
+pub struct MarkSecondDoneSpec;
+#[jungle::action]
+impl Action for MarkSecondDoneSpec {
+    type Effect = LiveAppearanceSecondEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LiveAppearanceState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut LiveAppearanceState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("second live appearance step should succeed"))?;
+        state.second_done = true;
+        Ok(())
+    }
+}
+
+#[derive(Flow)]
+pub struct LiveAppearanceJourney(Step<MarkFirstDoneSpec>, Step<MarkSecondDoneSpec>);
+
+pub struct LiveAppearanceAnimal;
+
+#[jungle::animal(observe, id = 1, generation = 0)]
+impl Animal for LiveAppearanceAnimal {
+    type State = LiveAppearanceState;
+    type Seed = LiveAppearanceState;
+    type Flow = LiveAppearanceJourney;
+}
+
+impl Observe for LiveAppearanceAnimal {
+    type Appearance = LiveAppearanceState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+pub struct LiveAppearanceAnimals(LiveAppearanceAnimal);
+
+pub struct LiveAppearanceZoo;
+
+impl Ecosystem for LiveAppearanceZoo {
+    const NAME: &'static str = "live-appearance-zoo";
+    type Animals = LiveAppearanceAnimals;
+}
+
 impl From<IntegrationState> for () {
     fn from(_value: IntegrationState) -> Self {}
+}
+
+impl From<LiveAppearanceState> for () {
+    fn from(_value: LiveAppearanceState) -> Self {}
 }
 
 #[tokio::test]
@@ -541,6 +675,24 @@ async fn memory_client_worker_streams_step_updates_end_to_end() {
     });
 
     run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn memory_client_worker_emits_intermediate_appearance_before_completion() {
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
+    });
+
+    run_client_worker_emits_intermediate_appearance_before_completion(listen_addr).await;
 
     server_task.abort();
     let _ = server_task.await;
@@ -661,6 +813,98 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
 
     worker_handle.abort();
     let _ = worker_handle.await;
+}
+
+async fn run_client_worker_emits_intermediate_appearance_before_completion(listen_addr: SocketAddr) {
+    let client = connect_client_with_retry(listen_addr).await;
+    let second_started = Arc::new(AtomicBool::new(false));
+    let second_started_notify = Arc::new(Notify::new());
+    let release_second = Arc::new(Notify::new());
+    *live_appearance_hooks()
+        .lock()
+        .expect("live appearance hooks mutex should not be poisoned") = Some(
+        LiveAppearanceHooks {
+            second_started: Arc::clone(&second_started),
+            second_started_notify: Arc::clone(&second_started_notify),
+            release_second: Arc::clone(&release_second),
+        },
+    );
+    let worker = JungleWorker::new(LiveAppearanceZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .spawn::<LiveAppearanceAnimal>(&LiveAppearanceState::default())
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(8), async {
+        while !second_started.load(Ordering::SeqCst) {
+            second_started_notify.notified().await;
+        }
+    })
+    .await
+    .expect("second live appearance step should start before timeout");
+
+    let live_appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("animal_appearance should succeed while the journey is still alive")
+        .expect("live appearance should already be present before the second step completes");
+    let live_appearance: LiveAppearanceState = postcard::from_bytes(&live_appearance_bytes)
+        .expect("live appearance should deserialize");
+    assert!(
+        live_appearance.first_done,
+        "first step state should be visible before the second step completes"
+    );
+    assert!(
+        !live_appearance.second_done,
+        "second step should still be pending when the intermediate appearance is observed"
+    );
+    assert_eq!(
+        client
+            .journey_details(journey_id)
+            .await
+            .expect("journey_details should succeed while waiting for completion"),
+        JourneyStatus::Alive,
+        "journey should still be running when the intermediate appearance is observed"
+    );
+
+    release_second.notify_waiters();
+
+    tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            if client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed while waiting for completion")
+                == JourneyStatus::Completed
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("journey should complete after releasing the second step");
+
+    let final_appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("animal_appearance should succeed after completion")
+        .expect("final appearance should be present after completion");
+    let final_appearance: LiveAppearanceState = postcard::from_bytes(&final_appearance_bytes)
+        .expect("final live appearance should deserialize");
+    assert!(final_appearance.first_done);
+    assert!(final_appearance.second_done);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+    *live_appearance_hooks()
+        .lock()
+        .expect("live appearance hooks mutex should not be poisoned") = None;
 }
 
 async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAddr) {
