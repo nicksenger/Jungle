@@ -233,3 +233,4 @@ fn helper_emit_absorb_adapters_work_in_flow() {
     assert_eq!(executor.state().value, 13);
     assert!(executor.is_complete());
 }
+

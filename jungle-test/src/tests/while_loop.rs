@@ -962,3 +962,4 @@ async fn while_conditional_final_tail_with_focused_join_merge_rest_does_not_hang
     assert!(executor.is_complete());
     assert_eq!(executor.state().loops_remaining, 0);
 }
+

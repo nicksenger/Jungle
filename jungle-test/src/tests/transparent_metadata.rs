@@ -144,3 +144,4 @@ fn control_flow_nodes_expose_custom_metadata_through_ast() {
         other => panic!("expected join ast node, got {other:?}"),
     }
 }
+

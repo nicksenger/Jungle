@@ -1367,3 +1367,4 @@ async fn nested_join_with_inner_join_ending_in_no_effect_does_not_hang() {
         "tail step should run after nested join completion"
     );
 }
+

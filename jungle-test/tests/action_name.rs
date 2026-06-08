@@ -95,3 +95,4 @@ fn action_name_flows_into_step_and_bound_step_ast_labels() {
 fn action_name_defaults_to_the_action_ident() {
     assert_eq!(<DefaultNamedSpec as Action>::NAME, "DefaultNamedSpec");
 }
+

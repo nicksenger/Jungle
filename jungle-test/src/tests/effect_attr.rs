@@ -35,3 +35,4 @@ fn effect_attr_emits_schema_exec_and_primitives() {
     assert_type_eq!(<AutoPrimitiveEffect as EffectIdentified>::Id, U90);
     assert_type_eq!(<AutoPrimitiveEffect as Effects>::List, Node<U90, AutoPrimitiveEffect>);
 }
+

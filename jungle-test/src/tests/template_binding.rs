@@ -3757,3 +3757,4 @@ async fn template_binding_long_shared_and_unique_segments_with_different_animal_
     worker_handle.abort();
     let _ = worker_handle.await;
 }
+
