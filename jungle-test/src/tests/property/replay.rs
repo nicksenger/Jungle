@@ -45,7 +45,7 @@ async fn wait_for_replay_history_change(
     journey_id: uuid::Uuid,
     previous: &str,
 ) -> String {
-    tokio::time::timeout(REPLAY_TEST_APPEARANCE_TIMEOUT, async {
+    match tokio::time::timeout(REPLAY_TEST_APPEARANCE_TIMEOUT, async {
         loop {
             let history = current_replay_history(client, journey_id).await;
             if history != previous {
@@ -59,7 +59,15 @@ async fn wait_for_replay_history_change(
         }
     })
     .await
-    .expect("replay appearance should change before timeout")
+    {
+        Ok(history) => history,
+        Err(_) => {
+            let latest_history = current_replay_history(client, journey_id).await;
+            panic!(
+                "replay appearance should change before timeout: previous={previous:?} latest={latest_history:?}"
+            );
+        }
+    }
 }
 
 async fn latest_replay_history_within_window(
@@ -256,6 +264,11 @@ async fn depth1_fixed_trace_applies_right_branch_label_before_next_effect_reques
         std::any::type_name::<Tock>(),
         "right branch label should be absorbed before the next Tick request"
     );
+}
+
+#[tokio::test]
+async fn depth3_fixed_replay_query_resumes_after_nested_join_replay() {
+    assert_replayed_depth3_history_extends_prefix(vec![true, false, false]).await;
 }
 
 #[tokio::test]

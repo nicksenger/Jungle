@@ -5,8 +5,9 @@ use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError,
-    Failure, Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
+    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow,
+    ExecutableEffectRequest, ExecutorError, Failure, Observable, ObservationBridge, Perturbable,
+    PerturbationBridge, RunnerOut, Sleep,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -133,6 +134,32 @@ where
             journey_id,
             tx,
             Vec::new(),
+            Vec::new(),
+        )
+        .await
+    }
+
+    pub async fn drive_until_sleep_or_complete_with_replay_pending<A, Initial>(
+        &self,
+        executor: &mut ContextExecutor<T, A>,
+        initial_input: Initial,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+        pending_requests: Vec<ExecutableEffectRequest>,
+    ) -> Result<RunnerAdvance, ExecutorError>
+    where
+        A: BoundAnimal + Observable + Perturbable,
+        BoundAnimalJourney<A>:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+        Initial: Serialize + Clone,
+    {
+        self.drive_until_sleep_or_complete_with_pending::<A, Initial>(
+            executor,
+            initial_input,
+            journey_id,
+            tx,
+            Vec::new(),
+            pending_requests,
         )
         .await
     }
@@ -144,6 +171,7 @@ where
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
         mut pending_sleeps: Vec<PendingSleep>,
+        pending_requests: Vec<ExecutableEffectRequest>,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: BoundAnimal + Observable + Perturbable,
@@ -153,6 +181,9 @@ where
     {
         let sleep_effect_type = core::any::type_name::<Sleep>();
         let mut in_flight = FuturesUnordered::new();
+        for request in pending_requests {
+            in_flight.push(run_request_task(tx.clone(), request));
+        }
         while !executor.is_complete() || !in_flight.is_empty() || !pending_sleeps.is_empty() {
             if !pending_sleeps.is_empty() && in_flight.is_empty() {
                 return Ok(RunnerAdvance::SuspendedSleep {
@@ -205,15 +236,11 @@ where
                 )
                 .await?;
                 newly_dispatched.push(request);
+                break;
             }
 
             for request in newly_dispatched {
-                let node_id = request.node_id();
-                let tx_clone = tx.clone();
-                in_flight.push(async move {
-                    let completion = run_request_with_live_history_owned(tx_clone, request).await;
-                    (node_id, completion)
-                });
+                in_flight.push(run_request_task(tx.clone(), request));
             }
 
             if in_flight.is_empty() {
@@ -275,6 +302,7 @@ where
             journey_id,
             tx,
             pending_sleeps,
+            Vec::new(),
         )
         .await
     }
@@ -304,6 +332,18 @@ async fn run_request_with_live_history_owned(
                 }
             }
         }
+    }
+}
+
+fn run_request_task(
+    tx: RunnerChannelTx,
+    request: jungle_types::ExecutableEffectRequest,
+) -> impl std::future::Future<Output = (u32, Result<Result<Vec<u8>, Vec<u8>>, ExecutorError>)> + Send
+{
+    let node_id = request.node_id();
+    async move {
+        let completion = run_request_with_live_history_owned(tx, request).await;
+        (node_id, completion)
     }
 }
 

@@ -939,7 +939,7 @@ where
                 let mut executor = runner.new_executor::<Head>(state);
                 executor.set_journey_id(journey_id);
                 let mut replay = ReplayCursor::new(client, journey_id, replay_page_size);
-                if let Err(err) = replay_history::<T, Head, _>(
+                let replay_pending_requests = match replay_history::<T, Head, _>(
                     &mut executor,
                     initial_input.clone(),
                     journey_id,
@@ -948,23 +948,25 @@ where
                 )
                 .await
                 {
-                    match err {
+                    Ok(pending_requests) => pending_requests,
+                    Err(err) => match err {
                         ExecutorError::ActionFailure(failure) => {
                             return Ok(JourneyStartOutcome::Failed { failure });
                         }
                         other => return Err(other),
-                    }
-                }
+                    },
+                };
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
-                    .drive_until_sleep_or_complete::<Head, _>(
+                    .drive_until_sleep_or_complete_with_replay_pending::<Head, _>(
                         &mut executor,
                         initial_input,
                         journey_id,
                         &mut tx,
+                        replay_pending_requests,
                     )
                     .await?
                 {
@@ -1164,7 +1166,7 @@ async fn replay_history<T, A, Initial>(
     journey_id: Uuid,
     replay: &mut ReplayCursor,
     tx: &mut RunnerChannelTx,
-) -> Result<(), ExecutorError>
+) -> Result<Vec<ExecutableEffectRequest>, ExecutorError>
 where
     T: 'static,
     A: BoundAnimal + Observable + Perturbable,
@@ -1212,6 +1214,10 @@ where
             );
         }
 
+        if replay.peek().await?.is_none() {
+            return take_replay_pending_requests(pending, pending_order, sleep_effect_type);
+        }
+
         let Some((_, completion)) = resolve_next_replay_completion(
             replay,
             tx,
@@ -1228,7 +1234,7 @@ where
         let _emitted = executor.complete_serialized(completion)?;
     }
 
-    Ok(())
+    Ok(Vec::new())
 }
 
 struct ReplayPendingRequest {
@@ -1296,7 +1302,8 @@ async fn reconcile_replay_effect_input(
                 Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
             ));
 
-    if effect_type == no_effect_type
+    if current_event.is_none()
+        || effect_type == no_effect_type
         || has_recoverable_cursor_event
         || (request_has_live_history
             && is_journey_history_event(current_event.as_ref(), journey_id))
@@ -1434,6 +1441,27 @@ async fn recover_oldest_replay_completion(
         return Ok(Some((node_id, completion)));
     }
     Ok(None)
+}
+
+fn take_replay_pending_requests(
+    mut pending: HashMap<u32, ReplayPendingRequest>,
+    mut pending_order: VecDeque<u32>,
+    sleep_effect_type: &'static str,
+) -> Result<Vec<ExecutableEffectRequest>, ExecutorError> {
+    let mut requests = Vec::with_capacity(pending.len());
+    while let Some(node_id) = pending_order.pop_front() {
+        let Some(request) = pending.remove(&node_id) else {
+            continue;
+        };
+        if request.effect_type == sleep_effect_type {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay reached Sleep without a backend wake event (node_id={node_id})"
+            )));
+        }
+        requests.push(request.request);
+    }
+    requests.extend(pending.into_values().map(|request| request.request));
+    Ok(requests)
 }
 
 async fn send_recovered_completion(
