@@ -11,10 +11,12 @@ mod tests {
     }
 
     mod adapt_helpers;
+    mod action_name;
     mod aspect;
     mod conditional;
     mod connection;
     mod effect_attr;
+    mod empty_vec_regression;
     mod failure;
     mod generic_act;
     mod integration;
@@ -34,4 +36,3 @@ mod tests {
     mod while_loop;
     mod zoo;
 }
-
