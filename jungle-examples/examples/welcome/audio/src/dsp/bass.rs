@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use super::{
-    duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, triangle, Expression, Note,
+    duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, Expression, Note,
     SAMPLE_RATE,
 };
 

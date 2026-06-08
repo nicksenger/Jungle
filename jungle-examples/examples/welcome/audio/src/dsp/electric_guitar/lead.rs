@@ -2,6 +2,7 @@ use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
 use super::{ElectricGuitarArticulation, Expression, Note, SAMPLE_RATE};
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct ElectricTone {
     drive: f32,
@@ -106,6 +107,7 @@ fn lead_amp_distortion(sample: f32, drive: f32) -> f32 {
     (asym.tanh() * 1.15).clamp(-1.0, 1.0)
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct GrooveShape {
     downstroke: f32,
@@ -124,6 +126,7 @@ fn groove_shape(duration: Duration, n_midi: u8) -> GrooveShape {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct RhythmTone {
     drive: f32,
@@ -142,7 +145,7 @@ pub fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[
         bend: 0.0,
         vibrato: 0.0,
     });
-    let groove = groove_shape(note.duration, note.n_midi);
+    let _groove = groove_shape(note.duration, note.n_midi);
     let tone = lead_tone(note.articulation);
 
     let mut pcm = Vec::with_capacity(frame_count);
@@ -172,6 +175,7 @@ pub fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[
     (Arc::from(pcm), gain, playback_rate)
 }
 
+#[allow(dead_code)]
 fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) -> RhythmTone {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => RhythmTone {
@@ -191,6 +195,7 @@ fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) ->
     }
 }
 
+#[allow(dead_code)]
 fn rhythm_duration(base: Duration, articulation: ElectricGuitarArticulation) -> Duration {
     let scale = match articulation {
         ElectricGuitarArticulation::RhythmSustained => 1.15,
@@ -199,6 +204,7 @@ fn rhythm_duration(base: Duration, articulation: ElectricGuitarArticulation) -> 
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.025))
 }
 
+#[allow(dead_code)]
 fn rhythm_output_shape(articulation: ElectricGuitarArticulation) -> (f32, f32) {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => (0.94, 1.0),
@@ -206,6 +212,7 @@ fn rhythm_output_shape(articulation: ElectricGuitarArticulation) -> (f32, f32) {
     }
 }
 
+#[allow(dead_code)]
 fn rhythm_sample(
     articulation: ElectricGuitarArticulation,
     root_hz: f32,
@@ -227,6 +234,7 @@ fn rhythm_sample(
     }
 }
 
+#[allow(dead_code)]
 fn rhythm_stack(frequency_hz: f32, t: f32, body: f32, top_end: f32) -> f32 {
     let fifth = frequency_hz * 2.0_f32.powf(7.0 / 12.0);
     let octave = frequency_hz * 2.0;
@@ -238,6 +246,7 @@ fn rhythm_stack(frequency_hz: f32, t: f32, body: f32, top_end: f32) -> f32 {
     (raw * body).clamp(-1.5, 1.5)
 }
 
+#[allow(dead_code)]
 fn rhythm_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 {
     let attack = match articulation {
         ElectricGuitarArticulation::RhythmSustained => 0.018,
@@ -254,6 +263,7 @@ fn rhythm_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 
     (attack_env * decay_env).clamp(0.0, 1.0)
 }
 
+#[allow(dead_code)]
 fn rhythm_pick_attack(
     frequency_hz: f32,
     phase: f32,
@@ -267,6 +277,7 @@ fn rhythm_pick_attack(
     (edge + scrape) * transient * amount
 }
 
+#[allow(dead_code)]
 fn rhythm_amp_distortion(sample: f32, drive: f32) -> f32 {
     let pre = sample * drive;
     let asym = (pre + pre * pre.abs() * 0.12).clamp(-2.5, 2.5);
@@ -293,6 +304,7 @@ fn sine(frequency_hz: f32, t: f32) -> f32 {
     (TAU * frequency_hz * t).sin()
 }
 
+#[allow(dead_code)]
 fn triangle(frequency_hz: f32, t: f32) -> f32 {
     let phase = (t * frequency_hz).fract();
     (4.0 * (phase - 0.5).abs() - 1.0).clamp(-1.0, 1.0)
