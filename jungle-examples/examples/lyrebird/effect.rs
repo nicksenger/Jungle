@@ -1534,7 +1534,7 @@ fn extract_replacement_source(
 
     match (search, replacement, note) {
         (Some(search), Some(replacement), Some(note)) => {
-            validate_patch_note(&note)?;
+            let note = validate_patch_note(note)?;
             if search.is_empty() {
                 return Err(format!(
                     "`{expected_tool_name}` tool call `search` must not be empty"
