@@ -1,20 +1,18 @@
 # Jungle
 
-Welcome to the `jungle`, we've got fun and games (unmute to hear the `jungle` `Animal`s):
+Welcome to the `jungle`.
 
-https://github.com/user-attachments/assets/97682c49-485b-4b6f-bff4-586c51c8b5dc
+`jungle` explores the idea of "Workflow-as-Type" (WaT).
 
-The video is of the [welcome](./jungle-examples/examples/welcome/) example, which showcases some of the things possible in the `jungle` by representing Guns N' Roses' 1987 hit single "Welcome to the Jungle" as a `jungle` `Flow` performed by `jungle` `Animal`s, and visualized using `jungle-vision`.
+Unlike "Worflow-as-Code" frameworks such as [Temporal](https://temporal.io/) or [Restate](https://www.restate.dev/), `jungle` expects `Flow`s to be expressed as a Rust type, or more specifically, a tree of Rust types. This prevents using many common programming patterns for the expression of control flow, but in turn enables: visualization of the execution graph, type-safe generic Flow-composition, compile-time node replacement / graph traversal, and other seemingly magical properties.
 
-The run shown uses the postgres persistence layer in combination with a fused (single-process) `JungleClient` + `JungleServer`, and 3 `JungleWorker`s. 
+The [welcome](./jungle-examples/examples/welcome/) example implements playback of the Guns N' Roses' 1987 hit single "Welcome to the Jungle" using `jungle`:
 
-At its core, `jungle` is just another boring and opinionated distributed orchestration framework like airflow, temporal, DBOS, cadence, restate, etc.
+https://github.com/user-attachments/assets/f5b2410b-f606-46b4-83d8-0dd34c06f7cb
 
-The key differences are:
+These `Flow`s handle the notation and timing for the instruments and vocalizations internally, while treating PCM synthesis and playback (through [cpal](https://github.com/RustAudio/cpal)) as I/O. Inputs for each note are persisted either in memory, redb, or postgres, depending on the choice of backend, facilitating recovery in the event of an outage.
 
-1. If you use `jungle` in production, at least for the time being, _you're gonna die_. It's extremely unstable and experimental on many levels.
-2. In the `jungle`, "Workflows" are just called `Flow`s, because `Animal`s don't care about work.
-3. The control-`Flow` of an `Animal`'s journey through the `Jungle` is expressed entirely through Rust ***types***. 
+I want to emphasize that the goal of the `jungle` is not to compete with, refine, simplify, translate, or port any existing orchestration tools. For the time being, `jungle` is more of a living art project sprouted from the Rust programming language and its ecosystem.
 
-Instead of Workflow-as-Code (WaC), you can think of the `jungle` as Workflow-as-Type (WaT).
+The`jungle` is still growing, and many bugs live here! Feel free to look around, but don't let it bring you down.
 
