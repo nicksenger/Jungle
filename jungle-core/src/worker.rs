@@ -9,8 +9,9 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutableEffectRequest,
-    ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, Observable, OwnerWake,
-    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    ExecutorError, Failure, JourneyEvent, JourneyStatus, NodeLifecycle, NoEffect, Observable,
+    ObservationBridge, OwnerWake, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
+    SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -938,6 +939,7 @@ where
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
                 executor.set_journey_id(journey_id);
+                let mut replay_visible_appearance = client.animal_appearance(journey_id).await?;
                 let mut replay = ReplayCursor::new(client, journey_id, replay_page_size);
                 let replay_pending_requests = match replay_history::<T, Head, _>(
                     &mut executor,
@@ -945,6 +947,7 @@ where
                     journey_id,
                     &mut replay,
                     &mut tx,
+                    &mut replay_visible_appearance,
                 )
                 .await
                 {
@@ -956,10 +959,6 @@ where
                         other => return Err(other),
                     },
                 };
-                let appearance = runner.initial_appearance::<Head>(&executor)?;
-                runner
-                    .emit_appearance(journey_id, appearance, &mut tx)
-                    .await?;
                 match runner
                     .drive_until_sleep_or_complete_with_replay_pending::<Head, _>(
                         &mut executor,
@@ -967,6 +966,7 @@ where
                         journey_id,
                         &mut tx,
                         replay_pending_requests,
+                        replay_visible_appearance,
                     )
                     .await?
                 {
@@ -1166,6 +1166,7 @@ async fn replay_history<T, A, Initial>(
     journey_id: Uuid,
     replay: &mut ReplayCursor,
     tx: &mut RunnerChannelTx,
+    replay_visible_appearance: &mut Option<Vec<u8>>,
 ) -> Result<Vec<ExecutableEffectRequest>, ExecutorError>
 where
     T: 'static,
@@ -1218,7 +1219,7 @@ where
             return take_replay_pending_requests(pending, pending_order, sleep_effect_type);
         }
 
-        let Some((_, completion)) = resolve_next_replay_completion(
+        let Some((_, completion, recovered_live_completion)) = resolve_next_replay_completion(
             replay,
             tx,
             journey_id,
@@ -1232,6 +1233,20 @@ where
         };
 
         let _emitted = executor.complete_serialized(completion)?;
+        if recovered_live_completion {
+            let lifecycle_updates = executor.take_node_lifecycle_updates();
+            let appearance = <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(
+                executor.state(),
+            )?;
+            if should_emit_replay_live_edge(
+                replay_visible_appearance.as_deref(),
+                appearance.as_deref(),
+            ) {
+                send_executor_lifecycle_updates(lifecycle_updates, tx).await?;
+                emit_live_edge_appearance(journey_id, appearance.clone(), tx).await?;
+                *replay_visible_appearance = appearance;
+            }
+        }
     }
 
     Ok(Vec::new())
@@ -1324,10 +1339,12 @@ async fn resolve_next_replay_completion(
     pending: &mut HashMap<u32, ReplayPendingRequest>,
     pending_order: &mut VecDeque<u32>,
     sleep_effect_type: &'static str,
-) -> Result<Option<(u32, Result<Vec<u8>, Vec<u8>>)>, ExecutorError> {
+) -> Result<Option<(u32, Result<Vec<u8>, Vec<u8>>, bool)>, ExecutorError> {
     loop {
         let Some(current_event) = replay.peek().await? else {
-            return recover_oldest_replay_completion(tx, journey_id, pending, pending_order).await;
+            return recover_oldest_replay_completion(tx, journey_id, pending, pending_order)
+                .await
+                .map(|completion| completion.map(|(node_id, completion)| (node_id, completion, true)));
         };
 
         if is_informational_history_event(Some(&current_event), journey_id) {
@@ -1344,7 +1361,7 @@ async fn resolve_next_replay_completion(
                 let _ = replay.discard_front().await?;
                 remove_pending_order(pending_order, node_id);
                 let _ = pending.remove(&node_id);
-                return Ok(Some((node_id, Ok(data))));
+                return Ok(Some((node_id, Ok(data), false)));
             }
             RunnerOut::EffectFailureOutput {
                 node_id,
@@ -1354,7 +1371,7 @@ async fn resolve_next_replay_completion(
                 let _ = replay.discard_front().await?;
                 remove_pending_order(pending_order, node_id);
                 let _ = pending.remove(&node_id);
-                return Ok(Some((node_id, Err(data))));
+                return Ok(Some((node_id, Err(data), false)));
             }
             RunnerOut::SleepScheduled { uuid, .. } if uuid == journey_id => {
                 let _ = replay.discard_front().await?;
@@ -1386,7 +1403,7 @@ async fn resolve_next_replay_completion(
                 }
                 let sleep_out = postcard::to_allocvec(&())
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
-                return Ok(Some((node_id, Ok(sleep_out))));
+                return Ok(Some((node_id, Ok(sleep_out), false)));
             }
             history
                 if pending.values().any(|request| request.has_live_history)
@@ -1396,10 +1413,70 @@ async fn resolve_next_replay_completion(
             }
             _ => {
                 return recover_oldest_replay_completion(tx, journey_id, pending, pending_order)
-                    .await;
+                    .await
+                    .map(|completion| completion.map(|(node_id, completion)| (node_id, completion, true)));
             }
         }
     }
+}
+
+async fn emit_live_edge_appearance(
+    journey_id: Uuid,
+    appearance: Option<Vec<u8>>,
+    tx: &mut RunnerChannelTx,
+) -> Result<(), ExecutorError> {
+    if let Some(appearance) = appearance {
+        let (done_tx, done_rx) = oneshot::channel();
+        tx.send((
+            RunnerChannelMessage::History(RunnerOut::Appearance {
+                data: appearance,
+                uuid: journey_id,
+            }),
+            done_tx,
+        ))
+        .await
+        .map_err(|_| ExecutorError::ClientTransportClosed)?;
+        match done_rx
+            .await
+            .map_err(|_| ExecutorError::ClientTransportAckDropped)??
+        {
+            RunnerChannelResponse::Ack => {}
+            RunnerChannelResponse::ClaimedPerturbation(_) => {
+                return Err(ExecutorError::ClientTransport(
+                    "runner expected ack response while emitting replay live-edge appearance"
+                        .to_string(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn send_executor_lifecycle_updates(
+    lifecycle_updates: Vec<NodeLifecycle>,
+    tx: &mut RunnerChannelTx,
+) -> Result<(), ExecutorError> {
+    for update in lifecycle_updates {
+        let (done_tx, done_rx) = oneshot::channel();
+        tx.send((
+            RunnerChannelMessage::History(RunnerOut::NodeLifecycle(update)),
+            done_tx,
+        ))
+        .await
+        .map_err(|_| ExecutorError::ClientTransportClosed)?;
+        match done_rx
+            .await
+            .map_err(|_| ExecutorError::ClientTransportAckDropped)??
+        {
+            RunnerChannelResponse::Ack => {}
+            RunnerChannelResponse::ClaimedPerturbation(_) => {
+                return Err(ExecutorError::ClientTransport(
+                    "runner expected ack response while replaying lifecycle updates".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn remove_pending_order(pending_order: &mut VecDeque<u32>, node_id: u32) {
@@ -1441,6 +1518,14 @@ async fn recover_oldest_replay_completion(
         return Ok(Some((node_id, completion)));
     }
     Ok(None)
+}
+
+fn should_emit_replay_live_edge(previous: Option<&[u8]>, next: Option<&[u8]>) -> bool {
+    match (previous, next) {
+        (None, Some(_)) => true,
+        (Some(previous), Some(next)) => next != previous && next.starts_with(previous),
+        _ => false,
+    }
 }
 
 fn take_replay_pending_requests(

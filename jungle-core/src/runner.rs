@@ -10,6 +10,7 @@ use jungle_types::{
     PerturbationBridge, RunnerOut, Sleep,
 };
 use serde::Serialize;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -135,6 +136,7 @@ where
             tx,
             Vec::new(),
             Vec::new(),
+            None,
         )
         .await
     }
@@ -146,6 +148,7 @@ where
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
         pending_requests: Vec<ExecutableEffectRequest>,
+        replay_visible_appearance: Option<Vec<u8>>,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: BoundAnimal + Observable + Perturbable,
@@ -160,6 +163,7 @@ where
             tx,
             Vec::new(),
             pending_requests,
+            replay_visible_appearance,
         )
         .await
     }
@@ -172,6 +176,7 @@ where
         tx: &mut RunnerChannelTx,
         mut pending_sleeps: Vec<PendingSleep>,
         pending_requests: Vec<ExecutableEffectRequest>,
+        mut replay_visible_appearance: Option<Vec<u8>>,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: BoundAnimal + Observable + Perturbable,
@@ -182,52 +187,9 @@ where
         let sleep_effect_type = core::any::type_name::<Sleep>();
         let mut in_flight = FuturesUnordered::new();
         let mut replay_pending_in_flight = pending_requests.len();
-        let defer_appearance_until_stable = replay_pending_in_flight > 0;
-        let mut pending_wave_settle = false;
-        for request in pending_requests {
-            in_flight.push(run_request_task(tx.clone(), request));
-        }
-        while pending_wave_settle
-            || !executor.is_complete()
-            || !in_flight.is_empty()
-            || !pending_sleeps.is_empty()
-        {
-            if pending_wave_settle {
-                let newly_dispatched = if replay_pending_in_flight == 0 {
-                    collect_ready_requests(
-                        executor,
-                        initial_input.clone(),
-                        tx,
-                        &mut pending_sleeps,
-                        sleep_effect_type,
-                    )
-                    .await?
-                } else {
-                    Vec::new()
-                };
-                if newly_dispatched.is_empty() {
-                    let appearance =
-                        <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(
-                            executor.state(),
-                        )?;
-                    emit_snapshot_appearance(journey_id, appearance, tx).await?;
-                }
-                pending_wave_settle = false;
-                for request in newly_dispatched {
-                    let node_id = request.node_id();
-                    send_history(
-                        tx,
-                        RunnerOut::EffectInput {
-                            node_id,
-                            data: request.request_bytes().to_vec(),
-                            uuid: journey_id,
-                        },
-                    )
-                    .await?;
-                    in_flight.push(run_request_task(tx.clone(), request));
-                }
-            }
-
+        let mut replay_pending_queue: VecDeque<ExecutableEffectRequest> =
+            pending_requests.into_iter().collect();
+        while !executor.is_complete() || !in_flight.is_empty() || !pending_sleeps.is_empty() {
             if !pending_sleeps.is_empty() && in_flight.is_empty() {
                 return Ok(RunnerAdvance::SuspendedSleep {
                     sleeps: pending_sleeps,
@@ -236,6 +198,12 @@ where
 
             if in_flight.is_empty() && pending_sleeps.is_empty() {
                 process_perturbations(executor, journey_id, tx).await?;
+            }
+
+            if replay_pending_in_flight > 0 && in_flight.is_empty() {
+                if let Some(request) = replay_pending_queue.pop_back() {
+                    in_flight.push(run_request_task(tx.clone(), request));
+                }
             }
 
             let newly_dispatched = if replay_pending_in_flight == 0 {
@@ -279,13 +247,33 @@ where
                 ));
             };
 
-            if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
-                executor,
-                journey_id,
-                tx,
-                node_id,
-                completion?,
-                !defer_appearance_until_stable,
+            let completion = completion?;
+            if replay_pending_in_flight > 0 {
+                if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
+                    executor, journey_id, tx, node_id, completion, false,
+                )
+                .await
+                {
+                    return match err {
+                        ExecutorError::ActionFailure(failure) => {
+                            Ok(RunnerAdvance::Failed { failure })
+                        }
+                        other => Err(other),
+                    };
+                }
+                let appearance =
+                    <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(
+                        executor.state(),
+                    )?;
+                if should_emit_replay_live_edge(
+                    replay_visible_appearance.as_deref(),
+                    appearance.as_deref(),
+                ) {
+                    emit_snapshot_appearance(journey_id, appearance.clone(), tx).await?;
+                    replay_visible_appearance = appearance;
+                }
+            } else if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
+                executor, journey_id, tx, node_id, completion, true,
             )
             .await
             {
@@ -296,9 +284,6 @@ where
             }
             if replay_pending_in_flight > 0 {
                 replay_pending_in_flight -= 1;
-            }
-            if defer_appearance_until_stable && in_flight.is_empty() {
-                pending_wave_settle = true;
             }
         }
         Ok(RunnerAdvance::Completed)
@@ -333,8 +318,17 @@ where
             tx,
             pending_sleeps,
             Vec::new(),
+            None,
         )
         .await
+    }
+}
+
+fn should_emit_replay_live_edge(previous: Option<&[u8]>, next: Option<&[u8]>) -> bool {
+    match (previous, next) {
+        (None, Some(_)) => true,
+        (Some(previous), Some(next)) => next != previous && next.starts_with(previous),
+        _ => false,
     }
 }
 
