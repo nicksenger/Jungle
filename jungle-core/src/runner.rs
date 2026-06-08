@@ -5,10 +5,12 @@ use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError,
-    Failure, Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
+    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow,
+    ExecutableEffectRequest, ExecutorError, Failure, Observable, ObservationBridge, Perturbable,
+    PerturbationBridge, RunnerOut, Sleep,
 };
 use serde::Serialize;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -133,6 +135,35 @@ where
             journey_id,
             tx,
             Vec::new(),
+            Vec::new(),
+            None,
+        )
+        .await
+    }
+
+    pub async fn drive_until_sleep_or_complete_with_replay_pending<A, Initial>(
+        &self,
+        executor: &mut ContextExecutor<T, A>,
+        initial_input: Initial,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+        pending_requests: Vec<ExecutableEffectRequest>,
+        replay_visible_appearance: Option<Vec<u8>>,
+    ) -> Result<RunnerAdvance, ExecutorError>
+    where
+        A: BoundAnimal + Observable + Perturbable,
+        BoundAnimalJourney<A>:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+        Initial: Serialize + Clone,
+    {
+        self.drive_until_sleep_or_complete_with_pending::<A, Initial>(
+            executor,
+            initial_input,
+            journey_id,
+            tx,
+            Vec::new(),
+            pending_requests,
+            replay_visible_appearance,
         )
         .await
     }
@@ -144,6 +175,8 @@ where
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
         mut pending_sleeps: Vec<PendingSleep>,
+        pending_requests: Vec<ExecutableEffectRequest>,
+        mut replay_visible_appearance: Option<Vec<u8>>,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: BoundAnimal + Observable + Perturbable,
@@ -153,6 +186,9 @@ where
     {
         let sleep_effect_type = core::any::type_name::<Sleep>();
         let mut in_flight = FuturesUnordered::new();
+        let mut replay_pending_in_flight = pending_requests.len();
+        let mut replay_pending_queue: VecDeque<ExecutableEffectRequest> =
+            pending_requests.into_iter().collect();
         while !executor.is_complete() || !in_flight.is_empty() || !pending_sleeps.is_empty() {
             if !pending_sleeps.is_empty() && in_flight.is_empty() {
                 return Ok(RunnerAdvance::SuspendedSleep {
@@ -164,36 +200,26 @@ where
                 process_perturbations(executor, journey_id, tx).await?;
             }
 
-            let mut newly_dispatched = Vec::new();
-            loop {
-                let request = match executor.next_executable_request(initial_input.clone()) {
-                    Ok(request) => request,
-                    Err(ExecutorError::Complete) => {
-                        send_lifecycle_updates(executor, tx).await?;
-                        break;
-                    }
-                    Err(ExecutorError::AwaitingCompletion) => break,
-                    Err(err) => return Err(err),
-                };
-                send_lifecycle_updates(executor, tx).await?;
-                if request.effect_type() == sleep_effect_type {
-                    let duration: std::time::Duration = request.deserialize_request()?;
-                    let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
-                    let wake_at_unix_ms = chrono::Utc::now()
-                        .timestamp_millis()
-                        .saturating_add(duration_millis);
-                    let completion = match request.suspended_completion() {
-                        Some(completion) => completion.clone(),
-                        None => Ok(postcard::to_allocvec(&())
-                            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
-                    };
-                    pending_sleeps.push(PendingSleep {
-                        wake_at_unix_ms,
-                        node_id: request.node_id(),
-                        completion,
-                    });
-                    continue;
+            if replay_pending_in_flight > 0 && in_flight.is_empty() {
+                if let Some(request) = replay_pending_queue.pop_back() {
+                    in_flight.push(run_request_task(tx.clone(), request));
                 }
+            }
+
+            let newly_dispatched = if replay_pending_in_flight == 0 {
+                collect_ready_requests(
+                    executor,
+                    initial_input.clone(),
+                    tx,
+                    &mut pending_sleeps,
+                    sleep_effect_type,
+                )
+                .await?
+            } else {
+                Vec::new()
+            };
+
+            for request in newly_dispatched {
                 let node_id = request.node_id();
                 send_history(
                     tx,
@@ -204,16 +230,7 @@ where
                     },
                 )
                 .await?;
-                newly_dispatched.push(request);
-            }
-
-            for request in newly_dispatched {
-                let node_id = request.node_id();
-                let tx_clone = tx.clone();
-                in_flight.push(async move {
-                    let completion = run_request_with_live_history_owned(tx_clone, request).await;
-                    (node_id, completion)
-                });
+                in_flight.push(run_request_task(tx.clone(), request));
             }
 
             if in_flight.is_empty() {
@@ -230,12 +247,33 @@ where
                 ));
             };
 
-            if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
-                executor,
-                journey_id,
-                tx,
-                node_id,
-                completion?,
+            let completion = completion?;
+            if replay_pending_in_flight > 0 {
+                if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
+                    executor, journey_id, tx, node_id, completion, false,
+                )
+                .await
+                {
+                    return match err {
+                        ExecutorError::ActionFailure(failure) => {
+                            Ok(RunnerAdvance::Failed { failure })
+                        }
+                        other => Err(other),
+                    };
+                }
+                let appearance =
+                    <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(
+                        executor.state(),
+                    )?;
+                if should_emit_replay_live_edge(
+                    replay_visible_appearance.as_deref(),
+                    appearance.as_deref(),
+                ) {
+                    emit_snapshot_appearance(journey_id, appearance.clone(), tx).await?;
+                    replay_visible_appearance = appearance;
+                }
+            } else if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
+                executor, journey_id, tx, node_id, completion, true,
             )
             .await
             {
@@ -243,6 +281,9 @@ where
                     ExecutorError::ActionFailure(failure) => Ok(RunnerAdvance::Failed { failure }),
                     other => Err(other),
                 };
+            }
+            if replay_pending_in_flight > 0 {
+                replay_pending_in_flight -= 1;
             }
         }
         Ok(RunnerAdvance::Completed)
@@ -267,6 +308,7 @@ where
             tx,
             completed_sleep.node_id,
             completed_sleep.completion,
+            true,
         )
         .await?;
         self.drive_until_sleep_or_complete_with_pending::<A, _>(
@@ -275,8 +317,18 @@ where
             journey_id,
             tx,
             pending_sleeps,
+            Vec::new(),
+            None,
         )
         .await
+    }
+}
+
+fn should_emit_replay_live_edge(previous: Option<&[u8]>, next: Option<&[u8]>) -> bool {
+    match (previous, next) {
+        (None, Some(_)) => true,
+        (Some(previous), Some(next)) => next != previous && next.starts_with(previous),
+        _ => false,
     }
 }
 
@@ -307,12 +359,25 @@ async fn run_request_with_live_history_owned(
     }
 }
 
+fn run_request_task(
+    tx: RunnerChannelTx,
+    request: jungle_types::ExecutableEffectRequest,
+) -> impl std::future::Future<Output = (u32, Result<Result<Vec<u8>, Vec<u8>>, ExecutorError>)> + Send
+{
+    let node_id = request.node_id();
+    async move {
+        let completion = run_request_with_live_history_owned(tx, request).await;
+        (node_id, completion)
+    }
+}
+
 async fn apply_completion_and_emit_appearance<T, A>(
     executor: &mut ContextExecutor<T, A>,
     journey_id: Uuid,
     tx: &mut RunnerChannelTx,
     node_id: u32,
     completion: Result<Vec<u8>, Vec<u8>>,
+    emit_appearance: bool,
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
@@ -346,9 +411,21 @@ where
     }
     let _emitted = executor.complete_serialized(completion)?;
     send_lifecycle_updates(executor, tx).await?;
-    if let Some(appearance) =
-        <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())?
-    {
+    if emit_appearance {
+        let appearance =
+            <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())?;
+        emit_snapshot_appearance(journey_id, appearance, tx).await?;
+    }
+    Ok(())
+}
+
+async fn emit_snapshot_appearance(
+    journey_id: Uuid,
+    appearance: Option<Vec<u8>>,
+    tx: &mut RunnerChannelTx,
+) -> Result<(), ExecutorError>
+{
+    if let Some(appearance) = appearance {
         send_history(
             tx,
             RunnerOut::Appearance {
@@ -359,6 +436,55 @@ where
         .await?;
     }
     Ok(())
+}
+
+async fn collect_ready_requests<T, A, Initial>(
+    executor: &mut ContextExecutor<T, A>,
+    initial_input: Initial,
+    tx: &mut RunnerChannelTx,
+    pending_sleeps: &mut Vec<PendingSleep>,
+    sleep_effect_type: &'static str,
+) -> Result<Vec<ExecutableEffectRequest>, ExecutorError>
+where
+    T: 'static,
+    A: BoundAnimal + Observable + Perturbable,
+    BoundAnimalJourney<A>:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+    Initial: Serialize + Clone,
+{
+    let mut ready = Vec::new();
+    loop {
+        let request = match executor.next_executable_request(initial_input.clone()) {
+            Ok(request) => request,
+            Err(ExecutorError::Complete) => {
+                send_lifecycle_updates(executor, tx).await?;
+                break;
+            }
+            Err(ExecutorError::AwaitingCompletion) => break,
+            Err(err) => return Err(err),
+        };
+        send_lifecycle_updates(executor, tx).await?;
+        if request.effect_type() == sleep_effect_type {
+            let duration: std::time::Duration = request.deserialize_request()?;
+            let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
+            let wake_at_unix_ms = chrono::Utc::now()
+                .timestamp_millis()
+                .saturating_add(duration_millis);
+            let completion = match request.suspended_completion() {
+                Some(completion) => completion.clone(),
+                None => Ok(postcard::to_allocvec(&())
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
+            };
+            pending_sleeps.push(PendingSleep {
+                wake_at_unix_ms,
+                node_id: request.node_id(),
+                completion,
+            });
+            continue;
+        }
+        ready.push(request);
+    }
+    Ok(ready)
 }
 
 async fn send_lifecycle_updates<T, A>(

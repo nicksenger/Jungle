@@ -22,7 +22,11 @@ const REPLAY_VIEWER_LINGER_AFTER_END: Duration = Duration::from_secs(20);
 #[derive(Debug, Parser)]
 #[command(name = "replay")]
 struct Cli {
-    #[arg(long, help = "Bitstring query, for example 01000101")]
+    #[arg(
+        long,
+        help = "Bitstring query, for example 01000101",
+        default_value = "001000111100011111111111110000000000000101010101011001110100010010101011010110001011100000110110100101001"
+    )]
     query: String,
     #[arg(
         long = "img-dump",

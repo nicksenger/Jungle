@@ -1534,7 +1534,7 @@ fn extract_replacement_source(
 
     match (search, replacement, note) {
         (Some(search), Some(replacement), Some(note)) => {
-            validate_patch_note(&note)?;
+            let note = validate_patch_note(note)?;
             if search.is_empty() {
                 return Err(format!(
                     "`{expected_tool_name}` tool call `search` must not be empty"
@@ -1550,15 +1550,21 @@ fn extract_replacement_source(
     }
 }
 
-fn validate_patch_note(note: &str) -> Result<(), String> {
+fn validate_patch_note(note: String) -> Result<String, String> {
     let trimmed = note.trim();
     if trimmed.is_empty() {
         return Err("tool call `note` must not be empty".to_owned());
     }
-    if trimmed.chars().count() > 100 {
-        return Err("tool call `note` must be at most 100 characters".to_owned());
+    let note_string = trimmed.to_owned();
+    if note_string.chars().count() > 100 {
+        warn!(
+            original_length = note_string.chars().count(),
+            "lyrebird patch note exceeds 100 characters, truncating"
+        );
+        let truncated: String = note_string.chars().take(100).collect();
+        return Ok(truncated);
     }
-    Ok(())
+    Ok(note_string)
 }
 
 fn apply_search_replace_patch(
