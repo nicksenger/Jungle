@@ -186,7 +186,11 @@ where
         for request in pending_requests {
             in_flight.push(run_request_task(tx.clone(), request));
         }
-        while !executor.is_complete() || !in_flight.is_empty() || !pending_sleeps.is_empty() {
+        while pending_wave_settle
+            || !executor.is_complete()
+            || !in_flight.is_empty()
+            || !pending_sleeps.is_empty()
+        {
             if pending_wave_settle {
                 let newly_dispatched = if replay_pending_in_flight == 0 {
                     collect_ready_requests(
