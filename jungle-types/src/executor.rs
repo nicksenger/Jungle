@@ -175,9 +175,12 @@ where
 impl<State, L, R, M> ArgputForState<State> for Join<L, R, M>
 where
     L: ArgputForState<State>,
-    R: ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+    R: ArgputForState<State>,
 {
-    type Carry = <L as ArgputForState<State>>::Carry;
+    type Carry = (
+        <L as ArgputForState<State>>::Carry,
+        <R as ArgputForState<State>>::Carry,
+    );
 }
 
 impl<State, M, F> ArgputForState<State> for Attempt<F, M>
@@ -1559,6 +1562,8 @@ enum SelectTraceEnvelope {
     Left(FlowCompletionTrace),
     Right(FlowCompletionTrace),
 }
+
+type SplitJoinInput = Box<dyn Fn(&[u8]) -> Result<(Serialized, Serialized), ExecutorError> + Send>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum JoinSide {
@@ -3537,7 +3542,8 @@ struct JoinErasedFlow<State> {
     focused_merge: bool,
     merge_left: Box<dyn Fn(&mut State, State) + Send>,
     merge_right: Box<dyn Fn(&mut State, State) + Send>,
-    join_input: Option<Serialized>,
+    split_input: SplitJoinInput,
+    join_input: Option<(Serialized, Serialized)>,
     base_state: Option<State>,
     left_branch: Option<JoinBranchProgress<State>>,
     right_branch: Option<JoinBranchProgress<State>>,
@@ -3557,6 +3563,7 @@ where
         focused_merge: bool,
         merge_left: Box<dyn Fn(&mut State, State) + Send>,
         merge_right: Box<dyn Fn(&mut State, State) + Send>,
+        split_input: SplitJoinInput,
     ) -> Self {
         Self {
             lifecycle: LifecycleState::default(),
@@ -3567,6 +3574,7 @@ where
             focused_merge,
             merge_left,
             merge_right,
+            split_input,
             join_input: None,
             base_state: None,
             left_branch: None,
@@ -3578,17 +3586,23 @@ where
         }
     }
 
-    fn initialize_if_needed(&mut self, state: State, input: Serialized) {
+    fn initialize_if_needed(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> Result<(), ExecutorError> {
         if self.join_input.is_some() {
-            return;
+            return Ok(());
         }
 
-        self.join_input = Some(input.clone());
-        self.left_branch = Some(JoinBranchProgress::new(state.clone(), input.clone()));
+        let (left_input, right_input) = (self.split_input)(&input)?;
+        self.join_input = Some((left_input.clone(), right_input.clone()));
+        self.left_branch = Some(JoinBranchProgress::new(state.clone(), left_input));
         if self.focused_merge {
             self.base_state = Some(state.clone());
-            self.right_branch = Some(JoinBranchProgress::new(state, input));
+            self.right_branch = Some(JoinBranchProgress::new(state, right_input));
         }
+        Ok(())
     }
 
     fn ensure_right_branch_started(&mut self) {
@@ -3596,7 +3610,7 @@ where
             return;
         }
 
-        let right_input = self
+        let (_, right_input) = self
             .join_input
             .clone()
             .expect("join input should be initialized before right branch start");
@@ -3922,7 +3936,9 @@ where
         }
 
         self.lifecycle.enter();
-        self.initialize_if_needed(state.clone(), input);
+        if let Err(err) = self.initialize_if_needed(state.clone(), input) {
+            return Err((state, err));
+        }
         self.apply_parent_path();
         let mut current_state = match self.settle_without_external_requests(state.clone()) {
             Ok(current_state) => current_state,
@@ -4751,9 +4767,9 @@ where
 impl<State, In, L, R, M> FlowCarry<State> for Join<L, R, M>
 where
     L: FlowCarry<State, In = In>,
-    R: FlowCarry<State, In = In>,
+    R: FlowCarry<State>,
 {
-    type In = In;
+    type In = (In, <R as FlowCarry<State>>::In);
     type Out = (<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out);
 }
 
@@ -4979,8 +4995,10 @@ where
         + ArgputForState<State>
         + JoinFocusMarker<State>,
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
-        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>
+        + ArgputForState<State>
         + JoinFocusMarker<State>,
+    <L as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
+    <R as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -4995,12 +5013,27 @@ where
         let merge_right = Box::new(|target: &mut State, branch_state: State| {
             <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
         });
+        let split_input = Box::new(
+            |bytes: &[u8]| -> Result<(Serialized, Serialized), ExecutorError> {
+                let (left, right): (
+                    <L as ArgputForState<State>>::Carry,
+                    <R as ArgputForState<State>>::Carry,
+                ) = postcard::from_bytes(bytes)
+                    .map_err(|err| input_deserialize_error("join input tuple", err))?;
+                let left = postcard::to_allocvec(&left)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                let right = postcard::to_allocvec(&right)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                Ok((left, right))
+            },
+        );
         steps.push(Box::new(JoinErasedFlow::<State>::new(
             left,
             right,
             focused_merge,
             merge_left,
             merge_right,
+            split_input,
         )));
         steps
     }
@@ -6282,8 +6315,10 @@ where
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>
+        > + ArgputForState<State>
         + JoinFocusMarker<State>,
+    <L as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
+    <R as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -6304,12 +6339,27 @@ where
         let merge_right = Box::new(|target: &mut State, branch_state: State| {
             <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
         });
+        let split_input = Box::new(
+            |bytes: &[u8]| -> Result<(Serialized, Serialized), ExecutorError> {
+                let (left, right): (
+                    <L as ArgputForState<State>>::Carry,
+                    <R as ArgputForState<State>>::Carry,
+                ) = postcard::from_bytes(bytes)
+                    .map_err(|err| input_deserialize_error("join input tuple", err))?;
+                let left = postcard::to_allocvec(&left)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                let right = postcard::to_allocvec(&right)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                Ok((left, right))
+            },
+        );
         steps.push(Box::new(JoinErasedFlow::<State>::new(
             left,
             right,
             focused_merge,
             merge_left,
             merge_right,
+            split_input,
         )));
         (context, steps)
     }

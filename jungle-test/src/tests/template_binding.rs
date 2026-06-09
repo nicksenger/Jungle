@@ -2391,7 +2391,7 @@ struct JoinFocusedLeftFlow(Step<JoinFocusedLeftSpec>);
 struct JoinFocusedRightFlow(Step<JoinFocusedRightSpec>);
 
 #[derive(Flow)]
-struct JoinFocusedTemplate(Join<JoinFocusedLeftFlow, JoinFocusedRightFlow>);
+struct JoinFocusedTemplate(jungle_zoo::ClonedJoin<i32, JoinFocusedLeftFlow, JoinFocusedRightFlow>);
 
 struct JoinFocusedAnimal;
 #[jungle::animal(id = 88, generation = 0)]
@@ -2454,7 +2454,7 @@ struct JoinFocusedConcurrentRightFlow(Step<JoinFocusedConcurrentRightSpec>);
 
 #[derive(Flow)]
 struct JoinFocusedConcurrentTemplate(
-    Join<JoinFocusedConcurrentLeftFlow, JoinFocusedConcurrentRightFlow>,
+    jungle_zoo::ClonedJoin<i32, JoinFocusedConcurrentLeftFlow, JoinFocusedConcurrentRightFlow>,
 );
 
 struct JoinFocusedConcurrentAnimal;
@@ -2566,11 +2566,39 @@ struct NestedJoinFocusedMiddleFlow(Step<NestedJoinFocusedMiddleSpec>);
 #[jungle(focus = NestedJoinFocusedRightState)]
 struct NestedJoinFocusedRightFlow(Step<NestedJoinFocusedRightSpec>);
 
+struct CloneNestedJoinFocusedInputSpec;
+#[jungle::action]
+impl Action for CloneNestedJoinFocusedInputSpec {
+    type Effect = NoEffect;
+    type Input = i32;
+    type Output = ((i32, i32), i32);
+    type Carry = ((i32, i32), i32);
+
+    fn emit(
+        _state: &NestedJoinFocusedHostState,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        ((), ((input, input), input))
+    }
+
+    fn absorb(
+        _state: &mut NestedJoinFocusedHostState,
+        output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("nested focused join input clone should succeed"))?;
+        Ok(carry)
+    }
+}
+
 #[derive(Flow)]
 struct NestedJoinFocusedPair(Join<NestedJoinFocusedLeftFlow, NestedJoinFocusedMiddleFlow>);
 
 #[derive(Flow)]
-struct NestedJoinFocusedTemplate(Join<NestedJoinFocusedPair, NestedJoinFocusedRightFlow>);
+struct NestedJoinFocusedTemplate(
+    Step<CloneNestedJoinFocusedInputSpec>,
+    Join<NestedJoinFocusedPair, NestedJoinFocusedRightFlow>,
+);
 
 struct NestedJoinFocusedAnimal;
 #[jungle::animal(id = 90, generation = 0)]
@@ -2895,13 +2923,13 @@ impl Action for MergeConditionalUnitSpec {
 
 #[derive(Flow)]
 struct LeftJoinBranch(
-    Join<Step<LeftJoinFirstSpec>, Step<LeftJoinSecondSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<LeftJoinFirstSpec>, Step<LeftJoinSecondSpec>>,
     Step<MergeJoinedUnitSpec>,
 );
 
 #[derive(Flow)]
 struct RightJoinBranch(
-    Join<Step<RightJoinFirstSpec>, Step<RightJoinSecondSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<RightJoinFirstSpec>, Step<RightJoinSecondSpec>>,
     Step<MergeJoinedUnitSpec>,
 );
 
@@ -3546,7 +3574,7 @@ impl Action for UniqueToCarrySpec {
 
 #[derive(Flow)]
 struct SharedJoinBranch(
-    Join<Step<JoinLeftSpec>, Step<JoinRightSpec>>,
+    jungle_zoo::ClonedJoin<i32, Step<JoinLeftSpec>, Step<JoinRightSpec>>,
     Step<JoinToCarrySpec>,
 );
 

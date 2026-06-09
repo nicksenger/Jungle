@@ -918,14 +918,14 @@ pub struct TransparentInsideAttemptOkJourney(
 #[derive(Flow)]
 pub struct JoinOutsideAttemptFailJourney(
     Step<StartTagStep>,
-    Join<Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
+    jungle_zoo::ClonedJoin<i32, Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
     Step<FailFromJoinTupleStep>,
 );
 
 #[derive(Flow)]
 pub struct JoinInsideAttemptFailJourney(
     Step<StartTagStep>,
-    Join<Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
+    jungle_zoo::ClonedJoin<i32, Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
     Attempt<Step<FailFromJoinTupleStep>>,
     Step<AttemptResultAssertFailStep>,
     Step<PassThroughTagStep>,
@@ -934,7 +934,7 @@ pub struct JoinInsideAttemptFailJourney(
 #[derive(Flow)]
 pub struct JoinInsideAttemptOkJourney(
     Step<StartTagStep>,
-    Attempt<Join<Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>>,
+    Attempt<jungle_zoo::ClonedJoin<i32, Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>>,
     Step<AttemptResultAssertOkTupleStep>,
     Step<PassThroughTagStep>,
 );

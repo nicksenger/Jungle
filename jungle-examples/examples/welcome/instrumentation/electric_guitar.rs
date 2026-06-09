@@ -49,14 +49,20 @@ pub struct Pluck<
     const REST_TICK: u32,
     const LANE_ID: u8,
 >(
-    Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
+    jungle_zoo::ClonedJoinUnit<
+        Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>,
+        Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>,
+    >,
     Step<MergeUnit<ElectricGuitarArticulation>>,
     Step<PostMergeRest<REST_TICK, LANE_ID>>,
 );
 
 #[derive(Flow)]
 pub struct StrumPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const LANE_ID: u8>(
-    Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
+    jungle_zoo::ClonedJoinUnit<
+        Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>,
+        Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>,
+    >,
     Step<MergeUnit<ElectricGuitarArticulation>>,
 );
 
@@ -69,7 +75,10 @@ pub struct Strum<
     const REST_TICK: u32,
     const LANE_ID: u8,
 >(
-    Join<StrumPair<NOTE_1, NOTE_2, NOTE_TICK, LANE_ID>, Step<Pick<NOTE_3, NOTE_TICK, 0, LANE_ID>>>,
+    jungle_zoo::ClonedJoinUnit<
+        StrumPair<NOTE_1, NOTE_2, NOTE_TICK, LANE_ID>,
+        Step<Pick<NOTE_3, NOTE_TICK, 0, LANE_ID>>,
+    >,
     Step<MergeUnit<ElectricGuitarArticulation>>,
     Step<PostMergeRest<REST_TICK, LANE_ID>>,
 );

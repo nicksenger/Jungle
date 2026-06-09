@@ -33,14 +33,17 @@ pub struct SplitPluck<
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
 >(
-    Join<Step<Pick<NOTE_1, NOTE_TICK_1, 0>>, Step<Pick<NOTE_2, NOTE_TICK_2, 0>>>,
+    jungle_zoo::ClonedJoinUnit<
+        Step<Pick<NOTE_1, NOTE_TICK_1, 0>>,
+        Step<Pick<NOTE_2, NOTE_TICK_2, 0>>,
+    >,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );
 
 #[derive(Flow)]
 pub struct TriadHitPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32>(
-    Join<Step<Pick<NOTE_1, NOTE_TICK, 0>>, Step<Pick<NOTE_2, NOTE_TICK, 0>>>,
+    jungle_zoo::ClonedJoinUnit<Step<Pick<NOTE_1, NOTE_TICK, 0>>, Step<Pick<NOTE_2, NOTE_TICK, 0>>>,
     Step<MergeUnit>,
 );
 
@@ -52,7 +55,10 @@ pub struct TriadHit<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
 >(
-    Join<TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>, Step<Pick<NOTE_3, NOTE_TICK, 0>>>,
+    jungle_zoo::ClonedJoinUnit<
+        TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>,
+        Step<Pick<NOTE_3, NOTE_TICK, 0>>,
+    >,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );
@@ -66,7 +72,10 @@ pub struct QuadHit<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
 >(
-    Join<TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>, TriadHitPair<NOTE_3, NOTE_4, NOTE_TICK>>,
+    jungle_zoo::ClonedJoinUnit<
+        TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>,
+        TriadHitPair<NOTE_3, NOTE_4, NOTE_TICK>,
+    >,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );

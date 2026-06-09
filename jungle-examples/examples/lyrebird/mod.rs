@@ -849,20 +849,20 @@ lyrebird_prompt_flow!(
 );
 
 #[derive(Flow)]
-pub struct LyrebirdPromptLeft(Join<RhythmGuitarPrompt, VocalsPrompt>);
+pub struct LyrebirdPromptLeft(jungle_zoo::ClonedJoinUnit<RhythmGuitarPrompt, VocalsPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptMid(Join<BackupVocalsPrompt, BassPrompt>);
+pub struct LyrebirdPromptMid(jungle_zoo::ClonedJoinUnit<BackupVocalsPrompt, BassPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptRight(Join<GuitarSoloPrompt, DrumsPrompt>);
+pub struct LyrebirdPromptRight(jungle_zoo::ClonedJoinUnit<GuitarSoloPrompt, DrumsPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptPairs(Join<LyrebirdPromptLeft, LyrebirdPromptMid>);
+pub struct LyrebirdPromptPairs(jungle_zoo::ClonedJoinUnit<LyrebirdPromptLeft, LyrebirdPromptMid>);
 
 #[derive(Flow)]
 pub struct LyrebirdPromptPhase(
-    Join<LyrebirdPromptPairs, LyrebirdPromptRight>,
+    jungle_zoo::ClonedJoinUnit<LyrebirdPromptPairs, LyrebirdPromptRight>,
     Step<FlattenLyrebirdPromptPhase<LyrebirdState>>,
 );
 
@@ -1856,7 +1856,7 @@ mod tests {
     );
     #[derive(Flow)]
     struct ConcurrentLyrebirdPromptJoin(
-        Join<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
+        jungle_zoo::ClonedJoinUnit<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
     );
 
     struct ConcurrentLyrebirdPromptAnimal;
@@ -1986,7 +1986,10 @@ mod tests {
 
     #[derive(Flow)]
     struct HiddenJoinConditionalNoEffectJoin(
-        Join<HiddenJoinConditionalNoEffectFlow, Step<HiddenJoinDelayedPrompt>>,
+        jungle_zoo::ClonedJoinUnit<
+            HiddenJoinConditionalNoEffectFlow,
+            Step<HiddenJoinDelayedPrompt>,
+        >,
     );
 
     struct HiddenJoinConditionalNoEffectAnimal;
@@ -2222,16 +2225,16 @@ mod tests {
     );
 
     #[derive(Flow)]
-    struct NestedPromptLeft(Join<NestedBranch1Flow, NestedBranch2Flow>);
+    struct NestedPromptLeft(jungle_zoo::ClonedJoinUnit<NestedBranch1Flow, NestedBranch2Flow>);
 
     #[derive(Flow)]
-    struct NestedPromptRightPair(Join<NestedBranch3Flow, NestedBranch4Flow>);
+    struct NestedPromptRightPair(jungle_zoo::ClonedJoinUnit<NestedBranch3Flow, NestedBranch4Flow>);
 
     #[derive(Flow)]
-    struct NestedPromptRight(Join<NestedPromptRightPair, NestedBranch5Flow>);
+    struct NestedPromptRight(jungle_zoo::ClonedJoinUnit<NestedPromptRightPair, NestedBranch5Flow>);
 
     #[derive(Flow)]
-    struct NestedFiveWayPromptFlow(Join<NestedPromptLeft, NestedPromptRight>);
+    struct NestedFiveWayPromptFlow(jungle_zoo::ClonedJoinUnit<NestedPromptLeft, NestedPromptRight>);
 
     struct NestedFiveWayPromptAnimal;
     #[jungle::animal(id = 92, generation = 0)]

@@ -848,7 +848,7 @@ pub struct ReplayJoinRightFlow(Step<ReplayJoinRightSpec>);
 
 #[derive(Flow)]
 pub struct ReplayJoinJourney(
-    Join<ReplayJoinLeftFlow, ReplayJoinRightFlow>,
+    jungle_zoo::ClonedJoinUnit<ReplayJoinLeftFlow, ReplayJoinRightFlow>,
     Step<ReplayJoinGateSpec>,
     Step<ReplayJoinPostSpec>,
 );

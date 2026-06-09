@@ -10,8 +10,8 @@ mod tests {
             .expect("temporary udp socket should expose local address")
     }
 
-    mod adapt_helpers;
     mod action_name;
+    mod adapt_helpers;
     mod aspect;
     mod conditional;
     mod connection;

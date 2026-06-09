@@ -452,7 +452,7 @@ struct ActionJoinArm(Step<EnterActionJoinArm>, ActionBackoffBranch);
 struct BackoffJourney(
     Step<CountBeforeJoin>,
     Step<CountBeforeJoin>,
-    Join<SubflowJoinArm, ActionJoinArm>,
+    jungle_zoo::ClonedJoinUnit<SubflowJoinArm, ActionJoinArm>,
     Step<FlattenJoinedUnits>,
     Step<CountAfterJoin>,
     Step<CountAfterJoin>,
@@ -681,4 +681,3 @@ mod tests {
         );
     }
 }
-

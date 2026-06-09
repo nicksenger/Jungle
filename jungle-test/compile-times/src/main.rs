@@ -225,7 +225,7 @@ impl NodeMetadata for CompileMetaD {
 #[derive(Flow)]
 #[jungle(focus = FocusState)]
 pub struct FocusedSegmentA(
-    Join<Step<FocusTickSpec<0>>, Step<FocusTickSpec<1>>>,
+    jungle_zoo::ClonedJoinUnit<Step<FocusTickSpec<0>>, Step<FocusTickSpec<1>>>,
     Step<FocusJoinMergeSpec<2>>,
     Step<FocusTickSpec<3>>,
     Step<FocusTickSpec<4>>,
@@ -243,7 +243,7 @@ pub struct FocusedSegmentA(
 pub struct FocusedSegmentB(
     Step<FocusTickSpec<30>>,
     Step<FocusTickSpec<31>>,
-    Transparent<CompileMetaB, Join<Step<FocusTickSpec<32>>, Step<FocusTickSpec<33>>>>,
+    Transparent<CompileMetaB, jungle_zoo::ClonedJoinUnit<Step<FocusTickSpec<32>>, Step<FocusTickSpec<33>>>>,
     Step<FocusJoinMergeSpec<34>>,
     Step<FocusTickSpec<35>>,
     Step<FocusTickSpec<36>>,
@@ -260,7 +260,7 @@ pub struct LoopBodyA(
         CompileMetaA,
         Conditional<CompileChooseLeft<1>, Step<TickSpec<10>>, Step<TickSpec<11>>>,
     >,
-    Join<Step<JoinTickSpec<12>>, Step<JoinTickSpec<13>>>,
+    jungle_zoo::ClonedJoinUnit<Step<JoinTickSpec<12>>, Step<JoinTickSpec<13>>>,
     Step<JoinFlattenSpec<14>>,
     Step<IncrementCounterSpec<15>>,
 );
@@ -273,7 +273,7 @@ pub struct LoopBodyB(
     >,
     Transparent<
         CompileMetaD,
-        Join<Step<JoinTickSpec<50>>, Step<JoinTickSpec<51>>>,
+        jungle_zoo::ClonedJoinUnit<Step<JoinTickSpec<50>>, Step<JoinTickSpec<51>>>,
     >,
     Step<JoinFlattenSpec<52>>,
     Step<IncrementCounterSpec<55>>,

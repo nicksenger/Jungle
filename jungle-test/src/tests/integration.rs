@@ -9,11 +9,11 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use tokio::sync::Notify;
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
 #[cfg(feature = "postgres")]
 use testcontainers_modules::postgres::Postgres;
+use tokio::sync::Notify;
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubFlowState {
@@ -815,20 +815,20 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
     let _ = worker_handle.await;
 }
 
-async fn run_client_worker_emits_intermediate_appearance_before_completion(listen_addr: SocketAddr) {
+async fn run_client_worker_emits_intermediate_appearance_before_completion(
+    listen_addr: SocketAddr,
+) {
     let client = connect_client_with_retry(listen_addr).await;
     let second_started = Arc::new(AtomicBool::new(false));
     let second_started_notify = Arc::new(Notify::new());
     let release_second = Arc::new(Notify::new());
     *live_appearance_hooks()
         .lock()
-        .expect("live appearance hooks mutex should not be poisoned") = Some(
-        LiveAppearanceHooks {
-            second_started: Arc::clone(&second_started),
-            second_started_notify: Arc::clone(&second_started_notify),
-            release_second: Arc::clone(&release_second),
-        },
-    );
+        .expect("live appearance hooks mutex should not be poisoned") = Some(LiveAppearanceHooks {
+        second_started: Arc::clone(&second_started),
+        second_started_notify: Arc::clone(&second_started_notify),
+        release_second: Arc::clone(&release_second),
+    });
     let worker = JungleWorker::new(LiveAppearanceZoo, client.clone());
     let worker_handle = tokio::spawn(async move {
         let _ = worker.spawn().await;
@@ -853,8 +853,8 @@ async fn run_client_worker_emits_intermediate_appearance_before_completion(liste
         .await
         .expect("animal_appearance should succeed while the journey is still alive")
         .expect("live appearance should already be present before the second step completes");
-    let live_appearance: LiveAppearanceState = postcard::from_bytes(&live_appearance_bytes)
-        .expect("live appearance should deserialize");
+    let live_appearance: LiveAppearanceState =
+        postcard::from_bytes(&live_appearance_bytes).expect("live appearance should deserialize");
     assert!(
         live_appearance.first_done,
         "first step state should be visible before the second step completes"

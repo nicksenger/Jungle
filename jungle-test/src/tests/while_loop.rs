@@ -550,7 +550,7 @@ impl Action for RhythmLikeMergeChoiceSpec {
 #[derive(Flow)]
 #[jungle(focus = i32)]
 pub struct RhythmLikeFocusedTurnaround(
-    Join<Step<RhythmLikeJoinLeftSpec>, Step<RhythmLikeJoinRightSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<RhythmLikeJoinLeftSpec>, Step<RhythmLikeJoinRightSpec>>,
     Step<RhythmLikeMergeUnitSpec>,
     Step<RhythmLikePostMergeRestSpec>,
 );

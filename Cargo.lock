@@ -3304,6 +3304,7 @@ dependencies = [
  "futures",
  "jungle-persist",
  "jungle-sdk",
+ "jungle-zoo",
  "postcard",
  "proptest",
  "redb",

@@ -9,7 +9,7 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutableEffectRequest,
-    ExecutorError, Failure, JourneyEvent, JourneyStatus, NodeLifecycle, NoEffect, Observable,
+    ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, NodeLifecycle, Observable,
     ObservationBridge, OwnerWake, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
     SupportedAnimal, Work,
 };
@@ -1344,7 +1344,9 @@ async fn resolve_next_replay_completion(
         let Some(current_event) = replay.peek().await? else {
             return recover_oldest_replay_completion(tx, journey_id, pending, pending_order)
                 .await
-                .map(|completion| completion.map(|(node_id, completion)| (node_id, completion, true)));
+                .map(|completion| {
+                    completion.map(|(node_id, completion)| (node_id, completion, true))
+                });
         };
 
         if is_informational_history_event(Some(&current_event), journey_id) {
@@ -1414,7 +1416,9 @@ async fn resolve_next_replay_completion(
             _ => {
                 return recover_oldest_replay_completion(tx, journey_id, pending, pending_order)
                     .await
-                    .map(|completion| completion.map(|(node_id, completion)| (node_id, completion, true)));
+                    .map(|completion| {
+                        completion.map(|(node_id, completion)| (node_id, completion, true))
+                    });
             }
         }
     }

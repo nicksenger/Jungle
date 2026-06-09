@@ -351,4 +351,3 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
         .map_err(|error| format!("failed to save screenshot to {}: {error}", path.display()))?;
     Ok(path)
 }
-

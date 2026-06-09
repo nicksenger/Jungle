@@ -655,7 +655,7 @@ struct DoubleFlowLeftInnerRightFlow(
 
 #[derive(Flow)]
 struct DoubleFlowLeftJoinedInnerBody(
-    Join<DoubleFlowLeftInnerLeftFlow, DoubleFlowLeftInnerRightFlow>,
+    jungle_zoo::ClonedJoinUnit<DoubleFlowLeftInnerLeftFlow, DoubleFlowLeftInnerRightFlow>,
     Step<MergeReplayJoin<DoubleFlowLeftState>>,
     Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
 );
@@ -740,7 +740,7 @@ struct DoubleFlowRightInnerRightFlow(
 
 #[derive(Flow)]
 struct DoubleFlowRightJoinedInnerBody(
-    Join<DoubleFlowRightInnerLeftFlow, DoubleFlowRightInnerRightFlow>,
+    jungle_zoo::ClonedJoinUnit<DoubleFlowRightInnerLeftFlow, DoubleFlowRightInnerRightFlow>,
     Step<MergeReplayJoin<DoubleFlowRightState>>,
     Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
 );
@@ -805,7 +805,7 @@ struct DoubleFlowRight(
 
 #[derive(Flow)]
 struct QuadFlow(
-    Join<DoubleFlowLeft, DoubleFlowRight>,
+    jungle_zoo::ClonedJoinUnit<DoubleFlowLeft, DoubleFlowRight>,
     Step<MergeReplayJoin<ReplayState>>,
     Step<SleepFor<ReplayState, Millis<100>>>,
     Step<Tick<ReplayState>>,

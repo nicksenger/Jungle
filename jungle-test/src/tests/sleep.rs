@@ -287,7 +287,7 @@ pub struct FocusedJoinSleepRightFlow(Step<FocusedJoinSleepRightSpec>);
 
 #[derive(Flow)]
 pub struct FocusedJoinSleepJourney(
-    Join<FocusedJoinSleepLeftFlow, FocusedJoinSleepRightFlow>,
+    jungle_zoo::ClonedJoinUnit<FocusedJoinSleepLeftFlow, FocusedJoinSleepRightFlow>,
     Step<FocusedJoinSleepTailSpec>,
 );
 
@@ -415,7 +415,7 @@ pub struct ParallelFocusedJoinSleepRightFlow(Step<ParallelFocusedJoinSleepRightS
 
 #[derive(Flow)]
 pub struct ParallelFocusedJoinSleepJourney(
-    Join<ParallelFocusedJoinSleepLeftFlow, ParallelFocusedJoinSleepRightFlow>,
+    jungle_zoo::ClonedJoinUnit<ParallelFocusedJoinSleepLeftFlow, ParallelFocusedJoinSleepRightFlow>,
     Step<ParallelFocusedJoinSleepTailSpec>,
 );
 
