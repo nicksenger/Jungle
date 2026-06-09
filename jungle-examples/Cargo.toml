@@ -66,6 +66,7 @@ required-features = ["cron"]
 [[example]]
 name = "backoff"
 path = "examples/backoff/mod.rs"
+required-features = ["redb"]
 
 [[example]]
 name = "loops"

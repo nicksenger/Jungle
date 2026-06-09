@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use clap::Parser;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
@@ -15,16 +17,14 @@ mod ui;
 const DEFAULT_LOG_FILTER: &str = "warn,backoff=info";
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Fail;
+pub struct Fail<In>(PhantomData<In>);
 #[jungle::action]
-impl Action for Fail {
+impl<In> Action for Fail<In> {
     type Effect = NoEffect;
-    type Input = ();
-    type Output = ();
+    type Input = In;
+    type Output = In;
 
-    fn emit(_state: &(), _input: Self::Input) {
-        ()
-    }
+    fn emit(_state: &(), _input: Self::Input) {}
 
     fn absorb(
         state: &mut (),
@@ -34,15 +34,12 @@ impl Action for Fail {
     }
 }
 
-#[derive(Flow)]
-struct AlwaysFailingSubflow(Step<Fail>);
-
 struct BackoffAnimal;
 #[jungle::animal(id = 211, generation = 0)]
 impl Animal for BackoffAnimal {
     type State = ();
     type Seed = ();
-    type Flow = jungle_zoo::backoff::Backoff<(), (), (), AlwaysFailingSubflow, 100, 10000, 2>;
+    type Flow = jungle_zoo::backoff::Backoff<(), (), (), Step<Fail<()>>, 100u64, 10000u64, 2u8>;
 }
 
 #[derive(Animals)]
