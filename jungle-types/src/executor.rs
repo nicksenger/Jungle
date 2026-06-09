@@ -601,7 +601,6 @@ where
         }
 
         let typed_input = deserialize_step_input::<A::Input>(&input)?;
-        self.lifecycle.enter();
         let (state, (_request, carry)) =
             <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
@@ -853,7 +852,6 @@ where
         }
 
         let typed_input = deserialize_step_input::<A::Input>(&input)?;
-        self.lifecycle.enter();
         let (state, (_request, carry)) =
             <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         self.pending_carry = Some(carry);
