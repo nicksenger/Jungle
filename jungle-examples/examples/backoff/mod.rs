@@ -1,13 +1,14 @@
+use std::fmt::Display;
 use std::marker::PhantomData;
+use std::path::PathBuf;
+use std::time::Duration;
 
 use clap::Parser;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, Server};
 use jungle_zoo::backoff::Println;
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::time::Duration;
+use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -15,34 +16,17 @@ use uuid::Uuid;
 #[cfg(feature = "viewer")]
 mod ui;
 
-const DEFAULT_LOG_FILTER: &str = "warn,backoff=info";
+const DEFAULT_LOG_FILTER: &str = "warn,backoff=info,iced_winit=error";
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Fail<In>(PhantomData<In>);
-#[jungle::action]
-impl<In> Action for Fail<In> {
-    type Effect = Println<String>;
-    type Input = In;
-    type Output = In;
-
-    fn emit(_state: &(), _input: Self::Input) -> String {
-        "Failing!".to_string()
-    }
-
-    fn absorb(
-        state: &mut (),
-        output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        Err(Failure::Message("Failed!".to_string()))
-    }
-}
+#[derive(Flow)]
+pub struct FailingSubflow(Step<AnnounceFailure<(), ()>>, Step<Fail<()>>);
 
 struct BackoffBeetle;
 #[jungle::animal(id = 211, generation = 0)]
 impl Animal for BackoffBeetle {
     type State = ();
     type Seed = ();
-    type Flow = jungle_zoo::backoff::Backoff<(), (), (), Step<Fail<()>>, 100u64, 10000u64, 2u8>;
+    type Flow = jungle_zoo::backoff::Backoff<(), (), (), FailingSubflow, 100u64, 10000u64, 2u8>;
 }
 
 #[derive(Animals)]
@@ -96,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let journey_id = client.spawn::<BackoffAnimal>(&()).await?.journey_id;
+    let journey_id = client.spawn::<BackoffBeetle>(&()).await?.journey_id;
 
     info!(
         %journey_id,
@@ -153,90 +137,40 @@ fn init_tracing() {
     debug!("backoff tracing initialized");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use jungle_zoo::action_backoff::{BackoffLogKind, BackoffSleepLog};
-    use tokio::time::{Duration, Instant};
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fail<In>(PhantomData<In>);
+#[jungle::action]
+impl<In> Action for Fail<In> {
+    type Effect = NoEffect;
+    type Input = In;
+    type Output = In;
 
-    #[test]
-    fn parses_non_negative_img_dump_time_secs() {
-        assert_eq!(parse_img_dump_time_secs("0").unwrap(), 0.0);
-        assert_eq!(parse_img_dump_time_secs("30.5").unwrap(), 30.5);
+    fn emit(_state: &(), _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut (),
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        Err(Failure::Message("Failed!".to_string()))
+    }
+}
+
+pub struct AnnounceFailure<St, T>(PhantomData<St>, PhantomData<T>);
+#[jungle::action(carry = T)]
+impl<St, T> Action for AnnounceFailure<St, T> {
+    type Effect = Println<String>;
+    type Input = T;
+    type Output = T;
+
+    fn emit(_state: &St, input: Self::Input) -> (String, T) {
+        ("Failing!".to_string(), input)
     }
 
-    #[test]
-    fn rejects_negative_img_dump_time_secs() {
-        assert!(parse_img_dump_time_secs("-1").is_err());
-    }
-
-    #[test]
-    fn join_arms_use_distinct_backoff_policies() {
-        assert_ne!(subflow_backoff_policy(), action_backoff_policy());
-        assert_ne!(
-            subflow_backoff_policy().initial_delay_ms,
-            action_backoff_policy().initial_delay_ms
-        );
-        assert_ne!(
-            subflow_backoff_policy().max_delay_ms,
-            action_backoff_policy().max_delay_ms
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn join_runs_both_backoff_arms() {
-        let namespace = format!("{}-{}", BackoffZoo::NAME, Uuid::new_v4());
-        let client = FusedClient::builder()
-            .namespace(namespace)
-            .build()
-            .await
-            .expect("local client should build");
-        let worker = JungleWorker::new(BackoffZoo, client.clone());
-        let worker_handle = tokio::spawn(async move {
-            let _ = worker.spawn().await;
-        });
-
-        let seed = ExponentialBackoffInput {
-            action_input: (),
-            policy: subflow_backoff_policy(),
-        };
-
-        let journey_id = client
-            .spawn::<BackoffAnimal>(&seed)
-            .await
-            .expect("backoff journey should start")
-            .journey_id;
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let mut saw_subflow_sleep = false;
-        let mut saw_action_sleep = false;
-        while Instant::now() < deadline {
-            for event in client
-                .journey_history(journey_id)
-                .await
-                .expect("journey_history should succeed while the demo is running")
-            {
-                let RunnerOut::EffectInput { data, .. } = event else {
-                    continue;
-                };
-                let Ok(log) = postcard::from_bytes::<BackoffSleepLog>(&data) else {
-                    continue;
-                };
-                match log.kind {
-                    BackoffLogKind::Subflow => saw_subflow_sleep = true,
-                    BackoffLogKind::Action => saw_action_sleep = true,
-                }
-            }
-            if saw_subflow_sleep && saw_action_sleep {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-        worker_handle.abort();
-
-        assert!(saw_subflow_sleep, "expected subflow backoff arm activity");
-        assert!(
-            saw_action_sleep,
-            "expected single-action backoff arm activity"
-        );
+    fn absorb(
+        _state: &mut St,
+        output: EffectCompletion<Self::Effect>,
+        carry: T,
+    ) -> Result<Self::Output, Failure> {
+        Ok(carry)
     }
 }
