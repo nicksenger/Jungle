@@ -51,7 +51,6 @@ where
 enum Message {
     AppStarted,
     Viewer(jungle_vision::EjectedViewerMessage),
-    SnapshotLoaded(Result<Option<BackoffAppearance>, String>),
     CaptureView,
     ViewCaptured(Screenshot),
     ViewSaved(Result<PathBuf, String>),
@@ -98,10 +97,7 @@ impl BackoffUi {
                 snapshot_error: None,
                 image_dump,
             },
-            Task::batch([
-                Task::done(Message::AppStarted),
-                Task::perform(load_snapshot(client, journey_id), Message::SnapshotLoaded),
-            ]),
+            Task::done(Message::AppStarted),
         )
     }
 
@@ -117,18 +113,7 @@ impl BackoffUi {
                     event,
                     jungle_vision::EjectedViewerMessage::ApplyLiveEvent { .. }
                 );
-                let viewer_task = self.viewer.update(event).map(Message::Viewer);
-                if should_refresh {
-                    Task::batch([
-                        viewer_task,
-                        Task::perform(
-                            load_snapshot(self.client.clone(), self.journey_id),
-                            Message::SnapshotLoaded,
-                        ),
-                    ])
-                } else {
-                    viewer_task
-                }
+                self.viewer.update(event).map(Message::Viewer)
             }
             Message::SnapshotLoaded(Ok(snapshot)) => {
                 self.snapshot = snapshot;
@@ -186,37 +171,11 @@ impl BackoffUi {
         let short_journey_id = &journey_id[..8];
 
         let mut body = column![
-            text("Joined Backoffs").size(28),
-            text("Left arm runs subflow backoff, right arm runs single-action backoff, and the two branches intentionally use different start/max delays under the same Join.")
-                .size(14),
+            text("Backoff").size(28),
+            text("A subflow which always fails in a backoff loop.").size(14),
             text(format!("Journey {short_journey_id}")).size(16),
         ]
         .spacing(10);
-
-        if let Some(snapshot) = self.snapshot.as_ref() {
-            body = body.push(
-                text(format!(
-                    "Pre-join stub steps completed: {}",
-                    snapshot.before_join_steps_completed
-                ))
-                .size(16),
-            );
-            body = body.push(
-                text(format!(
-                    "Post-join stub steps completed: {}",
-                    snapshot.after_join_steps_completed
-                ))
-                .size(16),
-            );
-            body = body.push(branch_panel("Subflow Backoff", &snapshot.subflow));
-            body = body.push(branch_panel("Single-Action Backoff", &snapshot.action));
-        } else {
-            body = body.push(text("Loading appearance snapshot").size(16));
-        }
-
-        if let Some(error) = self.snapshot_error.as_deref() {
-            body = body.push(text(format!("Snapshot error: {error}")).size(16));
-        }
 
         container(body.spacing(12)).into()
     }
@@ -238,58 +197,6 @@ trait BackoffBranchSummary {
     fn summary_lines(&self) -> Vec<String>;
 }
 
-impl BackoffBranchSummary for SubflowBackoffAppearance {
-    fn summary_lines(&self) -> Vec<String> {
-        vec![
-            format!("Attempts completed: {}", self.attempts),
-            format!("Next delay: {} ms", self.next_delay_ms),
-            format!(
-                "Policy: start={} ms, multiplier={}, max={} ms",
-                self.policy.initial_delay_ms, self.policy.multiplier, self.policy.max_delay_ms
-            ),
-            format!("Attempts started: {}", self.metrics.started_attempts),
-            format!("Failures recorded: {}", self.metrics.failed_attempts),
-            format!(
-                "Last result: {}",
-                self.last_result.as_deref().unwrap_or("pending")
-            ),
-            format!(
-                "Last failure: {}",
-                self.metrics
-                    .last_failure_message
-                    .as_deref()
-                    .unwrap_or("waiting for first failure")
-            ),
-        ]
-    }
-}
-
-impl BackoffBranchSummary for ActionBackoffAppearance {
-    fn summary_lines(&self) -> Vec<String> {
-        vec![
-            format!("Attempts completed: {}", self.attempts),
-            format!("Next delay: {} ms", self.next_delay_ms),
-            format!(
-                "Policy: start={} ms, multiplier={}, max={} ms",
-                self.policy.initial_delay_ms, self.policy.multiplier, self.policy.max_delay_ms
-            ),
-            format!("Attempts started: {}", self.metrics.started_attempts),
-            format!("Failures recorded: {}", self.metrics.failed_attempts),
-            format!(
-                "Last result: {}",
-                self.last_result.as_deref().unwrap_or("pending")
-            ),
-            format!(
-                "Last failure: {}",
-                self.metrics
-                    .last_failure_message
-                    .as_deref()
-                    .unwrap_or("waiting for first failure")
-            ),
-        ]
-    }
-}
-
 fn schedule_capture(delay: Duration) -> Task<Message> {
     if delay.is_zero() {
         Task::done(Message::CaptureView)
@@ -308,22 +215,6 @@ fn close_latest_window() -> Task<Message> {
         Some(id) => window::close(id),
         None => Task::none(),
     })
-}
-
-async fn load_snapshot(
-    client: Arc<dyn JungleClient>,
-    journey_id: Uuid,
-) -> Result<Option<BackoffAppearance>, String> {
-    let bytes = client
-        .animal_appearance(journey_id)
-        .await
-        .map_err(|err| format!("failed to load backoff state: {err}"))?;
-    bytes
-        .map(|bytes| {
-            postcard::from_bytes::<BackoffAppearance>(&bytes)
-                .map_err(|err| format!("failed to decode backoff state snapshot: {err}"))
-        })
-        .transpose()
 }
 
 async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<PathBuf, String> {

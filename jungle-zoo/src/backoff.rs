@@ -58,43 +58,6 @@ where
 #[derive(Flow)]
 pub struct PrintFlow<St>(Step<Print<St, u32>>);
 
-pub struct Fake<
-    St,
-    In,
-    Out,
-    Flo,
-    const INITIAL_DELAY: u64,
-    const MAX_DELAY: u64,
-    const MULTIPLIER: u8,
->(
-    PhantomData<St>,
-    PhantomData<In>,
-    PhantomData<Out>,
-    PhantomData<Flo>,
-);
-#[jungle::action(carry = (In, Result<Out, Failure>))]
-impl<St, In, Out, Flo, const INITIAL_DELAY: u64, const MAX_DELAY: u64, const MULTIPLIER: u8> Action
-    for Fake<St, In, Out, Flo, INITIAL_DELAY, MAX_DELAY, MULTIPLIER>
-where
-    Out: Default,
-{
-    type Effect = Sleep;
-    type Input = (In, Result<Out, Failure>);
-    type Output = (In, Result<Out, Failure>);
-
-    fn emit(_state: &St, input: Self::Input) -> (Duration, (In, Result<Out, Failure>)) {
-        (Duration::from_secs(1), input)
-    }
-
-    fn absorb(
-        state: &mut St,
-        _output: EffectCompletion<Self::Effect>,
-        carry: Self::Carry,
-    ) -> Result<Self::Output, Failure> {
-        Ok(carry)
-    }
-}
-
 #[derive(Flow)]
 pub struct Backoff<
     St,

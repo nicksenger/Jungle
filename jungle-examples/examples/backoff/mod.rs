@@ -4,6 +4,7 @@ use clap::Parser;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, Server};
+use jungle_zoo::backoff::Println;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -20,11 +21,13 @@ const DEFAULT_LOG_FILTER: &str = "warn,backoff=info";
 pub struct Fail<In>(PhantomData<In>);
 #[jungle::action]
 impl<In> Action for Fail<In> {
-    type Effect = NoEffect;
+    type Effect = Println<String>;
     type Input = In;
     type Output = In;
 
-    fn emit(_state: &(), _input: Self::Input) {}
+    fn emit(_state: &(), _input: Self::Input) -> String {
+        "Failing!".to_string()
+    }
 
     fn absorb(
         state: &mut (),
@@ -34,16 +37,16 @@ impl<In> Action for Fail<In> {
     }
 }
 
-struct BackoffAnimal;
+struct BackoffBeetle;
 #[jungle::animal(id = 211, generation = 0)]
-impl Animal for BackoffAnimal {
+impl Animal for BackoffBeetle {
     type State = ();
     type Seed = ();
     type Flow = jungle_zoo::backoff::Backoff<(), (), (), Step<Fail<()>>, 100u64, 10000u64, 2u8>;
 }
 
 #[derive(Animals)]
-struct BackoffAnimals(BackoffAnimal);
+struct BackoffAnimals(BackoffBeetle);
 struct BackoffZoo;
 impl Ecosystem for BackoffZoo {
     const NAME: &'static str = "backoff-zoo";

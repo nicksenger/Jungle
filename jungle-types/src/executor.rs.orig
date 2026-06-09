@@ -268,15 +268,13 @@ where
     }
 
     if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(input) {
-        let carry_bytes = match either {
-            Either::Left(carry) | Either::Right(carry) => carry,
+        return match either {
+            Either::Left(carry) | Either::Right(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry)
+                    .map_err(|err| input_deserialize_error("while either carry", err))?;
+                Ok((fallback(&carry), carry))
+            }
         };
-        if let Ok(carry) = postcard::from_bytes::<In>(&carry_bytes) {
-            return Ok((fallback(&carry), carry));
-        }
-        // Fall through to try direct deserialization when the Either envelope
-        // was a false positive (data that happens to parse as Either but is not
-        // actually an Either-wrapped loop control value).
     }
 
     let carry = postcard::from_bytes::<In>(input)
