@@ -3,13 +3,10 @@ use std::time::Duration;
 
 use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
-use tracing::warn;
+use serde::Serialize;
 
-use crate::condition::FlattenEither;
 use crate::join::Pass;
-use crate::loops::{Pred, WhileEnumerated};
-use crate::predicate::Always;
+use crate::loops::WhileEnumerated;
 
 use std::fmt::Display;
 use std::io::Write;
@@ -139,7 +136,7 @@ impl<St, const INITIAL_DELAY: u64, const MAX_DELAY: u64, const MULTIPLIER: u8> A
     }
 
     fn absorb(
-        state: &mut St,
+        _state: &mut St,
         _output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
@@ -162,7 +159,7 @@ where
     }
 
     fn absorb(
-        state: &mut St,
+        _state: &mut St,
         _output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
@@ -182,7 +179,7 @@ impl<St, In, Out> Action for WithErr<St, In, Out> {
     }
 
     fn absorb(
-        state: &mut St,
+        _state: &mut St,
         _output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {

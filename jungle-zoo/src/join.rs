@@ -19,7 +19,7 @@ where
 
     fn absorb(
         _state: &mut St,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
         carry: In,
     ) -> Result<Self::Output, Failure> {
         Ok(carry)

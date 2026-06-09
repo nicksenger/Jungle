@@ -1,14 +1,11 @@
-use std::fmt::Display;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use clap::Parser;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, Server};
 use jungle_zoo::backoff::Println;
-use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -148,8 +145,8 @@ impl<In> Action for Fail<In> {
     fn emit(_state: &(), _input: Self::Input) {}
 
     fn absorb(
-        state: &mut (),
-        output: EffectCompletion<Self::Effect>,
+        _state: &mut (),
+        _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         Err(Failure::Message("Failed!".to_string()))
     }
@@ -168,7 +165,7 @@ impl<St, T> Action for AnnounceFailure<St, T> {
 
     fn absorb(
         _state: &mut St,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
         carry: T,
     ) -> Result<Self::Output, Failure> {
         Ok(carry)

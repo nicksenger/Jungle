@@ -19,7 +19,7 @@ where
 
     fn absorb(
         _state: &mut St,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
         carry: In,
     ) -> Result<Self::Output, Failure> {
         Ok((0, carry))
@@ -64,7 +64,7 @@ where
 
     fn absorb(
         _state: &mut (),
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
         carry: (u32, In),
     ) -> Result<Self::Output, Failure> {
         Ok((carry.0 + 1, carry.1))
