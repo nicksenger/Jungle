@@ -1,111 +1,84 @@
+use std::fmt::Display;
+use std::io::Write;
+use std::marker::PhantomData;
+
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, Server};
+use jungle_zoo::join::Pass;
+use jungle_zoo::loops::{Pred, WhileEnumerated};
+use jungle_zoo::predicate::Always;
 use jungle_zoo::time::{Millis, SleepFor};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::io::Write;
-use std::marker::PhantomData;
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 const DEFAULT_LOG_FILTER: &str = "warn,loops=info";
 
-type LoopValue<T> = (u64, T);
-
-pub struct Forever<State, Input>(PhantomData<fn() -> (State, Input)>);
-impl<State, Input> Predicate<(&State, &Input)> for Forever<State, Input> {
-    fn eval((_state, _input): &(&State, &Input)) -> bool {
-        true
-    }
-}
-
-pub struct PrintCounter;
+pub struct Println<T>(PhantomData<T>);
 #[jungle::effect(id = 1)]
-impl<J> Effect<J> for PrintCounter {
-    type In = u64;
-    type Out = ();
+impl<T, J> Effect<J> for Println<T>
+where
+    T: Serialize + DeserializeOwned + Send + Display + 'static,
+{
+    type In = T;
+    type Out = T;
     type Err = String;
 
     fn effect(
         _jungle: &J,
-        counter: Self::In,
+        input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
         async move {
-            print!("{counter}\n");
+            print!("{}\n", &input);
             let _ = std::io::stdout().flush();
-            Ok(())
+            Ok(input)
         }
     }
 }
 
-pub struct Print<T>(PhantomData<fn() -> T>);
-#[jungle::action(carry = LoopValue<T>)]
+pub struct Print<T>(PhantomData<T>);
+#[jungle::action]
 impl<T> Action for Print<T>
 where
-    T: Serialize + DeserializeOwned + Send + 'static,
+    T: Serialize + DeserializeOwned + Send + Display + 'static,
 {
-    type Effect = PrintCounter;
-    type Input = LoopValue<T>;
-    type Output = LoopValue<T>;
+    type Effect = Println<T>;
+    type Input = T;
+    type Output = T;
 
-    fn emit(_state: &(), input: Self::Input) -> (u64, LoopValue<T>) {
-        (input.0, input)
+    fn emit(_state: &(), input: Self::Input) -> T {
+        input
     }
 
     fn absorb(
         _state: &mut (),
         output: EffectCompletion<Self::Effect>,
-        carry: LoopValue<T>,
     ) -> Result<Self::Output, Failure> {
-        output.map_err(Failure::from)?;
-        Ok(carry)
-    }
-}
-
-pub struct Increment<T>(PhantomData<fn() -> T>);
-#[jungle::action(carry = LoopValue<T>)]
-impl<T> Action for Increment<T>
-where
-    T: Serialize + DeserializeOwned + Send + 'static,
-{
-    type Effect = NoEffect;
-    type Input = LoopValue<T>;
-    type Output = LoopValue<T>;
-
-    fn emit(_state: &(), input: Self::Input) -> ((), LoopValue<T>) {
-        ((), input)
-    }
-
-    fn absorb(
-        _state: &mut (),
-        output: EffectCompletion<Self::Effect>,
-        carry: LoopValue<T>,
-    ) -> Result<Self::Output, Failure> {
-        output.map_err(|_err| Failure::from("increment should complete without effect"))?;
-        Ok((carry.0 + 1, carry.1))
+        Ok(output?)
     }
 }
 
 #[derive(Flow)]
-struct LoopBody<T: Serialize + DeserializeOwned + Send + 'static>(
-    Step<Print<T>>,
-    Step<Increment<T>>,
-    Step<SleepFor<(), Millis<500>, LoopValue<T>>>,
+struct PrintFlow(Step<Print<u32>>);
+
+#[derive(Flow)]
+struct LoopBody(
+    Join<PrintFlow, Pass<(), ()>>,
+    Step<SleepFor<(), Millis<500>, (u32, ())>>,
 );
 
 #[derive(Flow)]
-struct LoopJourney<T: Serialize + DeserializeOwned + Send + 'static>(
-    While<Forever<(), LoopValue<T>>, LoopBody<T>>,
-);
+struct LoopJourney(WhileEnumerated<(), (), Always<(), ()>, LoopBody>);
 
 struct LoopAnimal;
 #[jungle::animal(id = 5, generation = 0)]
 impl Animal for LoopAnimal {
     type State = ();
-    type Seed = LoopValue<()>;
-    type Flow = LoopJourney<()>;
+    type Seed = ();
+    type Flow = LoopJourney;
 }
 
 #[derive(Animals)]
@@ -139,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let journey_id = client.spawn::<LoopAnimal>(&(0, ())).await?.journey_id;
+    let journey_id = client.spawn::<LoopAnimal>(&()).await?.journey_id;
     info!(%journey_id, db_path = %db_path.display(), "loop demo active");
 
     tokio::signal::ctrl_c().await?;

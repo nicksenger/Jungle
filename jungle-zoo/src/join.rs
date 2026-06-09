@@ -3,10 +3,34 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 
+pub struct Passthrough<St, In>(PhantomData<St>, PhantomData<In>);
+#[jungle::action(carry = In)]
+impl<St, In> Action for Passthrough<St, In>
+where
+    In: Serialize + DeserializeOwned + Send + 'static,
+{
+    type Effect = NoEffect;
+    type Input = In;
+    type Output = In;
+
+    fn emit(_state: &St, input: Self::Input) -> ((), In) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut St,
+        output: EffectCompletion<Self::Effect>,
+        carry: In,
+    ) -> Result<Self::Output, Failure> {
+        Ok(carry)
+    }
+}
+
+#[derive(Flow)]
+pub struct Pass<St, In: Serialize + DeserializeOwned + Send + 'static>(Step<Passthrough<St, In>>);
+
 pub struct CloneJoinInput<In>(PhantomData<fn() -> In>);
-
 pub struct CloneJoinInputAct<A, In>(PhantomData<fn() -> (A, In)>);
-
 impl<A, In> BoundAction<A> for CloneJoinInputAct<A, In>
 where
     A: Animal,
@@ -60,11 +84,9 @@ impl<In> Action for CloneJoinInput<In> {
 /// Adapts a shared cloneable input into the tuple input required by [`Join`].
 #[derive(Flow)]
 pub struct ClonedJoin<In, L, R>(Step<CloneJoinInput<In>>, Join<L, R>);
-
 pub type ClonedJoinUnit<L, R> = ClonedJoin<(), L, R>;
 
 /// Adapts a shared cloneable input into the tuple input required by [`Select`].
 #[derive(Flow)]
 pub struct ClonedSelect<In, L, R>(Step<CloneJoinInput<In>>, Select<L, R>);
-
 pub type ClonedSelectUnit<L, R> = ClonedSelect<(), L, R>;
