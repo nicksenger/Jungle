@@ -3580,7 +3580,7 @@ struct SharedJoinBranch(
 
 #[derive(Flow)]
 struct SharedSelectBranch(
-    Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
+    jungle_zoo::ClonedSelect<i32, Step<SelectFastSpec>, Step<SelectSlowSpec>>,
     Step<SelectToCarrySpec>,
 );
 
@@ -3720,6 +3720,22 @@ struct ComplexMixedZoo;
 impl Ecosystem for ComplexMixedZoo {
     const NAME: &'static str = "late-bound-complex-mixed-zoo";
     type Animals = ComplexMixedAnimals;
+}
+
+#[test]
+fn template_binding_long_shared_segment_completes_in_direct_executor() {
+    let mut executor = Executor::<ComplexAlphaAnimal>::new(ComplexAlphaState::default());
+    let emitted = futures::executor::block_on(executor.advance_to_end_with(5_i32))
+        .expect("direct executor should complete");
+    let final_emitted: i32 =
+        postcard::from_bytes(emitted.last().expect("flow should emit a final value"))
+            .expect("final emitted value should deserialize");
+
+    assert_eq!(final_emitted, 120);
+    assert_eq!(executor.state().loops, 2);
+    assert_eq!(executor.state().join_sum, 17);
+    assert_eq!(executor.state().select_winner, 20);
+    assert_eq!(executor.state().shared_work, 7);
 }
 
 #[tokio::test]

@@ -167,9 +167,12 @@ where
 impl<State, L, R, M> ArgputForState<State> for Select<L, R, M>
 where
     L: ArgputForState<State>,
-    R: ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+    R: ArgputForState<State>,
 {
-    type Carry = <L as ArgputForState<State>>::Carry;
+    type Carry = (
+        <L as ArgputForState<State>>::Carry,
+        <R as ArgputForState<State>>::Carry,
+    );
 }
 
 impl<State, L, R, M> ArgputForState<State> for Join<L, R, M>
@@ -1488,7 +1491,8 @@ struct SelectErasedFlow<State> {
     right: DynFlow<State>,
     build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
     build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
-    pending_input: Option<Serialized>,
+    split_input: SplitBranchInput,
+    pending_input: Option<(Serialized, Serialized)>,
     waiting_completion: bool,
     complete: bool,
     suppress_child_lifecycle_replay: bool,
@@ -1500,6 +1504,7 @@ impl<State> SelectErasedFlow<State> {
         right: DynFlow<State>,
         build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+        split_input: SplitBranchInput,
     ) -> Self {
         Self {
             lifecycle: LifecycleState::default(),
@@ -1508,6 +1513,7 @@ impl<State> SelectErasedFlow<State> {
             right,
             build_left,
             build_right,
+            split_input,
             pending_input: None,
             waiting_completion: false,
             complete: false,
@@ -1523,7 +1529,8 @@ struct SelectContextErasedFlow<State> {
     right: DynFlow<State>,
     build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
     build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
-    pending_input: Option<Serialized>,
+    split_input: SplitBranchInput,
+    pending_input: Option<(Serialized, Serialized)>,
     waiting_completion: bool,
     complete: bool,
     suppress_child_lifecycle_replay: bool,
@@ -1535,6 +1542,7 @@ impl<State> SelectContextErasedFlow<State> {
         right: DynFlow<State>,
         build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+        split_input: SplitBranchInput,
     ) -> Self {
         Self {
             lifecycle: LifecycleState::default(),
@@ -1543,6 +1551,7 @@ impl<State> SelectContextErasedFlow<State> {
             right,
             build_left,
             build_right,
+            split_input,
             pending_input: None,
             waiting_completion: false,
             complete: false,
@@ -1563,7 +1572,8 @@ enum SelectTraceEnvelope {
     Right(FlowCompletionTrace),
 }
 
-type SplitJoinInput = Box<dyn Fn(&[u8]) -> Result<(Serialized, Serialized), ExecutorError> + Send>;
+type SplitBranchInput =
+    Box<dyn Fn(&[u8]) -> Result<(Serialized, Serialized), ExecutorError> + Send>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum JoinSide {
@@ -2398,8 +2408,8 @@ where
             return Ok((state, Some(last_input), true));
         }
 
-        self.pending_input = Some(last_input);
-        Ok((state, None, false))
+        self.pending_input = Some(last_input.clone());
+        Ok((state, Some(last_input), false))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -2786,8 +2796,8 @@ where
             return Ok((state, Some(Self::encode_success(last_input)?), true));
         }
 
-        self.pending_input = Some(last_input);
-        Ok((state, None, false))
+        self.pending_input = Some(last_input.clone());
+        Ok((state, Some(last_input), false))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -3104,8 +3114,8 @@ where
             return Ok((state, Some(last_input), true));
         }
 
-        self.pending_input = Some(last_input);
-        Ok((state, None, false))
+        self.pending_input = Some(last_input.clone());
+        Ok((state, Some(last_input), false))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -3183,7 +3193,7 @@ where
             }
         };
 
-        let input = self
+        let (left_input, right_input) = self
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
@@ -3197,7 +3207,7 @@ where
         let emitted = match envelope {
             SelectTraceEnvelope::Left(left_trace) => {
                 let (left_state, left_emitted) =
-                    replay_subflow_trace(&mut self.left, state, input.clone(), left_trace)?;
+                    replay_subflow_trace(&mut self.left, state, left_input, left_trace)?;
                 let mut serialized = Vec::with_capacity(1 + left_emitted.len());
                 serialized.push(0);
                 serialized.extend_from_slice(&left_emitted);
@@ -3205,7 +3215,7 @@ where
             }
             SelectTraceEnvelope::Right(right_trace) => {
                 let (right_state, right_emitted) =
-                    replay_subflow_trace(&mut self.right, state, input.clone(), right_trace)?;
+                    replay_subflow_trace(&mut self.right, state, right_input, right_trace)?;
                 let mut serialized = Vec::with_capacity(1 + right_emitted.len());
                 serialized.push(1);
                 serialized.extend_from_slice(&right_emitted);
@@ -3235,9 +3245,13 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
+        let (left_input, right_input) = match (self.split_input)(&input) {
+            Ok(split) => split,
+            Err(err) => return Err((state, err)),
+        };
         let payload = SelectRequestEnvelope {
-            left: input.clone(),
-            right: input.clone(),
+            left: left_input.clone(),
+            right: right_input.clone(),
         };
         self.lifecycle.enter();
         let request = match postcard::to_allocvec(&payload) {
@@ -3248,8 +3262,8 @@ where
         let right_flow = (self.build_right)();
         let left_state = state.clone();
         let right_state = state.clone();
-        let left_input = input.clone();
-        let right_input = input.clone();
+        let runner_left_input = left_input.clone();
+        let runner_right_input = right_input.clone();
         let left_start_node_id = first_flow_node_id(&self.left);
         let right_start_node_id = first_flow_node_id(&self.right);
         let journey_id = self.lifecycle.journey_id();
@@ -3267,11 +3281,11 @@ where
                 let envelope = run_select_race_to_completion(
                     left_flow,
                     left_state,
-                    left_input,
+                    runner_left_input,
                     left_start_node_id,
                     right_flow,
                     right_state,
-                    right_input,
+                    runner_right_input,
                     right_start_node_id,
                     journey_id,
                     parent_activation_path,
@@ -3285,7 +3299,7 @@ where
         });
 
         self.waiting_completion = true;
-        self.pending_input = Some(input);
+        self.pending_input = Some((left_input, right_input));
         let request =
             ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner);
         let request = match live_history {
@@ -3375,7 +3389,7 @@ where
             }
         };
 
-        let input = self
+        let (left_input, right_input) = self
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
@@ -3389,7 +3403,7 @@ where
         let emitted = match envelope {
             SelectTraceEnvelope::Left(left_trace) => {
                 let (left_state, left_emitted) =
-                    replay_subflow_trace(&mut self.left, state, input.clone(), left_trace)?;
+                    replay_subflow_trace(&mut self.left, state, left_input, left_trace)?;
                 let mut serialized = Vec::with_capacity(1 + left_emitted.len());
                 serialized.push(0);
                 serialized.extend_from_slice(&left_emitted);
@@ -3397,7 +3411,7 @@ where
             }
             SelectTraceEnvelope::Right(right_trace) => {
                 let (right_state, right_emitted) =
-                    replay_subflow_trace(&mut self.right, state, input.clone(), right_trace)?;
+                    replay_subflow_trace(&mut self.right, state, right_input, right_trace)?;
                 let mut serialized = Vec::with_capacity(1 + right_emitted.len());
                 serialized.push(1);
                 serialized.extend_from_slice(&right_emitted);
@@ -3427,9 +3441,13 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
+        let (left_input, right_input) = match (self.split_input)(&input) {
+            Ok(split) => split,
+            Err(err) => return Err((state, err)),
+        };
         let payload = SelectRequestEnvelope {
-            left: input.clone(),
-            right: input.clone(),
+            left: left_input.clone(),
+            right: right_input.clone(),
         };
         self.lifecycle.enter();
         let request = match postcard::to_allocvec(&payload) {
@@ -3440,8 +3458,8 @@ where
         let right_flow = (self.build_right)();
         let left_state = state.clone();
         let right_state = state.clone();
-        let left_input = input.clone();
-        let right_input = input.clone();
+        let runner_left_input = left_input.clone();
+        let runner_right_input = right_input.clone();
         let left_start_node_id = first_flow_node_id(&self.left);
         let right_start_node_id = first_flow_node_id(&self.right);
         let journey_id = self.lifecycle.journey_id();
@@ -3459,11 +3477,11 @@ where
                 let envelope = run_select_race_to_completion(
                     left_flow,
                     left_state,
-                    left_input,
+                    runner_left_input,
                     left_start_node_id,
                     right_flow,
                     right_state,
-                    right_input,
+                    runner_right_input,
                     right_start_node_id,
                     journey_id,
                     parent_activation_path,
@@ -3477,7 +3495,7 @@ where
         });
 
         self.waiting_completion = true;
-        self.pending_input = Some(input);
+        self.pending_input = Some((left_input, right_input));
         let request =
             ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner);
         let request = match live_history {
@@ -3542,7 +3560,7 @@ struct JoinErasedFlow<State> {
     focused_merge: bool,
     merge_left: Box<dyn Fn(&mut State, State) + Send>,
     merge_right: Box<dyn Fn(&mut State, State) + Send>,
-    split_input: SplitJoinInput,
+    split_input: SplitBranchInput,
     join_input: Option<(Serialized, Serialized)>,
     base_state: Option<State>,
     left_branch: Option<JoinBranchProgress<State>>,
@@ -3563,7 +3581,7 @@ where
         focused_merge: bool,
         merge_left: Box<dyn Fn(&mut State, State) + Send>,
         merge_right: Box<dyn Fn(&mut State, State) + Send>,
-        split_input: SplitJoinInput,
+        split_input: SplitBranchInput,
     ) -> Self {
         Self {
             lifecycle: LifecycleState::default(),
@@ -4758,9 +4776,9 @@ where
 impl<State, In, L, R, M> FlowCarry<State> for Select<L, R, M>
 where
     L: FlowCarry<State, In = In>,
-    R: FlowCarry<State, In = In>,
+    R: FlowCarry<State>,
 {
-    type In = In;
+    type In = (In, <R as FlowCarry<State>>::In);
     type Out = Either<<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out>;
 }
 
@@ -4967,8 +4985,9 @@ impl<State, L, R, M> BuildFlow<DynFlow<State>> for Select<L, R, M>
 where
     State: Clone + Send + 'static,
     L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
-    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
-        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
+    <L as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
+    <R as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -4977,11 +4996,26 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let build_left = Box::new(|| <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         let build_right = Box::new(|| <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        let split_input = Box::new(
+            |bytes: &[u8]| -> Result<(Serialized, Serialized), ExecutorError> {
+                let (left, right): (
+                    <L as ArgputForState<State>>::Carry,
+                    <R as ArgputForState<State>>::Carry,
+                ) = postcard::from_bytes(bytes)
+                    .map_err(|err| input_deserialize_error("select input tuple", err))?;
+                let left = postcard::to_allocvec(&left)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                let right = postcard::to_allocvec(&right)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                Ok((left, right))
+            },
+        );
         steps.push(Box::new(SelectErasedFlow::<State>::new(
             left,
             right,
             build_left,
             build_right,
+            split_input,
         )));
         steps
     }
@@ -6265,7 +6299,9 @@ where
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+        > + ArgputForState<State>,
+    <L as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
+    <R as ArgputForState<State>>::Carry: DeserializeOwned + Serialize + 'static,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -6292,11 +6328,26 @@ where
             );
             flow
         });
+        let split_input = Box::new(
+            |bytes: &[u8]| -> Result<(Serialized, Serialized), ExecutorError> {
+                let (left, right): (
+                    <L as ArgputForState<State>>::Carry,
+                    <R as ArgputForState<State>>::Carry,
+                ) = postcard::from_bytes(bytes)
+                    .map_err(|err| input_deserialize_error("select input tuple", err))?;
+                let left = postcard::to_allocvec(&left)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                let right = postcard::to_allocvec(&right)
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+                Ok((left, right))
+            },
+        );
         steps.push(Box::new(SelectContextErasedFlow::<State>::new(
             left,
             right,
             build_left,
             build_right,
+            split_input,
         )));
         (context, steps)
     }

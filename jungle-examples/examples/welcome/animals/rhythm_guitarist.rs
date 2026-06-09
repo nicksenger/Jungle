@@ -1,7 +1,6 @@
 use jungle_sdk::prelude::*;
 
 use crate::action::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericRest};
-use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
 use super::{Double, RhythmGuitarist, RhythmGuitaristState};
@@ -1026,7 +1025,7 @@ pub struct RhythmPart28(
 );
 
 #[derive(Flow)]
-pub struct RhythmPart29Phrase(
+pub struct RhythmPart29PhraseA(
     Pluck<50, 57, 96, 96>,
     Pluck<50, 57, 96, 96>,
     Pluck<49, 56, 96, 96>,
@@ -1039,6 +1038,10 @@ pub struct RhythmPart29Phrase(
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<51, 58, 96, 96>,
+);
+
+#[derive(Flow)]
+pub struct RhythmPart29PhraseB(
     Pluck<51, 58, 96, 96>,
     Pluck<51, 58, 96, 96>,
     Pluck<51, 58, 96, 96>,
@@ -1052,6 +1055,9 @@ pub struct RhythmPart29Phrase(
     Pluck<48, 55, 96, 96>,
     TriadHit<47, 54, 54, 96, 96>,
 );
+
+#[derive(Flow)]
+pub struct RhythmPart29Phrase(RhythmPart29PhraseA, RhythmPart29PhraseB);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
@@ -1091,8 +1097,7 @@ pub struct RhythmPart30(
 pub struct RhythmPart31(RhythmPart29Phrase);
 
 #[derive(Flow)]
-#[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmPart32(
+pub struct RhythmPart32A(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1109,6 +1114,10 @@ pub struct RhythmPart32(
     Pluck<48, 55, 96, 96>,
     Pluck<48, 55, 96, 96>,
     TriadHit<47, 54, 54, 96, 96>,
+);
+
+#[derive(Flow)]
+pub struct RhythmPart32B(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1118,6 +1127,10 @@ pub struct RhythmPart32(
     Pluck<42, 49, 384, 384>,
     Pluck<44, 51, 384, 384>,
 );
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct RhythmPart32(RhythmPart32A, RhythmPart32B);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]

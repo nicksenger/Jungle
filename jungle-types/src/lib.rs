@@ -2012,9 +2012,9 @@ where
 impl<L, R, M> Running for Select<L, R, M>
 where
     L: Running,
-    R: Running<In = L::In>,
+    R: Running,
 {
-    type In = L::In;
+    type In = (L::In, R::In);
     type Out = Either<L::Out, R::Out>;
 
     fn run(input: Self::In) -> Self::Out {

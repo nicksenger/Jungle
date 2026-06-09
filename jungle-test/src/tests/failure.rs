@@ -942,14 +942,14 @@ pub struct JoinInsideAttemptOkJourney(
 #[derive(Flow)]
 pub struct SelectOutsideAttemptFailJourney(
     Step<StartTagStep>,
-    Select<Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
+    jungle_zoo::ClonedSelect<i32, Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
     Step<FailFromSelectEitherStep>,
 );
 
 #[derive(Flow)]
 pub struct SelectInsideAttemptFailJourney(
     Step<StartTagStep>,
-    Select<Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
+    jungle_zoo::ClonedSelect<i32, Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
     Attempt<Step<FailFromSelectEitherStep>>,
     Step<AttemptResultAssertFailStep>,
     Step<PassThroughTagStep>,
@@ -958,7 +958,9 @@ pub struct SelectInsideAttemptFailJourney(
 #[derive(Flow)]
 pub struct SelectInsideAttemptOkJourney(
     Step<StartTagStep>,
-    Attempt<Select<Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>>,
+    Attempt<
+        jungle_zoo::ClonedSelect<i32, Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
+    >,
     Step<AttemptResultAssertOkEitherStep>,
     Step<PassThroughTagStep>,
 );

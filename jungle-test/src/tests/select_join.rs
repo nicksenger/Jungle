@@ -118,7 +118,7 @@ impl Action for CaptureSelectWinnerSpec {
 
 #[derive(Flow)]
 pub struct SelectFlowTemplate(
-    Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
+    jungle_zoo::ClonedSelectUnit<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
     Step<CaptureSelectWinnerSpec>,
 );
 
@@ -269,6 +269,56 @@ impl Animal for TupleJoinAnimal {
     type Flow = TupleJoinFlowTemplate;
 }
 
+pub struct TupleSelectLeftSpec;
+#[jungle::action]
+impl Action for TupleSelectLeftSpec {
+    type Effect = TimedValueEffect;
+    type Input = LeftTupleJoinInput;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        (0, input.value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("tuple select left should succeed"))
+    }
+}
+
+pub struct TupleSelectRightSpec;
+#[jungle::action]
+impl Action for TupleSelectRightSpec {
+    type Effect = TimedValueEffect;
+    type Input = RightTupleJoinInput;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        (25, input.value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("tuple select right should succeed"))
+    }
+}
+
+#[derive(Flow)]
+pub struct TupleSelectFlowTemplate(Select<Step<TupleSelectLeftSpec>, Step<TupleSelectRightSpec>>);
+
+pub struct TupleSelectAnimal;
+
+#[jungle::animal(id = 10, generation = 0)]
+impl Animal for TupleSelectAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Flow = TupleSelectFlowTemplate;
+}
+
 pub struct TimeoutSleepSpec;
 #[jungle::action]
 impl Action for TimeoutSleepSpec {
@@ -318,7 +368,9 @@ impl Action for TimeoutSlowSpec {
 }
 
 #[derive(Flow)]
-pub struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>);
+pub struct TimeoutFlowTemplate(
+    jungle_zoo::ClonedSelectUnit<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>,
+);
 
 pub struct TimeoutAnimal;
 
@@ -429,7 +481,7 @@ pub struct SelectBranchSlowFlow(
 
 #[derive(Flow)]
 pub struct SelectComposableFlowTemplate(
-    Select<SelectBranchFastFlow, SelectBranchSlowFlow>,
+    jungle_zoo::ClonedSelectUnit<SelectBranchFastFlow, SelectBranchSlowFlow>,
     Step<CaptureSelectWinnerSpec>,
 );
 
@@ -1240,6 +1292,33 @@ async fn join_routes_each_tuple_input_to_its_branch_without_clone() {
     let final_emitted: (i32, i32) =
         postcard::from_bytes(&final_emitted).expect("tuple join output should deserialize");
     assert_eq!(final_emitted, (4, 7));
+}
+
+#[tokio::test]
+async fn select_routes_each_tuple_input_to_its_branch_without_clone() {
+    let mut executor = Executor::<TupleSelectAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let request = executor
+        .next_executable_request((
+            LeftTupleJoinInput { value: 4 },
+            RightTupleJoinInput { value: 7 },
+        ))
+        .expect("tuple select executor should produce an executable request");
+    let completion = request
+        .run()
+        .await
+        .expect("tuple select request should run");
+    let emitted = executor
+        .complete_serialized(completion)
+        .expect("tuple select completion should apply");
+    let emitted: Either<i32, i32> =
+        postcard::from_bytes(&emitted).expect("tuple select output should deserialize");
+    assert_eq!(emitted, Either::Left(4));
 }
 
 #[tokio::test]

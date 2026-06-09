@@ -62,3 +62,9 @@ impl<In> Action for CloneJoinInput<In> {
 pub struct ClonedJoin<In, L, R>(Step<CloneJoinInput<In>>, Join<L, R>);
 
 pub type ClonedJoinUnit<L, R> = ClonedJoin<(), L, R>;
+
+/// Adapts a shared cloneable input into the tuple input required by [`Select`].
+#[derive(Flow)]
+pub struct ClonedSelect<In, L, R>(Step<CloneJoinInput<In>>, Select<L, R>);
+
+pub type ClonedSelectUnit<L, R> = ClonedSelect<(), L, R>;
