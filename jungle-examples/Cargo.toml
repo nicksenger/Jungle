@@ -63,9 +63,9 @@ name = "cronfish"
 path = "examples/cronfish/mod.rs"
 required-features = ["cron"]
 
-[[example]]
-name = "backoff"
-path = "examples/backoff/mod.rs"
+# [[example]]
+# name = "backoff"
+# path = "examples/backoff/mod.rs"
 
 [[example]]
 name = "loops"
