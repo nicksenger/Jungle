@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 jungle-client = { path = "../jungle-client" }
-inception = { workspace = true }
 jungle-types = { path = "../jungle-types" }
 typosaurus = { workspace = true }
 serde = { workspace = true }

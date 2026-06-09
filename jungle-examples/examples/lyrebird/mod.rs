@@ -33,7 +33,7 @@ use crate::action::{
 use crate::tokens::{Prompt, Tool};
 
 const DEFAULT_WORKERS: usize = 3;
-const DEFAULT_TREE_DEPTH: usize = 64;
+const DEFAULT_TREE_DEPTH: usize = 24;
 const DEFAULT_INSTRUMENT_PARALLELISM: usize = 1;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
 pub(crate) const DEFAULT_LYREBIRD_SYSTEM_PROMPT_OVERRIDE: &str =

@@ -68,12 +68,12 @@ pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc
 fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) -> RhythmTone {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => RhythmTone {
-            drive: 35.0 + groove.amp_jitter,
-            pick_amount: 0.58 * groove.downstroke,
-            pre_gain: 2.0,
-            cab_smoothing: 0.13,
-            body_mix: 0.42,
-            presence_mix: 0.55,
+            drive: 45.0 + groove.amp_jitter,
+            pick_amount: 0.68 * groove.downstroke,
+            pre_gain: 2.5,
+            cab_smoothing: 0.35,
+            body_mix: 0.25,
+            presence_mix: 0.75,
         },
         ElectricGuitarArticulation::Sustained => RhythmTone {
             drive: 3.0,
@@ -125,12 +125,47 @@ fn rhythm_sample(
 fn rhythm_stack(frequency_hz: f32, t: f32, body: f32, edge: f32) -> f32 {
     let fifth = frequency_hz * 2.0_f32.powf(7.0 / 12.0);
     let octave = frequency_hz * 2.0;
-    let detuned_root = saw(frequency_hz * 0.997, t) * 0.33 + saw(frequency_hz * 1.003, t) * 0.29;
-    let low_mid = triangle(frequency_hz, t) * 0.18 + saw(fifth, t) * 0.24;
-    let upper_mid = triangle(frequency_hz * 2.0, t) * (0.1 + edge * 0.06);
-    let grind = saw(octave, t) * (0.08 + edge * 0.05) + sine(frequency_hz * 4.0, t) * 0.04;
-    let raw = detuned_root + low_mid + upper_mid + grind;
-    (raw * body).clamp(-1.35, 1.35)
+    let twelfth = frequency_hz * 2.0_f32.powf(19.0 / 12.0);
+    let fifteenth = frequency_hz * 3.0;
+    let sixteenth = frequency_hz * 4.0;
+    let nineteenth = frequency_hz * 5.0;
+
+    // Minimal fundamental - shift energy to higher harmonics
+    let detuned_root = saw(frequency_hz * 0.997, t) * 0.12 + saw(frequency_hz * 1.003, t) * 0.1;
+
+    // Very low emphasis on low-mid
+    let low_mid = triangle(frequency_hz, t) * 0.05 + saw(fifth, t) * 0.06;
+
+    // Upper mid - moderate for character
+    let upper_mid = triangle(frequency_hz * 2.0, t) * (0.3 + edge * 0.18);
+    let grind = saw(octave, t) * (0.35 + edge * 0.2) + sine(frequency_hz * 4.0, t) * 0.2;
+
+    // High frequencies - strong boost
+    let high_freq =
+        triangle(twelfth, t) * 0.75 + saw(octave * 1.5, t) * 0.68 + sine(fifteenth, t) * 0.55;
+    let very_high = saw(octave * 2.0, t) * 0.55 + triangle(frequency_hz * 6.0, t) * 0.48;
+
+    // Extreme high harmonics - critical for spectral roll-off
+    let extreme_high = saw(fifteenth * 2.0, t) * 0.45 + triangle(frequency_hz * 8.0, t) * 0.38;
+    let ultra_high = sine(sixteenth, t) * 0.35
+        + saw(octave * 3.0, t) * 0.28
+        + triangle(fifteenth * 1.5, t) * 0.22;
+
+    // Add even higher harmonics to push roll-off frequency up
+    let super_high = saw(nineteenth, t) * 0.25
+        + triangle(octave * 4.0, t) * 0.2
+        + sine(fifteenth * 3.0, t) * 0.18;
+
+    let raw = detuned_root
+        + low_mid
+        + upper_mid
+        + grind
+        + high_freq
+        + very_high
+        + extreme_high
+        + ultra_high
+        + super_high;
+    (raw * body).clamp(-5.0, 5.0)
 }
 
 fn rhythm_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 {
@@ -169,9 +204,10 @@ fn rhythm_pick_attack(
 
 fn rhythm_amp_distortion(sample: f32, drive: f32) -> f32 {
     let pre = sample * drive;
-    let stage_one = (pre + pre * pre.abs() * 2.0).clamp(-3.0, 3.0);
-    let stage_two = (stage_one.tanh() * 6.0 + stage_one * 0.8).clamp(-1.9, 1.9);
-    (stage_two.tanh() * 3.5).clamp(-1.0, 1.0)
+    let stage_one = (pre + pre * pre.abs() * 2.5).clamp(-4.0, 4.0);
+    let stage_two = (stage_one.tanh() * 8.0 + stage_one * 1.2).clamp(-2.5, 2.5);
+    let stage_three = (stage_two.tanh() * 5.0 + stage_two * 0.6).clamp(-2.0, 2.0);
+    (stage_three.tanh() * 4.0).clamp(-1.5, 1.5)
 }
 
 #[derive(Clone, Copy)]

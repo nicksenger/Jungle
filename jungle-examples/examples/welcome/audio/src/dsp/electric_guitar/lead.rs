@@ -15,11 +15,11 @@ struct ElectricTone {
 fn lead_tone(articulation: ElectricGuitarArticulation) -> ElectricTone {
     match articulation {
         ElectricGuitarArticulation::Sustained => ElectricTone {
-            drive: 24.0,
-            pick_amount: 0.65,
-            cab_smoothing: 0.18,
-            body_mix: 0.12,
-            high_freq: 4.0,
+            drive: 38.0,
+            pick_amount: 1.5,
+            cab_smoothing: 0.04,
+            body_mix: 0.03,
+            high_freq: 6.0,
         },
         ElectricGuitarArticulation::RhythmSustained => ElectricTone {
             drive: 3.2,
@@ -72,12 +72,12 @@ fn lead_sample(
 
 fn lead_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 {
     let attack = match articulation {
-        ElectricGuitarArticulation::Sustained => 0.02,
-        ElectricGuitarArticulation::RhythmSustained => 0.02,
+        ElectricGuitarArticulation::Sustained => 0.015,
+        ElectricGuitarArticulation::RhythmSustained => 0.015,
     };
     let decay = match articulation {
-        ElectricGuitarArticulation::Sustained => 0.55,
-        ElectricGuitarArticulation::RhythmSustained => 0.55,
+        ElectricGuitarArticulation::Sustained => 0.45,
+        ElectricGuitarArticulation::RhythmSustained => 0.45,
     };
 
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
@@ -89,8 +89,13 @@ fn lead_stack(frequency_hz: f32, t: f32, body: f32, drive: f32, high_freq: f32) 
     let raw = saw(frequency_hz, t) * 0.48
         + saw(frequency_hz * 2.0, t) * 0.28
         + sine(frequency_hz * 3.0, t) * 0.16
-        + sine(frequency_hz * 4.0, t) * 0.1 * (1.0 + high_freq)
-        + sine(frequency_hz * 6.0, t) * 0.06 * (1.0 + high_freq);
+        + sine(frequency_hz * 4.0, t) * 0.15 * (1.0 + high_freq)
+        + sine(frequency_hz * 5.0, t) * 0.12 * (1.0 + high_freq)
+        + sine(frequency_hz * 6.0, t) * 0.09 * (1.0 + high_freq)
+        + sine(frequency_hz * 7.0, t) * 0.06 * (1.0 + high_freq)
+        + sine(frequency_hz * 8.0, t) * 0.05 * (1.0 + high_freq * 1.2)
+        + sine(frequency_hz * 9.0, t) * 0.04 * (1.0 + high_freq * 1.2)
+        + sine(frequency_hz * 10.0, t) * 0.03 * (1.0 + high_freq * 1.2);
     lead_amp_distortion(raw * body, drive)
 }
 

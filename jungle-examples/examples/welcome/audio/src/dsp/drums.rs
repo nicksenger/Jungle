@@ -108,14 +108,14 @@ pub mod hihat {
             + triangle(14_000.0 * tilt, t) * 0.08
             + triangle(17_000.0 * tilt, t) * 0.05;
 
-        let bark = 1.0 - smoothstep((phase / 0.58).clamp(0.0, 1.0));
+        let bark = 1.0 - smoothstep((phase / 0.82).clamp(0.0, 1.0));
         (bright * 0.6 + metallic * 0.65 + hiss * 0.3 + stick * 0.75) * bark
     }
 
     fn articulation_envelope(phase: f32, velocity: f32) -> f32 {
         let attack = 0.002;
         let decay = 1.05 - velocity * 0.14;
-        let fast_choke = 1.0 - smoothstep((phase / 0.95).clamp(0.0, 1.0));
+        let fast_choke = 1.0 - smoothstep((phase / 0.92).clamp(0.0, 1.0));
         let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
         let decay_env = (-phase * decay * 5.0).exp();
         (attack_env * decay_env * fast_choke).clamp(0.0, 1.0)
@@ -228,25 +228,25 @@ pub mod snare_drum {
         let stick_noise =
             hash_noise(t * 22_800.0) * (1.0 - smoothstep((phase * 28.0).clamp(0.0, 1.0)));
 
-        let wire_white = hash_noise(t * 15_600.0);
-        let wire_dark = hash_noise(t * 6_300.0);
-        let wire = (wire_white - wire_dark * 0.58)
-            * (0.22 + 0.78 * (1.0 - smoothstep((phase * 3.3).clamp(0.0, 1.0))));
+        let wire_white = hash_noise(t * 18_200.0);
+        let wire_dark = hash_noise(t * 7_400.0);
+        let wire = (wire_white - wire_dark * 0.45)
+            * (0.28 + 0.72 * (1.0 - smoothstep((phase * 2.6).clamp(0.0, 1.0))));
 
         let base = body_fund + body_ring + shell;
         let attack = (stick_noise * 0.92 + crack_tone * 0.72) * (0.6 + velocity * 0.55);
 
         let rim = triangle(2_450.0 + velocity * 280.0, t) * 0.24;
-        (base * 1.05 + attack * 0.68 + wire * 0.86 + rim).tanh()
+        (base * 1.05 + attack * 0.68 + wire * 1.05 + rim).tanh()
     }
 
     fn articulation_envelope(phase: f32, velocity: f32) -> f32 {
         let attack = 0.0012;
-        let (body_decay, wire_decay) = (1.15 - velocity * 0.12, 0.78);
+        let (body_decay, wire_decay) = (1.15 - velocity * 0.12, 0.68);
         let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
         let body = (-phase * body_decay * 5.2).exp();
-        let wire = (-phase * wire_decay * 9.8).exp();
-        (attack_env * (body * 0.62 + wire * 0.38)).clamp(0.0, 1.0)
+        let wire = (-phase * wire_decay * 8.4).exp();
+        (attack_env * (body * 0.55 + wire * 0.45)).clamp(0.0, 1.0)
     }
 }
 

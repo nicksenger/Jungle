@@ -68,6 +68,10 @@ name = "backoff"
 path = "examples/backoff/mod.rs"
 
 [[example]]
+name = "loops"
+path = "examples/loops/mod.rs"
+
+[[example]]
 name = "replay"
 path = "examples/replay/mod.rs"
 required-features = ["viewer"]
