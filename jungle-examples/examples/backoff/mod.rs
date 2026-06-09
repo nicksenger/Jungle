@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+#[cfg(feature = "viewer")] use std::time::Duration;
 use std::path::PathBuf;
 
 use clap::Parser;
