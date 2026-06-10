@@ -1,4 +1,3 @@
-
 use jungle_sdk::prelude::*;
 
 pub struct Always<St, In>(St, In);

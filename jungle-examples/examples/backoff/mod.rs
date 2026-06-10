@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
-#[cfg(feature = "viewer")] use std::time::Duration;
 use std::path::PathBuf;
+#[cfg(feature = "viewer")]
+use std::time::Duration;
 
 use clap::Parser;
 use jungle_sdk::core::JungleWorker;

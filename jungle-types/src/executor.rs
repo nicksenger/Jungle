@@ -1641,7 +1641,7 @@ where
     T: Animal,
     A: BoundAction<T>,
 {
-    const ENABLED: bool = false;
+    const ENABLED: bool = <A as BoundAction<T>>::JOIN_FOCUS_PRELUDE;
 }
 
 impl<State, P, L, R, M> JoinFocusMarker<State> for Conditional<P, L, R, M> {

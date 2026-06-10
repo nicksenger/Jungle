@@ -1,5 +1,7 @@
 use futures::StreamExt;
-use jungle_sdk::core::dag::{ClusterKind, ClusterLive, Dag, DagSnapshot, LiveDagState, Phase, RuntimeState};
+use jungle_sdk::core::dag::{
+    ClusterKind, ClusterLive, Dag, DagSnapshot, LiveDagState, Phase, RuntimeState,
+};
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, Server};
@@ -10,7 +12,8 @@ use std::time::{Duration, Instant};
 #[derive(Flow)]
 struct FailingSubflow(Step<AnnounceFailure<(), ()>>, Step<Fail<()>>);
 
-type BackoffDagFlow = jungle_zoo::backoff::Backoff<(), (), (), FailingSubflow, 100u64, 10000u64, 2u8>;
+type BackoffDagFlow =
+    jungle_zoo::backoff::Backoff<(), (), (), FailingSubflow, 100u64, 10000u64, 2u8>;
 
 struct BackoffDagAnimal;
 
@@ -146,12 +149,11 @@ async fn backoff_snapshot_marks_sleep_running_and_fail_failed() {
     let mut saw_announce_success = false;
     let deadline = Instant::now() + Duration::from_secs(12);
     while Instant::now() < deadline {
-        let maybe_update = match tokio::time::timeout(Duration::from_millis(250), subscription.next())
-            .await
-        {
-            Ok(update) => update,
-            Err(_) => continue,
-        };
+        let maybe_update =
+            match tokio::time::timeout(Duration::from_millis(250), subscription.next()).await {
+                Ok(update) => update,
+                Err(_) => continue,
+            };
         let update = match maybe_update {
             Some(Ok(update)) => update,
             Some(Err(err)) => panic!("step update should decode: {err}"),
@@ -233,7 +235,10 @@ async fn backoff_snapshot_marks_sleep_running_and_fail_failed() {
     let attempt_phase = snapshot.cluster_phase(attempt_index);
     assert!(matches!(
         attempt_phase,
-        Phase::Live(ClusterLive { has_failed: true, .. })
+        Phase::Live(ClusterLive {
+            has_failed: true,
+            ..
+        })
     ));
 
     worker_handle.abort();

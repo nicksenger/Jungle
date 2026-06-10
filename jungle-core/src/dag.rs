@@ -1739,7 +1739,11 @@ fn repaired_live_states_for_display(
         }
         let mut has_running_member = false;
         for node_id in &attempt_cluster.nodes {
-            match states.get(node_id).copied().unwrap_or(RuntimeState::Pending) {
+            match states
+                .get(node_id)
+                .copied()
+                .unwrap_or(RuntimeState::Pending)
+            {
                 RuntimeState::Running => has_running_member = true,
                 RuntimeState::Pending | RuntimeState::Failed | RuntimeState::Completed => {}
             }
