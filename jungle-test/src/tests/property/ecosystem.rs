@@ -646,7 +646,7 @@ pub struct Depth2RightInnerFlow(
 
 #[derive(Flow)]
 pub struct Depth2JoinedInnerBody(
-    Join<Depth2LeftInnerFlow, Depth2RightInnerFlow>,
+    jungle_zoo::ClonedJoinUnit<Depth2LeftInnerFlow, Depth2RightInnerFlow>,
     Step<MergeReplayJoin<Depth2State>>,
 );
 
@@ -706,7 +706,7 @@ pub struct Depth3LeftNestedRightFlow(
 
 #[derive(Flow)]
 pub struct Depth3LeftNestedJoin(
-    Join<Depth3LeftNestedLeftFlow, Depth3LeftNestedRightFlow>,
+    jungle_zoo::ClonedJoinUnit<Depth3LeftNestedLeftFlow, Depth3LeftNestedRightFlow>,
     Step<MergeReplayJoin<Depth3LeftState>>,
 );
 
@@ -739,7 +739,7 @@ pub struct Depth3RightNestedRightFlow(
 
 #[derive(Flow)]
 pub struct Depth3RightNestedJoin(
-    Join<Depth3RightNestedLeftFlow, Depth3RightNestedRightFlow>,
+    jungle_zoo::ClonedJoinUnit<Depth3RightNestedLeftFlow, Depth3RightNestedRightFlow>,
     Step<MergeReplayJoin<Depth3RightState>>,
 );
 
@@ -756,7 +756,7 @@ pub struct Depth3OuterRightFlow(
 
 #[derive(Flow)]
 pub struct Depth3JoinedInnerBody(
-    Join<Depth3OuterLeftFlow, Depth3OuterRightFlow>,
+    jungle_zoo::ClonedJoinUnit<Depth3OuterLeftFlow, Depth3OuterRightFlow>,
     Step<MergeReplayJoin<Depth3State>>,
 );
 

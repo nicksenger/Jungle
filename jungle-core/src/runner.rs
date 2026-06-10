@@ -423,8 +423,7 @@ async fn emit_snapshot_appearance(
     journey_id: Uuid,
     appearance: Option<Vec<u8>>,
     tx: &mut RunnerChannelTx,
-) -> Result<(), ExecutorError>
-{
+) -> Result<(), ExecutorError> {
     if let Some(appearance) = appearance {
         send_history(
             tx,

@@ -918,14 +918,14 @@ pub struct TransparentInsideAttemptOkJourney(
 #[derive(Flow)]
 pub struct JoinOutsideAttemptFailJourney(
     Step<StartTagStep>,
-    Join<Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
+    jungle_zoo::ClonedJoin<i32, Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
     Step<FailFromJoinTupleStep>,
 );
 
 #[derive(Flow)]
 pub struct JoinInsideAttemptFailJourney(
     Step<StartTagStep>,
-    Join<Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
+    jungle_zoo::ClonedJoin<i32, Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>,
     Attempt<Step<FailFromJoinTupleStep>>,
     Step<AttemptResultAssertFailStep>,
     Step<PassThroughTagStep>,
@@ -934,7 +934,7 @@ pub struct JoinInsideAttemptFailJourney(
 #[derive(Flow)]
 pub struct JoinInsideAttemptOkJourney(
     Step<StartTagStep>,
-    Attempt<Join<Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>>,
+    Attempt<jungle_zoo::ClonedJoin<i32, Step<JoinLeftPassTagStep>, Step<JoinRightPassTagStep2>>>,
     Step<AttemptResultAssertOkTupleStep>,
     Step<PassThroughTagStep>,
 );
@@ -942,14 +942,14 @@ pub struct JoinInsideAttemptOkJourney(
 #[derive(Flow)]
 pub struct SelectOutsideAttemptFailJourney(
     Step<StartTagStep>,
-    Select<Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
+    jungle_zoo::ClonedSelect<i32, Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
     Step<FailFromSelectEitherStep>,
 );
 
 #[derive(Flow)]
 pub struct SelectInsideAttemptFailJourney(
     Step<StartTagStep>,
-    Select<Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
+    jungle_zoo::ClonedSelect<i32, Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
     Attempt<Step<FailFromSelectEitherStep>>,
     Step<AttemptResultAssertFailStep>,
     Step<PassThroughTagStep>,
@@ -958,7 +958,9 @@ pub struct SelectInsideAttemptFailJourney(
 #[derive(Flow)]
 pub struct SelectInsideAttemptOkJourney(
     Step<StartTagStep>,
-    Attempt<Select<Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>>,
+    Attempt<
+        jungle_zoo::ClonedSelect<i32, Step<SelectFastPassTagStep>, Step<SelectSlowPassTagStep2>>,
+    >,
     Step<AttemptResultAssertOkEitherStep>,
     Step<PassThroughTagStep>,
 );

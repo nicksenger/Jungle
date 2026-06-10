@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use tracing::debug;
+use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 mod action;
@@ -14,6 +16,7 @@ mod flow;
 
 use flow::CronJob;
 
+const DEFAULT_LOG_FILTER: &str = "warn,backoff=info";
 const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_CRONFISH_DIR: &str = ".cronfish";
@@ -150,6 +153,7 @@ impl Ecosystem for PaleozoicEcosystem {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_tracing();
     let cli = Cli::parse();
     match cli.command {
         Command::Server(args) => run_server(args).await?,
@@ -357,4 +361,15 @@ fn ensure_parent_dir_exists(path: &Path) -> Result<(), Box<dyn std::error::Error
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
+}
+
+fn init_tracing() {
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .compact()
+        .try_init();
+    debug!("backoff tracing initialized");
 }

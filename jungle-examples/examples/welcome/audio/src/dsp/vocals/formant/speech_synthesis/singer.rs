@@ -404,7 +404,8 @@ fn apply_enhancements(
     apply_consonant_emphasis(&mut normalized, &segment_map, 1.18, 0.9);
 
     // Naturalness: add aspiration noise in unvoiced and transition regions.
-    apply_aspiration_noise(&mut normalized, &segment_map, 0.05);
+    // Moderate noise amount for balance between ZCR and spectral flatness
+    apply_aspiration_noise(&mut normalized, &segment_map, 0.07);
 
     // Naturalness + smoothness: soften hard boundaries between phonemes.
     smooth_boundaries(&mut normalized, &segment_map, sample_rate);
@@ -412,13 +413,15 @@ fn apply_enhancements(
     // Naturalness: gentle envelope to avoid hard note on/offs.
     apply_attack_release(&mut normalized, duration);
 
-    // Gentle saturation and low-pass for less metallic timbre.
-    soft_clip(&mut normalized, 1.4);
-    one_pole_low_pass(&mut normalized, 0.22);
+    // Gentle saturation for less metallic timbre
+    soft_clip(&mut normalized, 1.5);
 
-    // Spectral shaping: boost mid-HF to raise centroid, keep HF detail
-    let hf_alpha = 1.30;
-    let hf_mix = 0.20;
+    // Stronger low-pass to lower spectral centroid and roll-off toward target
+    one_pole_low_pass(&mut normalized, 0.28);
+
+    // Spectral shaping: reduce mid-HF boost to lower spectral centroid towards target
+    let hf_alpha = 0.9;
+    let hf_mix = 0.15;
     for i in 0..normalized.len() {
         let prev = if i > 0 { normalized[i - 1] } else { 0.0 };
         let next = if i + 1 < normalized.len() {
@@ -430,12 +433,12 @@ fn apply_enhancements(
         normalized[i] = normalized[i] * (1.0 - hf_mix) + high_freq * hf_alpha;
     }
 
-    // Reduce low-pass filtering to preserve high-frequency roll-off
-    let lp_alpha = 0.05;
+    // Moderate additional filtering to reduce roll-off while retaining some detail
+    let lp_alpha = 0.08;
     let mut lp_state = normalized[0];
     for sample in normalized.iter_mut() {
         lp_state += lp_alpha * (*sample - lp_state);
-        *sample = *sample * 0.95 + lp_state * 0.05;
+        *sample = *sample * 0.92 + lp_state * 0.08;
     }
 
     from_f32(&normalized, samples);

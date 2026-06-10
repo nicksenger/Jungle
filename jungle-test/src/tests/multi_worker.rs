@@ -214,7 +214,11 @@ type MultiWorkerConditionalSegment = Transparent<
 
 #[derive(Flow)]
 pub struct MultiWorkerJoinSegment(
-    Join<Step<MultiWorkerJoinLeftSpec>, Step<MultiWorkerJoinRightSpec>>,
+    jungle_zoo::ClonedJoin<
+        Either<(), ()>,
+        Step<MultiWorkerJoinLeftSpec>,
+        Step<MultiWorkerJoinRightSpec>,
+    >,
     Step<MultiWorkerJoinMergeSpec>,
 );
 

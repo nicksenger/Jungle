@@ -2391,7 +2391,7 @@ struct JoinFocusedLeftFlow(Step<JoinFocusedLeftSpec>);
 struct JoinFocusedRightFlow(Step<JoinFocusedRightSpec>);
 
 #[derive(Flow)]
-struct JoinFocusedTemplate(Join<JoinFocusedLeftFlow, JoinFocusedRightFlow>);
+struct JoinFocusedTemplate(jungle_zoo::ClonedJoin<i32, JoinFocusedLeftFlow, JoinFocusedRightFlow>);
 
 struct JoinFocusedAnimal;
 #[jungle::animal(id = 88, generation = 0)]
@@ -2454,7 +2454,7 @@ struct JoinFocusedConcurrentRightFlow(Step<JoinFocusedConcurrentRightSpec>);
 
 #[derive(Flow)]
 struct JoinFocusedConcurrentTemplate(
-    Join<JoinFocusedConcurrentLeftFlow, JoinFocusedConcurrentRightFlow>,
+    jungle_zoo::ClonedJoin<i32, JoinFocusedConcurrentLeftFlow, JoinFocusedConcurrentRightFlow>,
 );
 
 struct JoinFocusedConcurrentAnimal;
@@ -2566,11 +2566,39 @@ struct NestedJoinFocusedMiddleFlow(Step<NestedJoinFocusedMiddleSpec>);
 #[jungle(focus = NestedJoinFocusedRightState)]
 struct NestedJoinFocusedRightFlow(Step<NestedJoinFocusedRightSpec>);
 
+struct CloneNestedJoinFocusedInputSpec;
+#[jungle::action]
+impl Action for CloneNestedJoinFocusedInputSpec {
+    type Effect = NoEffect;
+    type Input = i32;
+    type Output = ((i32, i32), i32);
+    type Carry = ((i32, i32), i32);
+
+    fn emit(
+        _state: &NestedJoinFocusedHostState,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        ((), ((input, input), input))
+    }
+
+    fn absorb(
+        _state: &mut NestedJoinFocusedHostState,
+        output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("nested focused join input clone should succeed"))?;
+        Ok(carry)
+    }
+}
+
 #[derive(Flow)]
 struct NestedJoinFocusedPair(Join<NestedJoinFocusedLeftFlow, NestedJoinFocusedMiddleFlow>);
 
 #[derive(Flow)]
-struct NestedJoinFocusedTemplate(Join<NestedJoinFocusedPair, NestedJoinFocusedRightFlow>);
+struct NestedJoinFocusedTemplate(
+    Step<CloneNestedJoinFocusedInputSpec>,
+    Join<NestedJoinFocusedPair, NestedJoinFocusedRightFlow>,
+);
 
 struct NestedJoinFocusedAnimal;
 #[jungle::animal(id = 90, generation = 0)]
@@ -2895,13 +2923,13 @@ impl Action for MergeConditionalUnitSpec {
 
 #[derive(Flow)]
 struct LeftJoinBranch(
-    Join<Step<LeftJoinFirstSpec>, Step<LeftJoinSecondSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<LeftJoinFirstSpec>, Step<LeftJoinSecondSpec>>,
     Step<MergeJoinedUnitSpec>,
 );
 
 #[derive(Flow)]
 struct RightJoinBranch(
-    Join<Step<RightJoinFirstSpec>, Step<RightJoinSecondSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<RightJoinFirstSpec>, Step<RightJoinSecondSpec>>,
     Step<MergeJoinedUnitSpec>,
 );
 
@@ -3546,13 +3574,13 @@ impl Action for UniqueToCarrySpec {
 
 #[derive(Flow)]
 struct SharedJoinBranch(
-    Join<Step<JoinLeftSpec>, Step<JoinRightSpec>>,
+    jungle_zoo::ClonedJoin<i32, Step<JoinLeftSpec>, Step<JoinRightSpec>>,
     Step<JoinToCarrySpec>,
 );
 
 #[derive(Flow)]
 struct SharedSelectBranch(
-    Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
+    jungle_zoo::ClonedSelect<i32, Step<SelectFastSpec>, Step<SelectSlowSpec>>,
     Step<SelectToCarrySpec>,
 );
 
@@ -3692,6 +3720,22 @@ struct ComplexMixedZoo;
 impl Ecosystem for ComplexMixedZoo {
     const NAME: &'static str = "late-bound-complex-mixed-zoo";
     type Animals = ComplexMixedAnimals;
+}
+
+#[test]
+fn template_binding_long_shared_segment_completes_in_direct_executor() {
+    let mut executor = Executor::<ComplexAlphaAnimal>::new(ComplexAlphaState::default());
+    let emitted = futures::executor::block_on(executor.advance_to_end_with(5_i32))
+        .expect("direct executor should complete");
+    let final_emitted: i32 =
+        postcard::from_bytes(emitted.last().expect("flow should emit a final value"))
+            .expect("final emitted value should deserialize");
+
+    assert_eq!(final_emitted, 120);
+    assert_eq!(executor.state().loops, 2);
+    assert_eq!(executor.state().join_sum, 17);
+    assert_eq!(executor.state().select_winner, 20);
+    assert_eq!(executor.state().shared_work, 7);
 }
 
 #[tokio::test]

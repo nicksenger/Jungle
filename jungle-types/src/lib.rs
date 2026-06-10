@@ -2012,9 +2012,9 @@ where
 impl<L, R, M> Running for Select<L, R, M>
 where
     L: Running,
-    R: Running<In = L::In>,
+    R: Running,
 {
-    type In = L::In;
+    type In = (L::In, R::In);
     type Out = Either<L::Out, R::Out>;
 
     fn run(input: Self::In) -> Self::Out {
@@ -2118,13 +2118,13 @@ where
 impl<L, R, M> Running for Join<L, R, M>
 where
     L: Running,
-    R: Running<In = L::In>,
+    R: Running,
 {
-    type In = L::In;
+    type In = (L::In, R::In);
     type Out = (L::Out, R::Out);
 
-    fn run(input: Self::In) -> Self::Out {
-        let _ = input;
+    fn run((left, right): Self::In) -> Self::Out {
+        let _ = (left, right);
         panic!("Join::run is executed by dynamic flow runtime");
     }
 }

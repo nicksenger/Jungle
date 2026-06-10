@@ -10,11 +10,13 @@ mod tests {
             .expect("temporary udp socket should expose local address")
     }
 
+    mod action_name;
     mod adapt_helpers;
     mod aspect;
     mod conditional;
     mod connection;
     mod effect_attr;
+    mod empty_vec_regression;
     mod failure;
     mod generic_act;
     mod integration;

@@ -4,6 +4,7 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::FusedClient;
+use jungle_zoo::time::{Millis, SleepFor};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -602,52 +603,33 @@ where
     }
 }
 
-pub struct SleepMillis<St, const T: u64>(PhantomData<fn() -> St>);
-
-#[jungle::action]
-impl<St, const T: u64> Action for SleepMillis<St, T> {
-    type Effect = Sleep;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &St, _input: Self::Input) -> Duration {
-        Duration::from_millis(T)
-    }
-    fn absorb(
-        _state: &mut St,
-        _output: EffectCompletion<Self::Effect>,
-    ) -> Result<Self::Output, Failure> {
-        Ok(())
-    }
-}
-
 #[derive(Flow)]
 struct ReplayHeadLeftBranch<St: ReplayNodeState>(
     Step<Label<St, 'O'>>,
-    Step<SleepMillis<St, 100>>,
+    Step<SleepFor<St, Millis<100>>>,
     Step<Tick<St>>,
-    Step<SleepMillis<St, 100>>,
+    Step<SleepFor<St, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct ReplayHeadRightBranch<St: ReplayNodeState>(
     Step<Label<St, 'Q'>>,
-    Step<SleepMillis<St, 100>>,
+    Step<SleepFor<St, Millis<100>>>,
     Step<Tick<St>>,
-    Step<SleepMillis<St, 100>>,
+    Step<SleepFor<St, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct ReplayTailLeftBranch<St: ReplayNodeState>(
     Step<Label<St, 'A'>>,
-    Step<SleepMillis<St, 100>>,
+    Step<SleepFor<St, Millis<100>>>,
     Step<Tick<St>>,
 );
 
 #[derive(Flow)]
 struct ReplayTailRightBranch<St: ReplayNodeState>(
     Step<Label<St, 'B'>>,
-    Step<SleepMillis<St, 100>>,
+    Step<SleepFor<St, Millis<100>>>,
     Step<Tick<St>>,
 );
 
@@ -655,9 +637,9 @@ struct ReplayTailRightBranch<St: ReplayNodeState>(
 #[jungle(focus = DoubleFlowLeftInnerLeftState)]
 struct DoubleFlowLeftInnerLeftFlow(
     Step<Label<DoubleFlowLeftInnerLeftState, '2'>>,
-    Step<SleepMillis<DoubleFlowLeftInnerLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftInnerLeftState, Millis<100>>>,
     Step<Tick<DoubleFlowLeftInnerLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftInnerLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftInnerLeftState, Millis<100>>>,
     Step<Tick<DoubleFlowLeftInnerLeftState>>,
 );
 
@@ -665,23 +647,23 @@ struct DoubleFlowLeftInnerLeftFlow(
 #[jungle(focus = DoubleFlowLeftInnerRightState)]
 struct DoubleFlowLeftInnerRightFlow(
     Step<Label<DoubleFlowLeftInnerRightState, 'R'>>,
-    Step<SleepMillis<DoubleFlowLeftInnerRightState, 100>>,
+    Step<SleepFor<DoubleFlowLeftInnerRightState, Millis<100>>>,
     Step<Tick<DoubleFlowLeftInnerRightState>>,
-    Step<SleepMillis<DoubleFlowLeftInnerRightState, 100>>,
+    Step<SleepFor<DoubleFlowLeftInnerRightState, Millis<100>>>,
     Step<Tick<DoubleFlowLeftInnerRightState>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowLeftJoinedInnerBody(
-    Join<DoubleFlowLeftInnerLeftFlow, DoubleFlowLeftInnerRightFlow>,
+    jungle_zoo::ClonedJoinUnit<DoubleFlowLeftInnerLeftFlow, DoubleFlowLeftInnerRightFlow>,
     Step<MergeReplayJoin<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowLeftOuterBody(
     Step<Tick<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     Conditional<
         ReplayColorIsTrue,
         ReplayHeadLeftBranch<DoubleFlowLeftState>,
@@ -691,38 +673,38 @@ struct DoubleFlowLeftOuterBody(
     Step<SeedReplayBranches<DoubleFlowLeftState>>,
     While<ReplayColorIsTrue, DoubleFlowLeftJoinedInnerBody>,
     Step<Tick<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     Conditional<
         ReplayColorIsTrue,
         ReplayTailLeftBranch<DoubleFlowLeftState>,
         ReplayTailRightBranch<DoubleFlowLeftState>,
     >,
     Step<FlattenReplayChoice<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowLeftOuterLeft(
     Step<Label<DoubleFlowLeftState, 'T'>>,
     Step<Tick<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     Step<Label<DoubleFlowLeftState, 'L'>>,
     Step<Tick<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     DoubleFlowLeftOuterBody,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowLeftOuterRight(
     Step<Label<DoubleFlowLeftState, 'T'>>,
     Step<Tick<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     Step<Label<DoubleFlowLeftState, 'R'>>,
     Step<Tick<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     DoubleFlowLeftOuterBody,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
 );
 
 #[derive(Flow)]
@@ -732,7 +714,7 @@ struct DoubleFlowLeft(
     Step<Label<DoubleFlowLeftState, 'L'>>,
     Conditional<ReplayColorIsTrue, DoubleFlowLeftOuterLeft, DoubleFlowLeftOuterRight>,
     Step<FlattenReplayChoice<DoubleFlowLeftState>>,
-    Step<SleepMillis<DoubleFlowLeftState, 100>>,
+    Step<SleepFor<DoubleFlowLeftState, Millis<100>>>,
     Step<Tick<DoubleFlowLeftState>>,
 );
 
@@ -740,9 +722,9 @@ struct DoubleFlowLeft(
 #[jungle(focus = DoubleFlowRightInnerLeftState)]
 struct DoubleFlowRightInnerLeftFlow(
     Step<Label<DoubleFlowRightInnerLeftState, '2'>>,
-    Step<SleepMillis<DoubleFlowRightInnerLeftState, 100>>,
+    Step<SleepFor<DoubleFlowRightInnerLeftState, Millis<100>>>,
     Step<Tick<DoubleFlowRightInnerLeftState>>,
-    Step<SleepMillis<DoubleFlowRightInnerLeftState, 100>>,
+    Step<SleepFor<DoubleFlowRightInnerLeftState, Millis<100>>>,
     Step<Tick<DoubleFlowRightInnerLeftState>>,
 );
 
@@ -750,23 +732,23 @@ struct DoubleFlowRightInnerLeftFlow(
 #[jungle(focus = DoubleFlowRightInnerRightState)]
 struct DoubleFlowRightInnerRightFlow(
     Step<Label<DoubleFlowRightInnerRightState, 'R'>>,
-    Step<SleepMillis<DoubleFlowRightInnerRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightInnerRightState, Millis<100>>>,
     Step<Tick<DoubleFlowRightInnerRightState>>,
-    Step<SleepMillis<DoubleFlowRightInnerRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightInnerRightState, Millis<100>>>,
     Step<Tick<DoubleFlowRightInnerRightState>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowRightJoinedInnerBody(
-    Join<DoubleFlowRightInnerLeftFlow, DoubleFlowRightInnerRightFlow>,
+    jungle_zoo::ClonedJoinUnit<DoubleFlowRightInnerLeftFlow, DoubleFlowRightInnerRightFlow>,
     Step<MergeReplayJoin<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowRightOuterBody(
     Step<Tick<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     Conditional<
         ReplayColorIsTrue,
         ReplayHeadLeftBranch<DoubleFlowRightState>,
@@ -776,38 +758,38 @@ struct DoubleFlowRightOuterBody(
     Step<SeedReplayBranches<DoubleFlowRightState>>,
     While<ReplayColorIsTrue, DoubleFlowRightJoinedInnerBody>,
     Step<Tick<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     Conditional<
         ReplayColorIsTrue,
         ReplayTailLeftBranch<DoubleFlowRightState>,
         ReplayTailRightBranch<DoubleFlowRightState>,
     >,
     Step<FlattenReplayChoice<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowRightOuterLeft(
     Step<Label<DoubleFlowRightState, 'T'>>,
     Step<Tick<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     Step<Label<DoubleFlowRightState, 'L'>>,
     Step<Tick<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     DoubleFlowRightOuterBody,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
 );
 
 #[derive(Flow)]
 struct DoubleFlowRightOuterRight(
     Step<Label<DoubleFlowRightState, 'T'>>,
     Step<Tick<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     Step<Label<DoubleFlowRightState, 'R'>>,
     Step<Tick<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     DoubleFlowRightOuterBody,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
 );
 
 #[derive(Flow)]
@@ -817,15 +799,15 @@ struct DoubleFlowRight(
     Step<Label<DoubleFlowRightState, 'R'>>,
     Conditional<ReplayColorIsTrue, DoubleFlowRightOuterLeft, DoubleFlowRightOuterRight>,
     Step<FlattenReplayChoice<DoubleFlowRightState>>,
-    Step<SleepMillis<DoubleFlowRightState, 100>>,
+    Step<SleepFor<DoubleFlowRightState, Millis<100>>>,
     Step<Tick<DoubleFlowRightState>>,
 );
 
 #[derive(Flow)]
 struct QuadFlow(
-    Join<DoubleFlowLeft, DoubleFlowRight>,
+    jungle_zoo::ClonedJoinUnit<DoubleFlowLeft, DoubleFlowRight>,
     Step<MergeReplayJoin<ReplayState>>,
-    Step<SleepMillis<ReplayState, 100>>,
+    Step<SleepFor<ReplayState, Millis<100>>>,
     Step<Tick<ReplayState>>,
 );
 

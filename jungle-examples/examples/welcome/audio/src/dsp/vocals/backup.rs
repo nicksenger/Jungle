@@ -59,35 +59,39 @@ fn articulation_sample(base_hz: f32, t: f32) -> f32 {
     // Use base frequency to create stronger harmonics at target bands
     let f = base_hz.clamp(90.0, 880.0);
 
-    // Enhanced unison with wider detuning for better harmonic spread
-    let unison = sine(f * 0.993, t) * 0.35 + sine(f, t) * 0.3 + sine(f * 1.005, t) * 0.35;
+    // Enhanced unison with moderate detuning for harmonic richness
+    let unison = sine(f * 0.993, t) * 0.30 + sine(f, t) * 0.25 + sine(f * 1.005, t) * 0.30;
 
-    // Formant-like resonances for vocal character - adjusted for target bands
-    let formant_1 = sine(f * 1.5, t) * 0.12 + sine(f * 2.0, t) * 0.08;
-    let formant_2 = sine(f * 3.0, t) * 0.15 + sine(f * 3.5, t) * 0.10;
-    let formant_3 = sine(f * 4.0, t) * 0.08 + sine(f * 4.5, t) * 0.05;
+    // Strong formants to create vocal character with multiple resonant bands matching target
+    let formant_1 = sine(f * 1.5, t) * 0.20 + sine(f * 2.0, t) * 0.15;
+    let formant_2 = sine(f * 3.0, t) * 0.18 + sine(f * 3.5, t) * 0.12;
+    let formant_3 = sine(f * 4.0, t) * 0.12 + sine(f * 4.5, t) * 0.08;
+    let formant_4 = sine(f * 5.0, t) * 0.06 + sine(f * 5.5, t) * 0.04;
 
-    // Boosted mid harmonics to raise spectral centroid toward 1713 Hz target
-    let harmonic_2 = sine(f * 2.0, t) * 0.22;
-    let harmonic_3 = sine(f * 3.0, t) * 0.16;
-    let harmonic_4 = sine(f * 4.0, t) * 0.10;
-    let harmonic_5 = sine(f * 5.0, t) * 0.06;
-    let harmonic_6 = sine(f * 6.0, t) * 0.03;
-    let harmonic_7 = sine(f * 7.0, t) * 0.015;
-    let harmonic_8 = sine(f * 8.0, t) * 0.008;
-    let harmonic_9 = sine(f * 9.0, t) * 0.004;
-    let harmonic_10 = sine(f * 10.0, t) * 0.002;
+    // Rich harmonic series with gradual decay to match target spectral centroid and roll-off
+    let harmonic_2 = sine(f * 2.0, t) * 0.25;
+    let harmonic_3 = sine(f * 3.0, t) * 0.18;
+    let harmonic_4 = sine(f * 4.0, t) * 0.12;
+    let harmonic_5 = sine(f * 5.0, t) * 0.09;
+    let harmonic_6 = sine(f * 6.0, t) * 0.06;
+    let harmonic_7 = sine(f * 7.0, t) * 0.04;
+    let harmonic_8 = sine(f * 8.0, t) * 0.025;
+    let harmonic_9 = sine(f * 9.0, t) * 0.015;
+    let harmonic_10 = sine(f * 10.0, t) * 0.008;
+    let harmonic_11 = sine(f * 11.0, t) * 0.004;
+    let harmonic_12 = sine(f * 12.0, t) * 0.002;
 
-    // Reduced sub-harmonic to avoid lowering spectral centroid too much
-    let sub_harmonic = sine(f * 0.5, t) * 0.10;
+    // Sub-harmonic for low-end warmth but not too dominant
+    let sub_harmonic = sine(f * 0.5, t) * 0.08;
 
-    // Add noise for spectral flatness and texture
-    let noise = hash_noise(t * 4_500.0) * 0.04;
+    // Moderate noise for spectral flatness and texture matching target
+    let noise = hash_noise(t * 4_500.0) * 0.035;
 
     let total = unison
         + formant_1
         + formant_2
         + formant_3
+        + formant_4
         + harmonic_2
         + harmonic_3
         + harmonic_4
@@ -97,6 +101,8 @@ fn articulation_sample(base_hz: f32, t: f32) -> f32 {
         + harmonic_8
         + harmonic_9
         + harmonic_10
+        + harmonic_11
+        + harmonic_12
         + sub_harmonic
         + noise;
 

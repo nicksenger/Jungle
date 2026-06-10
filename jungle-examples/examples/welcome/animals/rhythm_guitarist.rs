@@ -1,7 +1,6 @@
 use jungle_sdk::prelude::*;
 
 use crate::action::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericRest};
-use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
 use super::{Double, RhythmGuitarist, RhythmGuitaristState};
@@ -33,14 +32,17 @@ pub struct SplitPluck<
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
 >(
-    Join<Step<Pick<NOTE_1, NOTE_TICK_1, 0>>, Step<Pick<NOTE_2, NOTE_TICK_2, 0>>>,
+    jungle_zoo::ClonedJoinUnit<
+        Step<Pick<NOTE_1, NOTE_TICK_1, 0>>,
+        Step<Pick<NOTE_2, NOTE_TICK_2, 0>>,
+    >,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );
 
 #[derive(Flow)]
 pub struct TriadHitPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32>(
-    Join<Step<Pick<NOTE_1, NOTE_TICK, 0>>, Step<Pick<NOTE_2, NOTE_TICK, 0>>>,
+    jungle_zoo::ClonedJoinUnit<Step<Pick<NOTE_1, NOTE_TICK, 0>>, Step<Pick<NOTE_2, NOTE_TICK, 0>>>,
     Step<MergeUnit>,
 );
 
@@ -52,7 +54,10 @@ pub struct TriadHit<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
 >(
-    Join<TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>, Step<Pick<NOTE_3, NOTE_TICK, 0>>>,
+    jungle_zoo::ClonedJoinUnit<
+        TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>,
+        Step<Pick<NOTE_3, NOTE_TICK, 0>>,
+    >,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );
@@ -66,7 +71,10 @@ pub struct QuadHit<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
 >(
-    Join<TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>, TriadHitPair<NOTE_3, NOTE_4, NOTE_TICK>>,
+    jungle_zoo::ClonedJoinUnit<
+        TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>,
+        TriadHitPair<NOTE_3, NOTE_4, NOTE_TICK>,
+    >,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );
@@ -1017,7 +1025,7 @@ pub struct RhythmPart28(
 );
 
 #[derive(Flow)]
-pub struct RhythmPart29Phrase(
+pub struct RhythmPart29PhraseA(
     Pluck<50, 57, 96, 96>,
     Pluck<50, 57, 96, 96>,
     Pluck<49, 56, 96, 96>,
@@ -1030,6 +1038,10 @@ pub struct RhythmPart29Phrase(
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<51, 58, 96, 96>,
+);
+
+#[derive(Flow)]
+pub struct RhythmPart29PhraseB(
     Pluck<51, 58, 96, 96>,
     Pluck<51, 58, 96, 96>,
     Pluck<51, 58, 96, 96>,
@@ -1043,6 +1055,9 @@ pub struct RhythmPart29Phrase(
     Pluck<48, 55, 96, 96>,
     TriadHit<47, 54, 54, 96, 96>,
 );
+
+#[derive(Flow)]
+pub struct RhythmPart29Phrase(RhythmPart29PhraseA, RhythmPart29PhraseB);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
@@ -1082,8 +1097,7 @@ pub struct RhythmPart30(
 pub struct RhythmPart31(RhythmPart29Phrase);
 
 #[derive(Flow)]
-#[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmPart32(
+pub struct RhythmPart32A(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1100,6 +1114,10 @@ pub struct RhythmPart32(
     Pluck<48, 55, 96, 96>,
     Pluck<48, 55, 96, 96>,
     TriadHit<47, 54, 54, 96, 96>,
+);
+
+#[derive(Flow)]
+pub struct RhythmPart32B(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1109,6 +1127,10 @@ pub struct RhythmPart32(
     Pluck<42, 49, 384, 384>,
     Pluck<44, 51, 384, 384>,
 );
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct RhythmPart32(RhythmPart32A, RhythmPart32B);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]

@@ -118,7 +118,7 @@ impl Action for CaptureSelectWinnerSpec {
 
 #[derive(Flow)]
 pub struct SelectFlowTemplate(
-    Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
+    jungle_zoo::ClonedSelectUnit<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
     Step<CaptureSelectWinnerSpec>,
 );
 
@@ -196,7 +196,7 @@ impl Action for CaptureJoinSumSpec {
 
 #[derive(Flow)]
 pub struct JoinFlowTemplate(
-    Join<Step<JoinFastSpec>, Step<JoinSlowSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<JoinFastSpec>, Step<JoinSlowSpec>>,
     Step<CaptureJoinSumSpec>,
 );
 
@@ -207,6 +207,116 @@ impl Animal for JoinAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Flow = JoinFlowTemplate;
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeftTupleJoinInput {
+    value: i32,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RightTupleJoinInput {
+    value: i32,
+}
+
+pub struct TupleJoinLeftSpec;
+#[jungle::action]
+impl Action for TupleJoinLeftSpec {
+    type Effect = TimedValueEffect;
+    type Input = LeftTupleJoinInput;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        (0, input.value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("tuple join left should succeed"))
+    }
+}
+
+pub struct TupleJoinRightSpec;
+#[jungle::action]
+impl Action for TupleJoinRightSpec {
+    type Effect = TimedValueEffect;
+    type Input = RightTupleJoinInput;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        (0, input.value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("tuple join right should succeed"))
+    }
+}
+
+#[derive(Flow)]
+pub struct TupleJoinFlowTemplate(Join<Step<TupleJoinLeftSpec>, Step<TupleJoinRightSpec>>);
+
+pub struct TupleJoinAnimal;
+
+#[jungle::animal(id = 9, generation = 0)]
+impl Animal for TupleJoinAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Flow = TupleJoinFlowTemplate;
+}
+
+pub struct TupleSelectLeftSpec;
+#[jungle::action]
+impl Action for TupleSelectLeftSpec {
+    type Effect = TimedValueEffect;
+    type Input = LeftTupleJoinInput;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        (0, input.value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("tuple select left should succeed"))
+    }
+}
+
+pub struct TupleSelectRightSpec;
+#[jungle::action]
+impl Action for TupleSelectRightSpec {
+    type Effect = TimedValueEffect;
+    type Input = RightTupleJoinInput;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        (25, input.value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("tuple select right should succeed"))
+    }
+}
+
+#[derive(Flow)]
+pub struct TupleSelectFlowTemplate(Select<Step<TupleSelectLeftSpec>, Step<TupleSelectRightSpec>>);
+
+pub struct TupleSelectAnimal;
+
+#[jungle::animal(id = 10, generation = 0)]
+impl Animal for TupleSelectAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Flow = TupleSelectFlowTemplate;
 }
 
 pub struct TimeoutSleepSpec;
@@ -258,7 +368,9 @@ impl Action for TimeoutSlowSpec {
 }
 
 #[derive(Flow)]
-pub struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>);
+pub struct TimeoutFlowTemplate(
+    jungle_zoo::ClonedSelectUnit<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>,
+);
 
 pub struct TimeoutAnimal;
 
@@ -369,7 +481,7 @@ pub struct SelectBranchSlowFlow(
 
 #[derive(Flow)]
 pub struct SelectComposableFlowTemplate(
-    Select<SelectBranchFastFlow, SelectBranchSlowFlow>,
+    jungle_zoo::ClonedSelectUnit<SelectBranchFastFlow, SelectBranchSlowFlow>,
     Step<CaptureSelectWinnerSpec>,
 );
 
@@ -482,7 +594,7 @@ pub struct JoinBranchRightFlow(
 
 #[derive(Flow)]
 pub struct JoinComposableFlowTemplate(
-    Join<JoinBranchLeftFlow, JoinBranchRightFlow>,
+    jungle_zoo::ClonedJoinUnit<JoinBranchLeftFlow, JoinBranchRightFlow>,
     Step<CaptureJoinSumSpec>,
 );
 
@@ -594,7 +706,11 @@ impl Action for JoinFromConditionalRightSpec {
 
 #[derive(Flow)]
 pub struct ConditionalBranchWithJoinFlow(
-    Join<Step<JoinFromConditionalLeftSpec>, Step<JoinFromConditionalRightSpec>>,
+    jungle_zoo::ClonedJoin<
+        Either<i32, i32>,
+        Step<JoinFromConditionalLeftSpec>,
+        Step<JoinFromConditionalRightSpec>,
+    >,
     Step<CaptureJoinSumSpec>,
 );
 
@@ -748,7 +864,7 @@ pub struct JoinStateDependentRightFlow(
 
 #[derive(Flow)]
 pub struct JoinStateDependentFlowTemplate(
-    Join<Step<JoinMutatesWinnerSpec>, JoinStateDependentRightFlow>,
+    jungle_zoo::ClonedJoinUnit<Step<JoinMutatesWinnerSpec>, JoinStateDependentRightFlow>,
     Step<CaptureJoinSumSpec>,
 );
 
@@ -902,13 +1018,13 @@ impl Action for LocalTailStubSpec {
 
 #[derive(Flow)]
 pub struct LocalConditionalLeftBranch(
-    Join<Step<LocalJoinLeftStubASpec>, Step<LocalJoinLeftStubBSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<LocalJoinLeftStubASpec>, Step<LocalJoinLeftStubBSpec>>,
     Step<FlattenJoinedUnitTupleSpec>,
 );
 
 #[derive(Flow)]
 pub struct LocalConditionalRightBranch(
-    Join<Step<LocalJoinRightStubASpec>, Step<LocalJoinRightStubBSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<LocalJoinRightStubASpec>, Step<LocalJoinRightStubBSpec>>,
     Step<FlattenJoinedUnitTupleSpec>,
 );
 
@@ -1075,13 +1191,13 @@ impl Action for NestedJoinTailCaptureSpec {
 
 #[derive(Flow)]
 pub struct NestedJoinInnerFlow(
-    Join<Step<NestedJoinInnerLeftSpec>, Step<NestedJoinInnerRightSpec>>,
+    jungle_zoo::ClonedJoinUnit<Step<NestedJoinInnerLeftSpec>, Step<NestedJoinInnerRightSpec>>,
     Step<NestedJoinInnerMergeSpec>,
 );
 
 #[derive(Flow)]
 pub struct NestedJoinWithInnerNoEffectFlow(
-    Join<NestedJoinInnerFlow, Step<NestedJoinOuterRightSpec>>,
+    jungle_zoo::ClonedJoinUnit<NestedJoinInnerFlow, Step<NestedJoinOuterRightSpec>>,
     Step<NestedJoinOuterMergeSpec>,
     Step<NestedJoinTailCaptureSpec>,
 );
@@ -1138,6 +1254,71 @@ async fn join_waits_for_both_and_returns_tuple_outputs() {
         .await
         .expect("join executor should complete");
     assert_eq!(executor.state().joined_sum, 3);
+}
+
+#[tokio::test]
+async fn join_routes_each_tuple_input_to_its_branch_without_clone() {
+    let mut executor = Executor::<TupleJoinAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let request = executor
+        .next_executable_request((
+            LeftTupleJoinInput { value: 4 },
+            RightTupleJoinInput { value: 7 },
+        ))
+        .expect("tuple join executor should produce an executable request");
+    let completion = request.run().await.expect("tuple join request should run");
+    let first_emitted = executor
+        .complete_serialized(completion)
+        .expect("tuple join completion should apply");
+    let first_emitted: i32 =
+        postcard::from_bytes(&first_emitted).expect("left tuple join output should deserialize");
+    assert_eq!(first_emitted, 4);
+
+    let request = executor
+        .next_executable_request(())
+        .expect("tuple join executor should produce the right branch request");
+    let completion = request
+        .run()
+        .await
+        .expect("right tuple join request should run");
+    let final_emitted = executor
+        .complete_serialized(completion)
+        .expect("right tuple join completion should finish the join");
+    let final_emitted: (i32, i32) =
+        postcard::from_bytes(&final_emitted).expect("tuple join output should deserialize");
+    assert_eq!(final_emitted, (4, 7));
+}
+
+#[tokio::test]
+async fn select_routes_each_tuple_input_to_its_branch_without_clone() {
+    let mut executor = Executor::<TupleSelectAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let request = executor
+        .next_executable_request((
+            LeftTupleJoinInput { value: 4 },
+            RightTupleJoinInput { value: 7 },
+        ))
+        .expect("tuple select executor should produce an executable request");
+    let completion = request
+        .run()
+        .await
+        .expect("tuple select request should run");
+    let emitted = executor
+        .complete_serialized(completion)
+        .expect("tuple select completion should apply");
+    let emitted: Either<i32, i32> =
+        postcard::from_bytes(&emitted).expect("tuple select output should deserialize");
+    assert_eq!(emitted, Either::Left(4));
 }
 
 #[tokio::test]

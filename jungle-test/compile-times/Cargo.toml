@@ -13,6 +13,7 @@ xlarge = ["large"]
 
 [dependencies]
 jungle-sdk = { path = "../../jungle-sdk" }
+jungle-zoo = { path = "../../jungle-zoo" }
 serde = { version = "1", features = ["derive"] }
 
 [workspace]
