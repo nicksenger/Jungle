@@ -5525,6 +5525,182 @@ mod tests {
     }
 
     #[test]
+    fn attempt_failure_stays_visible_when_sleep_is_inferred_running() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "WithErr" },
+            JourneyAst::Step { label: "InitIter" },
+            JourneyAst::While {
+                label: "Loop",
+                metadata: "",
+                body: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Join {
+                        label: "Join",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Sequence(vec![
+                            JourneyAst::Step { label: "CloneOver" },
+                            JourneyAst::Attempt {
+                                label: "Attempt",
+                                metadata: "",
+                                body: Box::new(JourneyAst::Sequence(vec![
+                                    JourneyAst::Step {
+                                        label: "AnnounceFailure",
+                                    },
+                                    JourneyAst::Step { label: "Fail" },
+                                ])),
+                            },
+                        ])),
+                        right: Box::new(JourneyAst::Step { label: "Passthrough" }),
+                    },
+                    JourneyAst::Step { label: "IncIter" },
+                    JourneyAst::Step { label: "SleepMult" },
+                ])),
+            },
+        ]));
+
+        let loop_index = cluster_index_for_kind(&model, ClusterKind::While);
+        let attempt_index = cluster_index_for_kind(&model, ClusterKind::Attempt);
+        let loop_runtime_id = model.cluster_info[loop_index].runtime_node_id;
+        let attempt_runtime_id = model.cluster_info[attempt_index].runtime_node_id;
+        let with_err_runtime_id = runtime_id_for(&model, "WithErr");
+        let init_iter_runtime_id = runtime_id_for(&model, "InitIter");
+        let clone_over_runtime_id = runtime_id_for(&model, "CloneOver");
+        let passthrough_runtime_id = runtime_id_for(&model, "Passthrough");
+        let announce_failure_runtime_id = runtime_id_for(&model, "AnnounceFailure");
+        let fail_runtime_id = runtime_id_for(&model, "Fail");
+        let inc_iter_runtime_id = runtime_id_for(&model, "IncIter");
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: with_err_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: init_iter_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                4,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: attempt_runtime_id,
+                    activation_path: vec![0, 0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                5,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: clone_over_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                6,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: announce_failure_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                7,
+                RunnerUpdateOut::EffectFailureOutput {
+                    node_id: fail_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                8,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: attempt_runtime_id,
+                    activation_path: vec![0, 0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                9,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: passthrough_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                10,
+                RunnerUpdateOut::EffectInput {
+                    node_id: inc_iter_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                11,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: inc_iter_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                12,
+                RunnerUpdateOut::SleepScheduled {
+                    uuid: Uuid::nil(),
+                    timer_id: Uuid::new_v4(),
+                    wake_at_unix_ms: 1_000,
+                },
+            ),
+        ] {
+            let _ = live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: sequence_id as i64,
+                event,
+            });
+        }
+
+        let snapshot = DagSnapshot::new(&model, Some(&live));
+        let state_for = |label: &str| {
+            let id = node_by_label(&model, label).id;
+            snapshot
+                .node_states
+                .get(&id)
+                .copied()
+                .unwrap_or(RuntimeState::Pending)
+        };
+        assert_eq!(state_for("WithErr"), RuntimeState::Completed);
+        assert_eq!(state_for("InitIter"), RuntimeState::Completed);
+        assert_eq!(state_for("CloneOver"), RuntimeState::Completed);
+        assert_eq!(state_for("Passthrough"), RuntimeState::Completed);
+        assert_eq!(state_for("AnnounceFailure"), RuntimeState::Completed);
+        assert_eq!(state_for("Fail"), RuntimeState::Failed);
+        assert_eq!(state_for("IncIter"), RuntimeState::Completed);
+        assert_eq!(state_for("SleepMult"), RuntimeState::Running);
+
+        let attempt_phase = snapshot.cluster_phase(attempt_index);
+        assert!(matches!(
+            attempt_phase,
+            Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: true,
+                has_completed: true,
+            })
+        ));
+    }
+
+    #[test]
     fn graph_model_does_not_register_join_or_select_for_descendant_clearing() {
         let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
             JourneyAst::Join {

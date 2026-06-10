@@ -1673,10 +1673,18 @@ fn repaired_live_states_for_display(
         }
     }
 
-    if !states
+    let has_running_state = states
         .values()
-        .any(|state| matches!(state, RuntimeState::Running | RuntimeState::Failed))
-    {
+        .any(|state| matches!(state, RuntimeState::Running));
+    let all_failed_states_are_attempt_scoped = states
+        .iter()
+        .filter(|(_, state)| matches!(state, RuntimeState::Failed))
+        .all(|(node_id, _)| {
+            dag.derived
+                .nearest_attempt_boundary_cluster_index_by_display_id
+                .contains_key(node_id)
+        });
+    if !has_running_state && all_failed_states_are_attempt_scoped {
         let ready_pending_nodes = dag
             .nodes
             .iter()
@@ -1725,10 +1733,32 @@ fn runtime_sequence_floors_for_display(dag: &Dag, live: &LiveDagState) -> HashMa
             continue;
         }
 
-        let iteration_start_sequence = std::iter::once(cluster.runtime_node_id)
-            .chain(dag.derived.cluster_entry_runtime_ids[index].iter().copied())
-            .filter_map(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied())
-            .max();
+        let cluster_sequence = live
+            .runtime_update_sequence
+            .get(&cluster.runtime_node_id)
+            .copied();
+        let entry_sequences = dag.derived.cluster_entry_runtime_ids[index]
+            .iter()
+            .filter_map(|runtime_id| live.runtime_update_sequence.get(runtime_id).copied())
+            .collect::<Vec<_>>();
+        let entry_sequence_floor = if let Some(cluster_sequence) = cluster_sequence {
+            entry_sequences
+                .iter()
+                .copied()
+                .filter(|sequence| *sequence >= cluster_sequence)
+                .min()
+                .or_else(|| entry_sequences.iter().copied().min())
+        } else {
+            entry_sequences.iter().copied().min()
+        };
+        let iteration_start_sequence = match (cluster_sequence, entry_sequence_floor) {
+            (Some(cluster_sequence), Some(entry_sequence_floor)) => {
+                Some(cluster_sequence.max(entry_sequence_floor))
+            }
+            (Some(cluster_sequence), None) => Some(cluster_sequence),
+            (None, Some(entry_sequence_floor)) => Some(entry_sequence_floor),
+            (None, None) => None,
+        };
         let Some(iteration_start_sequence) = iteration_start_sequence else {
             continue;
         };
