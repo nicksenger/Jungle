@@ -2523,6 +2523,7 @@ where
                     Err(err) => return Err((state, err)),
                 };
                 self.complete = true;
+                self.lifecycle.succeed();
                 self.pending_input = Some(emitted);
                 return Err((state, ExecutorError::Complete));
             }
@@ -2564,6 +2565,7 @@ where
                                 Err(err) => return Err((next_state, err)),
                             };
                             self.complete = true;
+                            self.lifecycle.succeed();
                             self.pending_input = Some(emitted);
                             return Err((next_state, ExecutorError::Complete));
                         }
@@ -2586,6 +2588,7 @@ where
                     Err(err) => return Err((next_state, err)),
                 };
                 self.complete = true;
+                self.lifecycle.succeed();
                 self.pending_input = Some(emitted);
                 Err((next_state, ExecutorError::Complete))
             }
@@ -2692,6 +2695,7 @@ where
                     Err(err) => return Err((state, err)),
                 };
                 self.complete = true;
+                self.lifecycle.succeed();
                 self.pending_input = Some(emitted);
                 return Err((state, ExecutorError::Complete));
             }
@@ -2733,6 +2737,7 @@ where
                                 Err(err) => return Err((next_state, err)),
                             };
                             self.complete = true;
+                            self.lifecycle.succeed();
                             self.pending_input = Some(emitted);
                             return Err((next_state, ExecutorError::Complete));
                         }
@@ -2755,6 +2760,7 @@ where
                     Err(err) => return Err((next_state, err)),
                 };
                 self.complete = true;
+                self.lifecycle.succeed();
                 self.pending_input = Some(emitted);
                 Err((next_state, ExecutorError::Complete))
             }
@@ -4647,8 +4653,8 @@ where
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
-        self.body_node_id_start = *next_id;
         *next_id = next_id.saturating_add(1);
+        self.body_node_id_start = *next_id;
         let mut template = (self.build_body)();
         for node in &mut template {
             node.assign_node_ids(next_id);
@@ -6178,8 +6184,8 @@ where
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
-        self.body_node_id_start = *next_id;
         *next_id = next_id.saturating_add(1);
+        self.body_node_id_start = *next_id;
         let mut template = (self.build_body)();
         for node in &mut template {
             node.assign_node_ids(next_id);

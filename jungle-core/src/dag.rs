@@ -1673,6 +1673,61 @@ fn repaired_live_states_for_display(
         }
     }
 
+    // Attempt bodies can swallow child failures and still complete the attempt runtime.
+    // If a member node is still marked running after its attempt boundary completed,
+    // treat that stale running state as a failed leaf. Use an unfloored fallback to avoid
+    // dropping this signal when loop floor repair has already advanced.
+    let no_runtime_floors: HashMap<u32, usize> = HashMap::new();
+    for node in &dag.nodes {
+        let raw_state_with_floors = node_phase_for_display_with_runtime_floors(
+            live,
+            dag,
+            node.id,
+            node.runtime_node_id,
+            runtime_sequence_floors,
+            runtime_activation_prefixes,
+        );
+        let raw_state_without_floors = node_phase_for_display_with_runtime_floors(
+            live,
+            dag,
+            node.id,
+            node.runtime_node_id,
+            &no_runtime_floors,
+            runtime_activation_prefixes,
+        );
+        if !matches!(raw_state_with_floors, RuntimeState::Running)
+            && !matches!(raw_state_without_floors, RuntimeState::Running)
+        {
+            continue;
+        }
+        let Some(boundary_index) = dag
+            .derived
+            .nearest_attempt_boundary_cluster_index_by_display_id
+            .get(&node.id)
+            .copied()
+        else {
+            continue;
+        };
+        let attempt_runtime_id = dag.cluster_info[boundary_index].runtime_node_id;
+        let attempt_state_with_floors = runtime_state_for_live_data_with_activation_prefixes(
+            live,
+            attempt_runtime_id,
+            runtime_sequence_floors,
+            runtime_activation_prefixes,
+        );
+        let attempt_state_without_floors = runtime_state_for_live_data_with_activation_prefixes(
+            live,
+            attempt_runtime_id,
+            &no_runtime_floors,
+            runtime_activation_prefixes,
+        );
+        if matches!(attempt_state_with_floors, RuntimeState::Completed)
+            || matches!(attempt_state_without_floors, RuntimeState::Completed)
+        {
+            states.insert(node.id, RuntimeState::Failed);
+        }
+    }
+
     let has_running_state = states
         .values()
         .any(|state| matches!(state, RuntimeState::Running));

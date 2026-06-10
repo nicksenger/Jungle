@@ -5549,7 +5549,9 @@ mod tests {
                                 ])),
                             },
                         ])),
-                        right: Box::new(JourneyAst::Step { label: "Passthrough" }),
+                        right: Box::new(JourneyAst::Step {
+                            label: "Passthrough",
+                        }),
                     },
                     JourneyAst::Step { label: "IncIter" },
                     JourneyAst::Step { label: "SleepMult" },
@@ -5688,6 +5690,89 @@ mod tests {
         assert_eq!(state_for("Fail"), RuntimeState::Failed);
         assert_eq!(state_for("IncIter"), RuntimeState::Completed);
         assert_eq!(state_for("SleepMult"), RuntimeState::Running);
+
+        let attempt_phase = snapshot.cluster_phase(attempt_index);
+        assert!(matches!(
+            attempt_phase,
+            Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: true,
+                has_completed: true,
+            })
+        ));
+    }
+
+    #[test]
+    fn attempt_member_running_after_attempt_completion_is_treated_as_failed() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Attempt {
+                label: "Attempt",
+                metadata: "",
+                body: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "Announce" },
+                    JourneyAst::Step { label: "Fail" },
+                ])),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+
+        let attempt_index = cluster_index_for_kind(&model, ClusterKind::Attempt);
+        let attempt_runtime_id = model.cluster_info[attempt_index].runtime_node_id;
+        let announce_runtime_id = runtime_id_for(&model, "Announce");
+        let fail_runtime_id = runtime_id_for(&model, "Fail");
+        let tail_runtime_id = runtime_id_for(&model, "Tail");
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, node_id, activation_path, phase) in [
+            (1, attempt_runtime_id, vec![0], NodeLifecyclePhase::Entered),
+            (
+                2,
+                announce_runtime_id,
+                vec![0, 0],
+                NodeLifecyclePhase::Entered,
+            ),
+            (
+                3,
+                announce_runtime_id,
+                vec![0, 0],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            // Fail entered, but no terminal lifecycle update was emitted before attempt completed.
+            (4, fail_runtime_id, vec![0, 1], NodeLifecyclePhase::Entered),
+            (
+                5,
+                attempt_runtime_id,
+                vec![0],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (6, tail_runtime_id, vec![1], NodeLifecyclePhase::Entered),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id,
+                    activation_path,
+                    phase,
+                    uuid: Uuid::nil(),
+                }),
+            }));
+        }
+
+        let snapshot = DagSnapshot::new(&model, Some(&live));
+        let state_for = |label: &str| {
+            let id = node_by_label(&model, label).id;
+            snapshot
+                .node_states
+                .get(&id)
+                .copied()
+                .unwrap_or(RuntimeState::Pending)
+        };
+
+        assert_eq!(state_for("Announce"), RuntimeState::Completed);
+        assert_eq!(state_for("Fail"), RuntimeState::Failed);
+        assert_eq!(state_for("Tail"), RuntimeState::Running);
 
         let attempt_phase = snapshot.cluster_phase(attempt_index);
         assert!(matches!(
