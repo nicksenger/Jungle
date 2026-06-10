@@ -23,3 +23,4 @@ impl<J> Effect<J> for NoEffect {
         async move { Ok(()) }
     }
 }
+

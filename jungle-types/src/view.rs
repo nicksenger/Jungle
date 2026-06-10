@@ -298,3 +298,4 @@ where
         JourneyAst::sequence(<T as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()))
     }
 }
+
