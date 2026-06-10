@@ -1728,6 +1728,71 @@ fn repaired_live_states_for_display(
         }
     }
 
+    // Some attempt bodies can get stranded after partial progress (e.g. a child succeeds,
+    // then a loop re-enters and descendant lifecycle caches are cleared before the terminal
+    // attempt member update arrives). When attempt members have historical activity, no member
+    // is currently running, and either downstream successors are active or the attempt sequence
+    // is stale relative to loop floors, treat unseen pending tail members as failed.
+    for (attempt_index, attempt_cluster) in dag.cluster_info.iter().enumerate() {
+        if !matches!(attempt_cluster.kind, ClusterKind::Attempt) {
+            continue;
+        }
+        let mut has_running_member = false;
+        for node_id in &attempt_cluster.nodes {
+            match states.get(node_id).copied().unwrap_or(RuntimeState::Pending) {
+                RuntimeState::Running => has_running_member = true,
+                RuntimeState::Pending | RuntimeState::Failed | RuntimeState::Completed => {}
+            }
+        }
+        if has_running_member {
+            continue;
+        }
+
+        let has_member_history = attempt_cluster.nodes.iter().any(|display_id| {
+            dag.node_map
+                .get(display_id)
+                .and_then(|node| node.runtime_node_id)
+                .is_some_and(|runtime_id| live.runtime_update_sequence.contains_key(&runtime_id))
+        });
+        if !has_member_history {
+            continue;
+        }
+
+        let successors_observed = dag.derived.cluster_successor_runtime_ids[attempt_index]
+            .iter()
+            .copied()
+            .any(|runtime_id| {
+                runtime_observed_in_current_iteration(
+                    live,
+                    runtime_id,
+                    runtime_sequence_floors,
+                    runtime_activation_prefixes,
+                )
+            });
+        let attempt_sequence_is_stale = live
+            .runtime_update_sequence
+            .get(&attempt_cluster.runtime_node_id)
+            .zip(runtime_sequence_floors.get(&attempt_cluster.runtime_node_id))
+            .is_some_and(|(sequence, floor)| sequence < floor);
+        if !successors_observed && !attempt_sequence_is_stale {
+            continue;
+        }
+
+        for node_id in &attempt_cluster.nodes {
+            if !matches!(states.get(node_id), Some(RuntimeState::Pending)) {
+                continue;
+            }
+            let runtime_seen = dag
+                .node_map
+                .get(node_id)
+                .and_then(|node| node.runtime_node_id)
+                .is_some_and(|runtime_id| live.runtime_update_sequence.contains_key(&runtime_id));
+            if !runtime_seen {
+                states.insert(*node_id, RuntimeState::Failed);
+            }
+        }
+    }
+
     let has_running_state = states
         .values()
         .any(|state| matches!(state, RuntimeState::Running));
