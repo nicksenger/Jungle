@@ -709,4 +709,3 @@ where
         <Tail as CollectAnimalJourneyEffects>::Out
     );
 }
-

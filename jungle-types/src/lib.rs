@@ -2265,4 +2265,3 @@ pub trait Perturb: Animal {
     /// Apply a stimulus to the current state.
     fn perturb(state: &mut Self::State, stimulus: Self::Stimulus);
 }
-

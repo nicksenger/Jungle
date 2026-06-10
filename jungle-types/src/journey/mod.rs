@@ -4,4 +4,3 @@ use crate::JourneyEffects;
 pub trait Journey: JourneyEffects {}
 
 impl<T> Journey for T where T: JourneyEffects {}
-

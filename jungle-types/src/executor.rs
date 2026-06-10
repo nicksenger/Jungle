@@ -7301,4 +7301,3 @@ where
         self.manual.into_state()
     }
 }
-

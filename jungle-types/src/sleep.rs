@@ -69,4 +69,3 @@ where
         output.map_err(|err| Failure::Message(err.message))
     }
 }
-

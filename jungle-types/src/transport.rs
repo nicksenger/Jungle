@@ -246,4 +246,3 @@ pub enum WireOut {
     PendingStep(Work),
     Ack,
 }
-
