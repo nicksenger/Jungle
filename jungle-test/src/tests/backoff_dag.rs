@@ -111,6 +111,17 @@ async fn backoff_snapshot_marks_sleep_running_and_fail_failed() {
         1,
         "backoff DAG should contain exactly one IncIter node, found: {inc_iter_labels:?}"
     );
+    let init_iter_labels = dag
+        .nodes
+        .iter()
+        .map(|node| node.label.as_str())
+        .filter(|label| *label == "InitLoopIter")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        init_iter_labels.len(),
+        1,
+        "backoff DAG should contain exactly one InitLoopIter node, found: {init_iter_labels:?}"
+    );
     let inc_iter_runtime_id = dag
         .nodes
         .iter()

@@ -4,7 +4,7 @@ use jungle_sdk::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 
 pub struct InitIter<St, In>(PhantomData<St>, PhantomData<In>);
-#[jungle::action(carry = In)]
+#[jungle::action(carry = In, name = "InitLoopIter")]
 impl<St, In> Action for InitIter<St, In>
 where
     In: Serialize + DeserializeOwned + Send + 'static,
