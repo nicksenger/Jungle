@@ -1673,10 +1673,142 @@ fn repaired_live_states_for_display(
         }
     }
 
-    if !states
+    // Attempt bodies can swallow child failures and still complete the attempt runtime.
+    // If a member node is still marked running after its attempt boundary completed,
+    // treat that stale running state as a failed leaf. Use an unfloored fallback to avoid
+    // dropping this signal when loop floor repair has already advanced.
+    let no_runtime_floors: HashMap<u32, usize> = HashMap::new();
+    for node in &dag.nodes {
+        let raw_state_with_floors = node_phase_for_display_with_runtime_floors(
+            live,
+            dag,
+            node.id,
+            node.runtime_node_id,
+            runtime_sequence_floors,
+            runtime_activation_prefixes,
+        );
+        let raw_state_without_floors = node_phase_for_display_with_runtime_floors(
+            live,
+            dag,
+            node.id,
+            node.runtime_node_id,
+            &no_runtime_floors,
+            runtime_activation_prefixes,
+        );
+        if !matches!(raw_state_with_floors, RuntimeState::Running)
+            && !matches!(raw_state_without_floors, RuntimeState::Running)
+        {
+            continue;
+        }
+        let Some(boundary_index) = dag
+            .derived
+            .nearest_attempt_boundary_cluster_index_by_display_id
+            .get(&node.id)
+            .copied()
+        else {
+            continue;
+        };
+        let attempt_runtime_id = dag.cluster_info[boundary_index].runtime_node_id;
+        let attempt_state_with_floors = runtime_state_for_live_data_with_activation_prefixes(
+            live,
+            attempt_runtime_id,
+            runtime_sequence_floors,
+            runtime_activation_prefixes,
+        );
+        let attempt_state_without_floors = runtime_state_for_live_data_with_activation_prefixes(
+            live,
+            attempt_runtime_id,
+            &no_runtime_floors,
+            runtime_activation_prefixes,
+        );
+        if matches!(attempt_state_with_floors, RuntimeState::Completed)
+            || matches!(attempt_state_without_floors, RuntimeState::Completed)
+        {
+            states.insert(node.id, RuntimeState::Failed);
+        }
+    }
+
+    // Some attempt bodies can get stranded after partial progress (e.g. a child succeeds,
+    // then a loop re-enters and descendant lifecycle caches are cleared before the terminal
+    // attempt member update arrives). When attempt members have historical activity, no member
+    // is currently running, and either downstream successors are active or the attempt sequence
+    // is stale relative to loop floors, treat unseen pending tail members as failed.
+    for (attempt_index, attempt_cluster) in dag.cluster_info.iter().enumerate() {
+        if !matches!(attempt_cluster.kind, ClusterKind::Attempt) {
+            continue;
+        }
+        let mut has_running_member = false;
+        for node_id in &attempt_cluster.nodes {
+            match states
+                .get(node_id)
+                .copied()
+                .unwrap_or(RuntimeState::Pending)
+            {
+                RuntimeState::Running => has_running_member = true,
+                RuntimeState::Pending | RuntimeState::Failed | RuntimeState::Completed => {}
+            }
+        }
+        if has_running_member {
+            continue;
+        }
+
+        let has_member_history = attempt_cluster.nodes.iter().any(|display_id| {
+            dag.node_map
+                .get(display_id)
+                .and_then(|node| node.runtime_node_id)
+                .is_some_and(|runtime_id| live.runtime_update_sequence.contains_key(&runtime_id))
+        });
+        if !has_member_history {
+            continue;
+        }
+
+        let successors_observed = dag.derived.cluster_successor_runtime_ids[attempt_index]
+            .iter()
+            .copied()
+            .any(|runtime_id| {
+                runtime_observed_in_current_iteration(
+                    live,
+                    runtime_id,
+                    runtime_sequence_floors,
+                    runtime_activation_prefixes,
+                )
+            });
+        let attempt_sequence_is_stale = live
+            .runtime_update_sequence
+            .get(&attempt_cluster.runtime_node_id)
+            .zip(runtime_sequence_floors.get(&attempt_cluster.runtime_node_id))
+            .is_some_and(|(sequence, floor)| sequence < floor);
+        if !successors_observed && !attempt_sequence_is_stale {
+            continue;
+        }
+
+        for node_id in &attempt_cluster.nodes {
+            if !matches!(states.get(node_id), Some(RuntimeState::Pending)) {
+                continue;
+            }
+            let runtime_seen = dag
+                .node_map
+                .get(node_id)
+                .and_then(|node| node.runtime_node_id)
+                .is_some_and(|runtime_id| live.runtime_update_sequence.contains_key(&runtime_id));
+            if !runtime_seen {
+                states.insert(*node_id, RuntimeState::Failed);
+            }
+        }
+    }
+
+    let has_running_state = states
         .values()
-        .any(|state| matches!(state, RuntimeState::Running | RuntimeState::Failed))
-    {
+        .any(|state| matches!(state, RuntimeState::Running));
+    let all_failed_states_are_attempt_scoped = states
+        .iter()
+        .filter(|(_, state)| matches!(state, RuntimeState::Failed))
+        .all(|(node_id, _)| {
+            dag.derived
+                .nearest_attempt_boundary_cluster_index_by_display_id
+                .contains_key(node_id)
+        });
+    if !has_running_state && all_failed_states_are_attempt_scoped {
         let ready_pending_nodes = dag
             .nodes
             .iter()
@@ -1725,10 +1857,32 @@ fn runtime_sequence_floors_for_display(dag: &Dag, live: &LiveDagState) -> HashMa
             continue;
         }
 
-        let iteration_start_sequence = std::iter::once(cluster.runtime_node_id)
-            .chain(dag.derived.cluster_entry_runtime_ids[index].iter().copied())
-            .filter_map(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied())
-            .max();
+        let cluster_sequence = live
+            .runtime_update_sequence
+            .get(&cluster.runtime_node_id)
+            .copied();
+        let entry_sequences = dag.derived.cluster_entry_runtime_ids[index]
+            .iter()
+            .filter_map(|runtime_id| live.runtime_update_sequence.get(runtime_id).copied())
+            .collect::<Vec<_>>();
+        let entry_sequence_floor = if let Some(cluster_sequence) = cluster_sequence {
+            entry_sequences
+                .iter()
+                .copied()
+                .filter(|sequence| *sequence >= cluster_sequence)
+                .min()
+                .or_else(|| entry_sequences.iter().copied().min())
+        } else {
+            entry_sequences.iter().copied().min()
+        };
+        let iteration_start_sequence = match (cluster_sequence, entry_sequence_floor) {
+            (Some(cluster_sequence), Some(entry_sequence_floor)) => {
+                Some(cluster_sequence.max(entry_sequence_floor))
+            }
+            (Some(cluster_sequence), None) => Some(cluster_sequence),
+            (None, Some(entry_sequence_floor)) => Some(entry_sequence_floor),
+            (None, None) => None,
+        };
         let Some(iteration_start_sequence) = iteration_start_sequence else {
             continue;
         };

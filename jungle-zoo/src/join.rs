@@ -37,6 +37,7 @@ where
     In: Clone + DeserializeOwned + Send + Serialize + 'static,
 {
     const NAME: &'static str = "CloneJoinInput";
+    const JOIN_FOCUS_PRELUDE: bool = true;
     type Effect = NoEffect;
     type Aspect = Identity;
     type Input = In;

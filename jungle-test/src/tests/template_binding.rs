@@ -2608,6 +2608,100 @@ impl Animal for NestedJoinFocusedAnimal {
     type Flow = NestedJoinFocusedTemplate;
 }
 
+struct NestedClonedFocusedLeftSpec;
+#[jungle::action]
+impl Action for NestedClonedFocusedLeftSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &NestedJoinFocusedLeftState, _input: Self::Input) -> Duration {
+        Duration::from_millis(5)
+    }
+
+    fn absorb(
+        state: &mut NestedJoinFocusedLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("nested cloned focused left sleep should succeed"))?;
+        state.value += 1;
+        Ok(state.value)
+    }
+}
+
+struct NestedClonedFocusedMiddleSpec;
+#[jungle::action]
+impl Action for NestedClonedFocusedMiddleSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &NestedJoinFocusedMiddleState, _input: Self::Input) -> Duration {
+        Duration::from_millis(5)
+    }
+
+    fn absorb(
+        state: &mut NestedJoinFocusedMiddleState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output
+            .map_err(|_err| Failure::from("nested cloned focused middle sleep should succeed"))?;
+        state.value += 10;
+        Ok(state.value)
+    }
+}
+
+struct NestedClonedFocusedRightSpec;
+#[jungle::action]
+impl Action for NestedClonedFocusedRightSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &NestedJoinFocusedRightState, _input: Self::Input) -> Duration {
+        Duration::from_millis(5)
+    }
+
+    fn absorb(
+        state: &mut NestedJoinFocusedRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("nested cloned focused right sleep should succeed"))?;
+        state.value += 100;
+        Ok(state.value)
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = NestedJoinFocusedLeftState)]
+struct NestedClonedFocusedLeftFlow(Step<NestedClonedFocusedLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = NestedJoinFocusedMiddleState)]
+struct NestedClonedFocusedMiddleFlow(Step<NestedClonedFocusedMiddleSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = NestedJoinFocusedRightState)]
+struct NestedClonedFocusedRightFlow(Step<NestedClonedFocusedRightSpec>);
+
+#[derive(Flow)]
+struct NestedClonedFocusedPair(
+    jungle_zoo::ClonedJoinUnit<NestedClonedFocusedLeftFlow, NestedClonedFocusedMiddleFlow>,
+);
+
+#[derive(Flow)]
+struct NestedClonedFocusedTemplate(
+    jungle_zoo::ClonedJoinUnit<NestedClonedFocusedPair, NestedClonedFocusedRightFlow>,
+);
+
+struct NestedClonedFocusedAnimal;
+#[jungle::animal(id = 91, generation = 0)]
+impl Animal for NestedClonedFocusedAnimal {
+    type State = NestedJoinFocusedHostState;
+    type Seed = ();
+    type Flow = NestedClonedFocusedTemplate;
+}
+
 #[test]
 fn template_binding_join_merges_distinct_focused_branch_states() {
     let mut executor = Executor::<JoinFocusedAnimal>::new(JoinFocusedHostState {
@@ -2762,6 +2856,64 @@ async fn template_binding_nested_focused_join_subflows_complete_after_parallel_d
             left: NestedJoinFocusedLeftState { value: 4 },
             middle: NestedJoinFocusedMiddleState { value: 32 },
             right: NestedJoinFocusedRightState { value: 303 },
+            marker: 99,
+        }
+    );
+}
+
+#[tokio::test]
+async fn template_binding_nested_cloned_focused_join_subflows_dispatch_all_parallel_requests() {
+    let mut executor = Executor::<NestedClonedFocusedAnimal>::new(NestedJoinFocusedHostState {
+        left: NestedJoinFocusedLeftState { value: 1 },
+        middle: NestedJoinFocusedMiddleState { value: 2 },
+        right: NestedJoinFocusedRightState { value: 3 },
+        marker: 99,
+    });
+
+    let first_request = executor
+        .next_executable_request(())
+        .expect("nested cloned focused join should produce first branch request");
+    let second_request = executor
+        .next_executable_request(())
+        .expect("nested cloned focused join should produce second branch request");
+    let third_request = executor
+        .next_executable_request(())
+        .expect("nested cloned focused join should keep sibling branch concurrent");
+    assert!(matches!(
+        executor.next_executable_request(()),
+        Err(ExecutorError::AwaitingCompletion)
+    ));
+
+    let (first_completion, second_completion, third_completion) =
+        tokio::time::timeout(Duration::from_secs(2), async move {
+            tokio::join!(
+                first_request.run(),
+                second_request.run(),
+                third_request.run()
+            )
+        })
+        .await
+        .expect("nested cloned focused branch effects should run without stalling");
+
+    let _ = executor
+        .complete_serialized(first_completion.expect("first branch effect should run"))
+        .expect("first nested cloned completion should apply");
+    let _ = executor
+        .complete_serialized(second_completion.expect("second branch effect should run"))
+        .expect("second nested cloned completion should apply");
+    let final_emitted = executor
+        .complete_serialized(third_completion.expect("third branch effect should run"))
+        .expect("third nested cloned completion should finish the join");
+    let final_emitted: ((i32, i32), i32) = postcard::from_bytes(&final_emitted)
+        .expect("nested cloned focused join final output should deserialize");
+
+    assert_eq!(final_emitted, ((2, 12), 103));
+    assert_eq!(
+        executor.state(),
+        &NestedJoinFocusedHostState {
+            left: NestedJoinFocusedLeftState { value: 2 },
+            middle: NestedJoinFocusedMiddleState { value: 12 },
+            right: NestedJoinFocusedRightState { value: 103 },
             marker: 99,
         }
     );

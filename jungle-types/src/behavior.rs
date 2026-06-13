@@ -112,6 +112,12 @@ impl<State> StateCarrier<State> for Identity {
 /// of animal state.
 pub trait BoundAction<T: Animal> {
     const NAME: &'static str;
+    /// Marks actions that are safe as focused-join preludes when nested join focus
+    /// markers are computed for larger flows.
+    ///
+    /// This should only be `true` for actions that do not mutate state and only
+    /// adapt branch input (for example, cloning unit input into a join tuple).
+    const JOIN_FOCUS_PRELUDE: bool = false;
     type Effect: EffectSchema;
     type Aspect: Aspect<T::State>;
     type Input;
@@ -187,6 +193,8 @@ where
     InnerAct: BoundAction<ScopedAnimal<A, ScopeState>>,
 {
     const NAME: &'static str = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::NAME;
+    const JOIN_FOCUS_PRELUDE: bool =
+        <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::JOIN_FOCUS_PRELUDE;
     type Effect = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Effect;
     type Aspect = ComposeCarrier<
         ScopeCarrier,
