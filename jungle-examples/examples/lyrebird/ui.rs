@@ -27,8 +27,8 @@ const HEADER_LABEL_TEXT_SIZE: f32 = 13.0;
 const HEADER_LABEL_VERTICAL_PADDING: u16 = 4;
 const HEADER_LABEL_HORIZONTAL_PADDING: u16 = 8;
 const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
-const SPECTROGRAM_HOVER_HUE_SHIFT_DEGREES: i32 = 14;
-const SPECTROGRAM_PRESSED_HUE_SHIFT_DEGREES: i32 = 28;
+const SPECTROGRAM_HOVER_HUE_SHIFT_DEGREES: i32 = 10;
+const SPECTROGRAM_PRESSED_HUE_SHIFT_DEGREES: i32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct ImageDumpConfig {
@@ -864,11 +864,11 @@ fn load_spectrogram_handles(path: &Path) -> Option<SpectrogramPreviewHandles> {
         idle: hue_rotated_handle(&decoded, SPECTROGRAM_HUE_ROTATION_DEGREES),
         hovered: hue_rotated_handle(
             &decoded,
-            SPECTROGRAM_HUE_ROTATION_DEGREES + SPECTROGRAM_HOVER_HUE_SHIFT_DEGREES,
+            SPECTROGRAM_HUE_ROTATION_DEGREES - SPECTROGRAM_HOVER_HUE_SHIFT_DEGREES,
         ),
         pressed: hue_rotated_handle(
             &decoded,
-            SPECTROGRAM_HUE_ROTATION_DEGREES + SPECTROGRAM_PRESSED_HUE_SHIFT_DEGREES,
+            SPECTROGRAM_HUE_ROTATION_DEGREES - SPECTROGRAM_PRESSED_HUE_SHIFT_DEGREES,
         ),
     })
 }
