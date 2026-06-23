@@ -5,7 +5,8 @@ use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
     aggregate_sample_score, DspCode, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
     LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag,
-    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodePurgatory, LYREBIRD_DURATION_SECS,
+    LyrebirdPatch, LyrebirdPreparedCandidate, PromptModality, PulseCodePurgatory,
+    LYREBIRD_DURATION_SECS,
 };
 use futures::future::join_all;
 use image::ImageReader;
@@ -121,17 +122,30 @@ pub struct BuildOptimizationPromptInput {
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
     pub system_prompt_override: Option<String>,
+    pub prompt_modality: PromptModality,
 }
 
-pub struct BuildOptimizationPrompt;
+pub struct BuildOptimizationPromptVision;
 #[effect(id = 12)]
-impl<J> Effect<J> for BuildOptimizationPrompt {
+impl<J> Effect<J> for BuildOptimizationPromptVision {
     type In = BuildOptimizationPromptInput;
     type Out = Prompt;
     type Err = String;
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { build_optimization_prompt(input) }
+        async move { build_optimization_prompt_vision(input) }
+    }
+}
+
+pub struct BuildOptimizationPromptTextOnly;
+#[effect(id = 21)]
+impl<J> Effect<J> for BuildOptimizationPromptTextOnly {
+    type In = BuildOptimizationPromptInput;
+    type Out = Prompt;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { build_optimization_prompt_text_only(input) }
     }
 }
 
@@ -1261,19 +1275,48 @@ fn summarize_retry_reasons(retry_reasons: &[String]) -> Option<String> {
     Some(truncate_retry_reason(&unique_reasons.join("\n\n")))
 }
 
-fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prompt, String> {
+fn build_optimization_prompt_vision(input: BuildOptimizationPromptInput) -> Result<Prompt, String> {
+    ensure_prompt_modality(&input, PromptModality::Vision)?;
+    build_optimization_prompt(input, true)
+}
+
+fn build_optimization_prompt_text_only(
+    input: BuildOptimizationPromptInput,
+) -> Result<Prompt, String> {
+    ensure_prompt_modality(&input, PromptModality::TextOnly)?;
+    build_optimization_prompt(input, false)
+}
+
+fn ensure_prompt_modality(
+    input: &BuildOptimizationPromptInput,
+    expected_modality: PromptModality,
+) -> Result<(), String> {
+    if input.prompt_modality != expected_modality {
+        return Err(format!(
+            "prompt modality mismatch: expected {:?}, got {:?}",
+            expected_modality, input.prompt_modality
+        ));
+    }
+    Ok(())
+}
+
+fn build_optimization_prompt(
+    input: BuildOptimizationPromptInput,
+    include_spectrogram_images: bool,
+) -> Result<Prompt, String> {
     let selected_code = input
         .code_branch
         .last()
         .cloned()
         .ok_or_else(|| "lyrebird prompt requires a selected code branch".to_owned())?;
-    if selected_code.mel_spectrogram_path.as_os_str().is_empty() {
+    if include_spectrogram_images && selected_code.mel_spectrogram_path.as_os_str().is_empty() {
         return Err("selected lyrebird branch is missing a spectrogram path".to_owned());
     }
 
     info!(
         iteration_id = %input.iteration_id,
         instrument = input.instrument.slug(),
+        prompt_modality = ?input.prompt_modality,
         prompt_attempt = input.prompt_attempt.saturating_add(1),
         selected_depth = input.code_branch.len().saturating_sub(1),
         selected_score = selected_code.score().unwrap_or_default(),
@@ -1299,11 +1342,16 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
         target_score_specs,
         input.instrument.tool_name()
     );
-    if let Some(retry_reason) = input.retry_reason {
+    if let Some(retry_reason) = input.retry_reason.as_deref() {
         system_text.push_str(
             "\n\nPrevious attempt failed compilation and the original DSP source was restored.\nFailure details:\n",
         );
-        system_text.push_str(&retry_reason);
+        system_text.push_str(retry_reason);
+    }
+    if !include_spectrogram_images {
+        system_text.push_str(
+            "\n\nText-only mode is enabled: no spectrogram images are attached. Use metric deltas, patch history, and sample analysis to choose a directional patch.",
+        );
     }
     contents.push(crate::tokens::Content::Text(system_text));
 
@@ -1344,21 +1392,44 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
         "Current sample analysis:\n{}",
         format_code_analysis("Current sample", &selected_code.code)
     )));
+    if !include_spectrogram_images {
+        contents.push(crate::tokens::Content::Text(format!(
+            "Target/current metric deltas:\n{}",
+            format_metric_deltas(input.target_audio_metrics, selected_code.code.audio_metrics)
+        )));
+    }
 
     contents.push(crate::tokens::Content::Text(format!(
         "Current code:\n```rust\n{}\n```",
         selected_code.code.source
     )));
-    contents.push(crate::tokens::Content::Text(
-        "Current mel spectrogram:".to_owned(),
-    ));
-    contents.push(crate::tokens::Content::Image(
-        selected_code.mel_spectrogram_path.clone(),
-    ));
+    if include_spectrogram_images {
+        contents.push(crate::tokens::Content::Text(
+            "Current mel spectrogram:".to_owned(),
+        ));
+        contents.push(crate::tokens::Content::Image(
+            selected_code.mel_spectrogram_path.clone(),
+        ));
+    }
     contents.push(crate::tokens::Content::Text(format!(
         "Return exactly one `{}` tool call.",
         input.instrument.tool_name(),
     )));
+
+    let user_contents = if include_spectrogram_images {
+        vec![
+            crate::tokens::Content::Text(format!(
+                "This {} still sounds way different from the target! Produce the next patch to close the gap. Here's the mel spectrogram of the target for reference:",
+                input.instrument.display_name()
+            )),
+            crate::tokens::Content::Image(input.target_spectrogram_path.clone()),
+        ]
+    } else {
+        vec![crate::tokens::Content::Text(format!(
+            "This {} still sounds way different from the target! Produce the next patch to close the gap using the metric analysis and delta block. No spectrogram images are attached in this mode.",
+            input.instrument.display_name()
+        ))]
+    };
 
     Ok(Prompt {
         messages: vec![
@@ -1368,13 +1439,7 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
             },
             crate::tokens::Message {
                 role: "user".to_owned(),
-                contents: vec![
-                    crate::tokens::Content::Text(format!(
-                        "This {} still sounds way different from the target! Produce the next patch to close the gap. Here's the mel spectrogram of the target for reference:",
-                        input.instrument.display_name()
-                    )),
-                    crate::tokens::Content::Image(input.target_spectrogram_path.clone()),
-                ],
+                contents: user_contents,
             },
         ],
         // Keep tool definitions out of the prompt payload because `Tool.parameters`
@@ -1611,6 +1676,84 @@ fn format_target_audio_metrics(metrics: LyrebirdAudioMetrics) -> String {
     .join("\n")
 }
 
+fn format_metric_deltas(
+    target: LyrebirdAudioMetrics,
+    current: Option<LyrebirdAudioMetrics>,
+) -> String {
+    [
+        format_metric_delta(
+            "zero-crossing rate",
+            target.zero_crossing_rate,
+            current.map(|value| value.zero_crossing_rate),
+            None,
+        ),
+        format_metric_delta(
+            "crest factor",
+            target.crest_factor,
+            current.map(|value| value.crest_factor),
+            None,
+        ),
+        format_metric_delta(
+            "spectral centroid",
+            target.spectral_centroid,
+            current.map(|value| value.spectral_centroid),
+            Some("Hz"),
+        ),
+        format_metric_delta(
+            "spectral flatness",
+            target.spectral_flatness,
+            current.map(|value| value.spectral_flatness),
+            None,
+        ),
+        format_metric_delta(
+            "spectral roll-off",
+            target.spectral_rolloff,
+            current.map(|value| value.spectral_rolloff),
+            Some("Hz"),
+        ),
+    ]
+    .join("\n")
+}
+
+fn format_metric_delta(
+    name: &str,
+    target: f32,
+    current: Option<f32>,
+    unit: Option<&str>,
+) -> String {
+    let target_text = format_metric_value(target, unit);
+    let Some(current) = current else {
+        return format!(
+            "{name}: target {target_text}, current n/a, signed relative delta n/a (no current metric available)"
+        );
+    };
+    let signed_relative_delta = normalized_signed_relative_delta(target, current);
+    let direction = if signed_relative_delta > 0.0 {
+        "current above target"
+    } else if signed_relative_delta < 0.0 {
+        "current below target"
+    } else {
+        "on target"
+    };
+    format!(
+        "{name}: target {target_text}, current {}, signed relative delta {} ({direction})",
+        format_metric_value(current, unit),
+        format_signed_scalar(signed_relative_delta),
+    )
+}
+
+fn format_metric_value(value: f32, unit: Option<&str>) -> String {
+    match unit {
+        Some(unit) => format!("{} {unit}", format_scalar(value)),
+        None => format_scalar(value),
+    }
+}
+
+fn normalized_signed_relative_delta(target: f32, current: f32) -> f32 {
+    let scale = target.abs().max(current.abs()).max(1e-6);
+    (current - target) / scale
+}
+
 fn format_code_analysis(label: &str, code: &DspCode) -> String {
     let mut lines = vec![
         format!("{label} score: {}", format_optional_scalar(code.score())),
@@ -1693,6 +1836,10 @@ fn format_optional_scalar(value: Option<f32>) -> String {
 
 fn format_scalar(value: f32) -> String {
     format!("{value:.6}")
+}
+
+fn format_signed_scalar(value: f32) -> String {
+    format!("{value:+.6}")
 }
 
 async fn check_sampler_compilation() -> Result<(), String> {
@@ -2015,7 +2162,7 @@ mod tests {
 
     #[test]
     fn optimization_prompt_keeps_inline_tools_empty_for_postcard_transport() {
-        let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+        let prompt = build_optimization_prompt_vision(BuildOptimizationPromptInput {
             iteration_id: "00000001".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".into(),
@@ -2032,6 +2179,7 @@ mod tests {
             prompt_attempt: 0,
             retry_reason: None,
             system_prompt_override: None,
+            prompt_modality: PromptModality::Vision,
         })
         .unwrap();
 
@@ -2047,7 +2195,7 @@ mod tests {
 
     #[test]
     fn optimization_prompt_uses_patch_history_and_leaf_mel_only() {
-        let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+        let prompt = build_optimization_prompt_vision(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".into(),
@@ -2081,6 +2229,7 @@ mod tests {
             prompt_attempt: 1,
             retry_reason: None,
             system_prompt_override: None,
+            prompt_modality: PromptModality::Vision,
         })
         .unwrap();
 
@@ -2143,8 +2292,73 @@ mod tests {
     }
 
     #[test]
+    fn text_only_prompt_omits_images_and_includes_metric_deltas() {
+        let prompt = build_optimization_prompt_text_only(BuildOptimizationPromptInput {
+            iteration_id: "00000002".to_owned(),
+            instrument: LyrebirdInstrument::Bass,
+            target_spectrogram_path: PathBuf::new(),
+            target_audio_metrics: target_metrics(),
+            code_branch: vec![score_code(
+                "initial",
+                "fn bass() { baseline(); }",
+                "/tmp/initial.wav",
+                "",
+                0.25,
+                0.30,
+            )
+            .into()],
+            prompt_attempt: 1,
+            retry_reason: None,
+            system_prompt_override: None,
+            prompt_modality: PromptModality::TextOnly,
+        })
+        .unwrap();
+
+        assert!(prompt.messages.iter().all(|message| message
+            .contents
+            .iter()
+            .all(|content| !matches!(content, crate::tokens::Content::Image(_)))));
+        assert!(prompt.messages[0].contents.iter().any(|content| matches!(
+            content,
+            crate::tokens::Content::Text(text)
+                if text.contains("Target/current metric deltas:")
+                    && text.contains("signed relative delta")
+        )));
+        assert!(prompt.messages[1].contents.iter().any(|content| matches!(
+            content,
+            crate::tokens::Content::Text(text)
+                if text.contains("No spectrogram images are attached in this mode.")
+        )));
+    }
+
+    #[test]
+    fn text_only_prompt_allows_missing_selected_spectrogram_path() {
+        let result = build_optimization_prompt_text_only(BuildOptimizationPromptInput {
+            iteration_id: "00000001".to_owned(),
+            instrument: LyrebirdInstrument::Bass,
+            target_spectrogram_path: PathBuf::new(),
+            target_audio_metrics: target_metrics(),
+            code_branch: vec![score_code(
+                "initial",
+                "fn bass() {}",
+                "/tmp/bass.wav",
+                "",
+                0.5,
+                0.55,
+            )
+            .into()],
+            prompt_attempt: 0,
+            retry_reason: None,
+            system_prompt_override: None,
+            prompt_modality: PromptModality::TextOnly,
+        });
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn optimization_prompt_rejects_non_initial_nodes_without_patch_metadata() {
-        let err = build_optimization_prompt(BuildOptimizationPromptInput {
+        let err = build_optimization_prompt_vision(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".into(),
@@ -2172,6 +2386,7 @@ mod tests {
             prompt_attempt: 1,
             retry_reason: None,
             system_prompt_override: None,
+            prompt_modality: PromptModality::Vision,
         })
         .unwrap_err();
 
@@ -2180,7 +2395,7 @@ mod tests {
 
     #[test]
     fn optimization_prompt_uses_system_prompt_override_when_present() {
-        let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+        let prompt = build_optimization_prompt_vision(BuildOptimizationPromptInput {
             iteration_id: "00000001".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".into(),
@@ -2197,6 +2412,7 @@ mod tests {
             prompt_attempt: 0,
             retry_reason: None,
             system_prompt_override: Some("You are a mastering engineer.".to_owned()),
+            prompt_modality: PromptModality::Vision,
         })
         .unwrap();
 
