@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{Client, JungleClient};
+use jungle_sdk::Client;
 use jungle_zoo::agent::{Agent, AgentInput, AgentModelConfig, AgentSettings, AgentState, Tool};
 use jungle_zoo::predicate::Always;
 use serde::{Deserialize, Serialize};
@@ -363,6 +363,158 @@ pub struct CircadianFlow(
     While<Always<CircadianState, ()>, CircadianBody>,
 );
 
+#[cfg(feature = "viewer")]
+mod vision_ui {
+    use super::{Circadian, Rooster};
+    use iced::widget::{column, container, row, text};
+    use iced::{Element, Font, Length, Subscription, Task};
+    use uuid::Uuid;
+
+    const WINDOW_WIDTH: f32 = 1600.0;
+    const WINDOW_HEIGHT: f32 = 920.0;
+
+    #[derive(Debug, Clone, Copy)]
+    enum Panel {
+        Rooster,
+        Circadian,
+    }
+
+    #[derive(Debug, Clone)]
+    enum Message {
+        Viewer(Panel, jungle_vision::EjectedViewerMessage),
+    }
+
+    struct RoosterVisionUi {
+        rooster_journey_id: Uuid,
+        circadian_journey_id: Uuid,
+        rooster_viewer:
+            jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
+        circadian_viewer:
+            jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
+    }
+
+    impl RoosterVisionUi {
+        fn new<C>(
+            client: C,
+            rooster_journey_id: Uuid,
+            circadian_journey_id: Uuid,
+        ) -> (Self, Task<Message>)
+        where
+            C: jungle_sdk::JungleClient + Clone + 'static,
+        {
+            let rooster_viewer = jungle_vision::JungleViewerBuilder::new()
+                .title("Rooster Agent Flow")
+                .eject_live_animal::<Rooster, _>(client.clone(), rooster_journey_id);
+            let circadian_viewer = jungle_vision::JungleViewerBuilder::new()
+                .title("Circadian Flow")
+                .eject_live_animal::<Circadian, _>(client, circadian_journey_id);
+            (
+                Self {
+                    rooster_journey_id,
+                    circadian_journey_id,
+                    rooster_viewer,
+                    circadian_viewer,
+                },
+                Task::none(),
+            )
+        }
+
+        fn update(&mut self, message: Message) -> Task<Message> {
+            match message {
+                Message::Viewer(panel, event) => match panel {
+                    Panel::Rooster => self
+                        .rooster_viewer
+                        .update(event)
+                        .map(|next| Message::Viewer(Panel::Rooster, next)),
+                    Panel::Circadian => self
+                        .circadian_viewer
+                        .update(event)
+                        .map(|next| Message::Viewer(Panel::Circadian, next)),
+                },
+            }
+        }
+
+        fn subscription(&self) -> Subscription<Message> {
+            Subscription::batch([
+                self.rooster_viewer
+                    .subscription()
+                    .map(|event| Message::Viewer(Panel::Rooster, event)),
+                self.circadian_viewer
+                    .subscription()
+                    .map(|event| Message::Viewer(Panel::Circadian, event)),
+            ])
+        }
+
+        fn view(&self) -> Element<'_, Message> {
+            row![
+                self.panel(
+                    "Rooster",
+                    self.rooster_journey_id,
+                    self.rooster_viewer.view().map(|event| Message::Viewer(Panel::Rooster, event)),
+                ),
+                self.panel(
+                    "Circadian",
+                    self.circadian_journey_id,
+                    self.circadian_viewer
+                        .view()
+                        .map(|event| Message::Viewer(Panel::Circadian, event)),
+                ),
+            ]
+            .spacing(12)
+            .padding(12)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+        }
+
+        fn panel<'a>(
+            &'a self,
+            title: &'a str,
+            journey_id: Uuid,
+            viewer: Element<'a, Message>,
+        ) -> Element<'a, Message> {
+            let journey = journey_id.to_string();
+            container(
+                column![
+                    text(title).size(24),
+                    text(format!("Journey {}", &journey[..8])).size(14),
+                    container(viewer)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .padding(8),
+                ]
+                .spacing(8),
+            )
+            .width(Length::FillPortion(1))
+            .height(Length::Fill)
+            .padding(8)
+            .into()
+        }
+    }
+
+    pub fn run_ui<C>(
+        client: C,
+        rooster_journey_id: Uuid,
+        circadian_journey_id: Uuid,
+    ) -> Result<(), iced::Error>
+    where
+        C: jungle_sdk::JungleClient + Clone + 'static,
+    {
+        let title = "Rooster Vision";
+        iced::application(
+            move || RoosterVisionUi::new(client.clone(), rooster_journey_id, circadian_journey_id),
+            RoosterVisionUi::update,
+            RoosterVisionUi::view,
+        )
+        .title(move |_app: &RoosterVisionUi| title.to_string())
+        .subscription(RoosterVisionUi::subscription)
+        .window_size((WINDOW_WIDTH, WINDOW_HEIGHT))
+        .default_font(Font::with_name("Iosevka"))
+        .antialiasing(true)
+        .run()
+    }
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
@@ -439,10 +591,23 @@ async fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("spawned rooster journey: {rooster_journey_id}");
     println!("spawned circadian journey: {circadian_journey_id}");
-    println!("press ctrl-c to stop this worker");
 
-    tokio::signal::ctrl_c().await?;
-    info!("received ctrl-c; shutting down rooster worker");
+    #[cfg(feature = "viewer")]
+    {
+        println!("launching rooster vision UI (close the window to stop)");
+        tokio::task::block_in_place(|| {
+            vision_ui::run_ui(client.clone(), rooster_journey_id, circadian_journey_id)
+        })?;
+        info!("rooster vision closed; shutting down worker");
+    }
+
+    #[cfg(not(feature = "viewer"))]
+    {
+        println!("press ctrl-c to stop this worker");
+        tokio::signal::ctrl_c().await?;
+        info!("received ctrl-c; shutting down rooster worker");
+    }
+
     worker_handle.abort();
     let _ = worker_handle.await;
     Ok(())
