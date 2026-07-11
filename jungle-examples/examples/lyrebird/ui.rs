@@ -1,8 +1,8 @@
 use crate::{Lyrebird, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdState};
-use iced::widget::{button, column, container, image as iced_image, row, stack, text};
+use iced::widget::{column, container, image as iced_image, mouse_area, row, stack, text};
 use iced::window;
 use iced::{
-    alignment, clipboard, window::Screenshot, ContentFit, Element, Font, Length, Subscription, Task,
+    ContentFit, Element, Font, Length, Subscription, Task, alignment, clipboard, window::Screenshot,
 };
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
@@ -27,6 +27,8 @@ const HEADER_LABEL_TEXT_SIZE: f32 = 13.0;
 const HEADER_LABEL_VERTICAL_PADDING: u16 = 4;
 const HEADER_LABEL_HORIZONTAL_PADDING: u16 = 8;
 const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
+const SPECTROGRAM_HOVER_HUE_SHIFT_DEGREES: i32 = 10;
+const SPECTROGRAM_PRESSED_HUE_SHIFT_DEGREES: i32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct ImageDumpConfig {
@@ -73,7 +75,7 @@ where
     .run()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum SnapshotKind {
     Initial,
     Current,
@@ -81,12 +83,51 @@ enum SnapshotKind {
     Target,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct SpectrogramTileId {
+    instrument: LyrebirdInstrument,
+    kind: SnapshotKind,
+}
+
+impl SpectrogramTileId {
+    fn new(instrument: LyrebirdInstrument, kind: SnapshotKind) -> Self {
+        Self { instrument, kind }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpectrogramInteractionState {
+    Idle,
+    Hovered,
+    Pressed,
+}
+
+#[derive(Debug, Clone)]
+struct SpectrogramPreviewHandles {
+    idle: iced_image::Handle,
+    hovered: iced_image::Handle,
+    pressed: iced_image::Handle,
+}
+
+impl SpectrogramPreviewHandles {
+    fn for_state(&self, state: SpectrogramInteractionState) -> iced_image::Handle {
+        match state {
+            SpectrogramInteractionState::Idle => self.idle.clone(),
+            SpectrogramInteractionState::Hovered => self.hovered.clone(),
+            SpectrogramInteractionState::Pressed => self.pressed.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     AppStarted,
     Viewer(jungle_vision::EjectedViewerMessage),
     SnapshotLoaded(Result<Option<LyrebirdState>, String>),
-    ActivateSpectrogram(LyrebirdInstrument, SnapshotKind),
+    ActivateSpectrogramWithInteraction(SpectrogramTileId),
+    SpectrogramHoverEntered(SpectrogramTileId),
+    SpectrogramHoverExited(SpectrogramTileId),
+    SpectrogramInteractionReleased(SpectrogramTileId),
     CaptureView,
     ViewCaptured(Screenshot),
     ViewSaved(Result<PathBuf, String>),
@@ -97,7 +138,9 @@ struct LyrebirdUi {
     journey_id: Uuid,
     viewer: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     snapshot: Option<LyrebirdState>,
-    spectrogram_handles: BTreeMap<PathBuf, iced_image::Handle>,
+    spectrogram_handles: BTreeMap<PathBuf, SpectrogramPreviewHandles>,
+    hovered_spectrogram: Option<SpectrogramTileId>,
+    pressed_spectrogram: Option<SpectrogramTileId>,
     snapshot_error: Option<String>,
     audio: AudioPlayer,
     image_dump: Option<ImageDumpConfig>,
@@ -133,6 +176,8 @@ impl LyrebirdUi {
                 viewer,
                 snapshot: None,
                 spectrogram_handles: BTreeMap::new(),
+                hovered_spectrogram: None,
+                pressed_spectrogram: None,
                 snapshot_error: None,
                 audio: AudioPlayer::new(),
                 image_dump,
@@ -174,6 +219,8 @@ impl LyrebirdUi {
                     .as_ref()
                     .map(build_spectrogram_handles)
                     .unwrap_or_default();
+                self.hovered_spectrogram = None;
+                self.pressed_spectrogram = None;
                 self.snapshot = snapshot;
                 self.snapshot_error = None;
                 Task::none()
@@ -182,21 +229,28 @@ impl LyrebirdUi {
                 self.snapshot_error = Some(err);
                 Task::none()
             }
-            Message::ActivateSpectrogram(instrument, kind) => {
-                let Some(snapshot) = self.snapshot.as_ref() else {
-                    return Task::none();
-                };
-                let instrument_state = snapshot.instrument_state(instrument);
-                let (audio_path, source) = spectrogram_action_payload(instrument_state, kind);
-
-                self.snapshot_error = None;
-                if let Some(path) = audio_path.as_deref() {
-                    if let Err(err) = self.audio.play(path) {
-                        self.snapshot_error = Some(err);
-                    }
+            Message::ActivateSpectrogramWithInteraction(tile) => {
+                self.pressed_spectrogram = Some(tile);
+                self.activate_spectrogram(tile.instrument, tile.kind)
+            }
+            Message::SpectrogramHoverEntered(tile) => {
+                self.hovered_spectrogram = Some(tile);
+                Task::none()
+            }
+            Message::SpectrogramHoverExited(tile) => {
+                if self.hovered_spectrogram == Some(tile) {
+                    self.hovered_spectrogram = None;
                 }
-
-                source.map_or_else(Task::none, clipboard::write)
+                if self.pressed_spectrogram == Some(tile) {
+                    self.pressed_spectrogram = None;
+                }
+                Task::none()
+            }
+            Message::SpectrogramInteractionReleased(tile) => {
+                if self.pressed_spectrogram == Some(tile) {
+                    self.pressed_spectrogram = None;
+                }
+                Task::none()
             }
             Message::CaptureView => window::latest().then(|id| match id {
                 Some(id) => window::screenshot(id).map(Message::ViewCaptured),
@@ -322,10 +376,16 @@ impl LyrebirdUi {
         is_first_row: bool,
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
+
+        let target_tile = SpectrogramTileId::new(instrument, SnapshotKind::Target);
+        let initial_tile = SpectrogramTileId::new(instrument, SnapshotKind::Initial);
+        let current_tile = SpectrogramTileId::new(instrument, SnapshotKind::Current);
+        let best_tile = SpectrogramTileId::new(instrument, SnapshotKind::Best);
+
         let (
             initial_spectrogram_path,
             initial_overlay_label,
-            initial_activate_message,
+            initial_activate_target,
             initial_empty_label,
         ) = if instrument_state.disabled {
             (None, None, None, "Disabled")
@@ -333,15 +393,14 @@ impl LyrebirdUi {
             (
                 initial_spectrogram_path(instrument_state),
                 initial_overlay_label(instrument_state),
-                initial_spectrogram_path(instrument_state)
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
+                initial_spectrogram_path(instrument_state).map(|_| initial_tile),
                 "Waiting for spectrogram",
             )
         };
         let (
             current_spectrogram_path,
             current_overlay_label,
-            current_activate_message,
+            current_activate_target,
             current_empty_label,
         ) = if instrument_state.disabled {
             (None, None, None, "Disabled")
@@ -349,51 +408,62 @@ impl LyrebirdUi {
             (
                 current_spectrogram_path(instrument_state),
                 current_overlay_label(instrument_state),
-                current_spectrogram_path(instrument_state)
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
+                current_spectrogram_path(instrument_state).map(|_| current_tile),
                 "Waiting for spectrogram",
             )
         };
-        let (best_spectrogram_path, best_overlay_label, best_activate_message, best_empty_label) =
+        let (best_spectrogram_path, best_overlay_label, best_activate_target, best_empty_label) =
             if instrument_state.disabled {
                 (None, None, None, "Disabled")
             } else {
                 (
                     best_spectrogram_path(instrument_state),
                     best_overlay_label(instrument_state),
-                    best_spectrogram_path(instrument_state)
-                        .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
+                    best_spectrogram_path(instrument_state).map(|_| best_tile),
                     "Waiting for spectrogram",
                 )
             };
         let cards = row![
             spectrogram_tile(
-                self.spectrogram_handle(non_empty_path(&instrument_state.target_spectrogram_path)),
+                self.spectrogram_handle(
+                    non_empty_path(&instrument_state.target_spectrogram_path),
+                    self.interaction_state(target_tile),
+                ),
                 Some(instrument.display_name().to_owned()),
                 alignment::Horizontal::Left,
                 existing_path(non_empty_path(&instrument_state.target_sample_path))
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
+                    .map(|_| target_tile),
+                Some(target_tile),
                 "Waiting for spectrogram",
             ),
             spectrogram_tile(
-                self.spectrogram_handle(initial_spectrogram_path),
+                self.spectrogram_handle(
+                    initial_spectrogram_path,
+                    self.interaction_state(initial_tile),
+                ),
                 initial_overlay_label,
                 alignment::Horizontal::Right,
-                initial_activate_message,
+                initial_activate_target,
+                Some(initial_tile),
                 initial_empty_label,
             ),
             spectrogram_tile(
-                self.spectrogram_handle(current_spectrogram_path),
+                self.spectrogram_handle(
+                    current_spectrogram_path,
+                    self.interaction_state(current_tile),
+                ),
                 current_overlay_label,
                 alignment::Horizontal::Right,
-                current_activate_message,
+                current_activate_target,
+                Some(current_tile),
                 current_empty_label,
             ),
             spectrogram_tile(
-                self.spectrogram_handle(best_spectrogram_path),
+                self.spectrogram_handle(best_spectrogram_path, self.interaction_state(best_tile),),
                 best_overlay_label,
                 alignment::Horizontal::Right,
-                best_activate_message,
+                best_activate_target,
+                Some(best_tile),
                 best_empty_label,
             ),
         ]
@@ -420,9 +490,44 @@ impl LyrebirdUi {
         content.width(Length::Fill).height(Length::Fill).into()
     }
 
-    fn spectrogram_handle(&self, path: Option<&Path>) -> Option<iced_image::Handle> {
+    fn spectrogram_handle(
+        &self,
+        path: Option<&Path>,
+        state: SpectrogramInteractionState,
+    ) -> Option<iced_image::Handle> {
         path.and_then(|path| self.spectrogram_handles.get(path))
-            .cloned()
+            .map(|handles| handles.for_state(state))
+    }
+
+    fn interaction_state(&self, tile: SpectrogramTileId) -> SpectrogramInteractionState {
+        if self.pressed_spectrogram == Some(tile) {
+            SpectrogramInteractionState::Pressed
+        } else if self.hovered_spectrogram == Some(tile) {
+            SpectrogramInteractionState::Hovered
+        } else {
+            SpectrogramInteractionState::Idle
+        }
+    }
+
+    fn activate_spectrogram(
+        &mut self,
+        instrument: LyrebirdInstrument,
+        kind: SnapshotKind,
+    ) -> Task<Message> {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return Task::none();
+        };
+        let instrument_state = snapshot.instrument_state(instrument);
+        let (audio_path, source) = spectrogram_action_payload(instrument_state, kind);
+
+        self.snapshot_error = None;
+        if let Some(path) = audio_path.as_deref() {
+            if let Err(err) = self.audio.play(path) {
+                self.snapshot_error = Some(err);
+            }
+        }
+
+        source.map_or_else(Task::none, clipboard::write)
     }
 }
 
@@ -450,7 +555,8 @@ fn spectrogram_tile<'a>(
     spectrogram_handle: Option<iced_image::Handle>,
     overlay_label: Option<String>,
     overlay_alignment: alignment::Horizontal,
-    activate_message: Option<Message>,
+    activate_tile: Option<SpectrogramTileId>,
+    tile_id: Option<SpectrogramTileId>,
     empty_label: &'static str,
 ) -> Element<'a, Message> {
     let image_panel: Element<'a, Message> = match spectrogram_handle {
@@ -459,15 +565,15 @@ fn spectrogram_tile<'a>(
                 .content_fit(ContentFit::Fill)
                 .width(Length::Fill)
                 .height(Length::Fill);
-            match activate_message {
-                Some(message) => button(preview)
-                    .padding(0)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .style(image_button_style)
-                    .on_press(message)
+            match (activate_tile, tile_id) {
+                (Some(activate_tile), Some(tile)) => mouse_area(preview)
+                    .on_enter(Message::SpectrogramHoverEntered(tile))
+                    .on_exit(Message::SpectrogramHoverExited(tile))
+                    .on_press(Message::ActivateSpectrogramWithInteraction(activate_tile))
+                    .on_release(Message::SpectrogramInteractionReleased(tile))
+                    .interaction(iced::mouse::Interaction::Pointer)
                     .into(),
-                None => preview.into(),
+                _ => preview.into(),
             }
         }
         None => container(text(empty_label).size(14))
@@ -710,7 +816,9 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
     Ok(path)
 }
 
-fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<PathBuf, iced_image::Handle> {
+fn build_spectrogram_handles(
+    snapshot: &LyrebirdState,
+) -> BTreeMap<PathBuf, SpectrogramPreviewHandles> {
     let mut handles = BTreeMap::new();
 
     for instrument in LyrebirdInstrument::ALL {
@@ -728,8 +836,8 @@ fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<PathBuf, iced
                 continue;
             }
 
-            if let Some(handle) = load_spectrogram_handle(&path) {
-                handles.insert(path, handle);
+            if let Some(preview_handles) = load_spectrogram_handles(&path) {
+                handles.insert(path, preview_handles);
             }
         }
     }
@@ -737,7 +845,7 @@ fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<PathBuf, iced
     handles
 }
 
-fn load_spectrogram_handle(path: &Path) -> Option<iced_image::Handle> {
+fn load_spectrogram_handles(path: &Path) -> Option<SpectrogramPreviewHandles> {
     let decoded = match ::image::ImageReader::open(path) {
         Ok(reader) => match reader.decode() {
             Ok(image) => image,
@@ -752,16 +860,26 @@ fn load_spectrogram_handle(path: &Path) -> Option<iced_image::Handle> {
         }
     };
 
-    let rgba = decoded
-        .huerotate(SPECTROGRAM_HUE_ROTATION_DEGREES)
-        .to_rgba8();
-    let (width, height) = rgba.dimensions();
+    Some(SpectrogramPreviewHandles {
+        idle: hue_rotated_handle(&decoded, SPECTROGRAM_HUE_ROTATION_DEGREES),
+        hovered: hue_rotated_handle(
+            &decoded,
+            SPECTROGRAM_HUE_ROTATION_DEGREES - SPECTROGRAM_HOVER_HUE_SHIFT_DEGREES,
+        ),
+        pressed: hue_rotated_handle(
+            &decoded,
+            SPECTROGRAM_HUE_ROTATION_DEGREES - SPECTROGRAM_PRESSED_HUE_SHIFT_DEGREES,
+        ),
+    })
+}
 
-    Some(iced_image::Handle::from_rgba(
-        width,
-        height,
-        rgba.into_raw(),
-    ))
+fn hue_rotated_handle(
+    decoded: &::image::DynamicImage,
+    hue_rotation_degrees: i32,
+) -> iced_image::Handle {
+    let rgba = decoded.huerotate(hue_rotation_degrees).to_rgba8();
+    let (width, height) = rgba.dimensions();
+    iced_image::Handle::from_rgba(width, height, rgba.into_raw())
 }
 
 struct AudioPlayer {
@@ -864,17 +982,6 @@ fn image_placeholder_style(_theme: &iced::Theme) -> iced::widget::container::Sty
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgb8(18, 28, 23))),
         text_color: Some(iced::Color::from_rgb8(173, 191, 180)),
-        ..Default::default()
-    }
-}
-
-fn image_button_style(
-    _theme: &iced::Theme,
-    _status: button::Status,
-) -> iced::widget::button::Style {
-    iced::widget::button::Style {
-        background: None,
-        text_color: iced::Color::WHITE,
         ..Default::default()
     }
 }

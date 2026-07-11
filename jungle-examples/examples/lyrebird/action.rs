@@ -1,16 +1,17 @@
 use crate::effect::{
-    BuildOptimizationPrompt, BuildOptimizationPromptInput, CompareIterationMels,
-    CompareIterationMelsInput, GenerateIterationAudio, GenerateIterationAudioInput,
-    GenerateIterationMels, GenerateIterationMelsInput, IterationCandidateInput,
-    IterationCandidatesOutcome, LogIterationTimingEffect, LogIterationTimingInput,
-    LogIterationTimingOutput, PreparePromptCandidates, PreparePromptCandidatesInput,
-    PreparePromptCandidatesOutcome, RequestPromptCandidates, RequestPromptCandidatesInput,
-    RequestPromptCandidatesOutcome, SearchTreeSelect, SearchTreeSubmit,
+    BuildOptimizationPromptInput, BuildOptimizationPromptTextOnly, BuildOptimizationPromptVision,
+    CompareIterationMels, CompareIterationMelsInput, GenerateIterationAudio,
+    GenerateIterationAudioInput, GenerateIterationMels, GenerateIterationMelsInput,
+    IterationCandidateInput, IterationCandidatesOutcome, LogIterationTimingEffect,
+    LogIterationTimingInput, LogIterationTimingOutput, PreparePromptCandidates,
+    PreparePromptCandidatesInput, PreparePromptCandidatesOutcome, RequestPromptCandidates,
+    RequestPromptCandidatesInput, RequestPromptCandidatesOutcome, SearchTreeSelect,
+    SearchTreeSubmit,
 };
 use crate::mcts::Submission;
 use crate::{
     LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdInstrumentTag,
-    LyrebirdSeed, LyrebirdState, PromptInstrumentState,
+    LyrebirdSeed, LyrebirdState, PromptInstrumentState, PromptModality,
 };
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
@@ -138,6 +139,16 @@ where
 {
     fn eval((state, _): &(Focus, ())) -> bool {
         !state.instrument_state().disabled
+    }
+}
+
+pub struct PromptModalityVisionFocused<Focus>(PhantomData<fn() -> Focus>);
+impl<Focus> Predicate<(Focus, ())> for PromptModalityVisionFocused<Focus>
+where
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
+{
+    fn eval((state, _): &(Focus, ())) -> bool {
+        state.instrument_state().prompt_modality == PromptModality::Vision
     }
 }
 
@@ -271,29 +282,72 @@ where
     }
 }
 
-pub struct BuildOptimizationPromptFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
-#[jungle::action]
-impl<Marker, Focus> Action for BuildOptimizationPromptFocused<Marker, Focus>
+fn build_optimization_prompt_input<Marker, Focus>(
+    state: &Focus,
+    prompt_modality: PromptModality,
+) -> BuildOptimizationPromptInput
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
     Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
 {
-    type Effect = BuildOptimizationPrompt;
+    let instrument_state = state.instrument_state();
+    BuildOptimizationPromptInput {
+        iteration_id: instrument_state.iteration_id.clone(),
+        instrument: Marker::INSTRUMENT,
+        target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
+        target_audio_metrics: instrument_state.target_audio_metrics,
+        code_branch: instrument_state.selected_branch.clone(),
+        prompt_attempt: instrument_state.prompt_attempt,
+        retry_reason: instrument_state.last_retry_reason.clone(),
+        system_prompt_override: instrument_state.system_prompt_override.clone(),
+        prompt_modality,
+    }
+}
+
+pub struct BuildOptimizationPromptVisionFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
+#[jungle::action]
+impl<Marker, Focus> Action for BuildOptimizationPromptVisionFocused<Marker, Focus>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
+{
+    type Effect = BuildOptimizationPromptVision;
     type Input = ();
     type Output = ();
 
     fn emit(state: &Focus, _input: Self::Input) -> BuildOptimizationPromptInput {
-        let instrument_state = state.instrument_state();
-        BuildOptimizationPromptInput {
-            iteration_id: instrument_state.iteration_id.clone(),
-            instrument: Marker::INSTRUMENT,
-            target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
-            target_audio_metrics: instrument_state.target_audio_metrics,
-            code_branch: instrument_state.selected_branch.clone(),
-            prompt_attempt: instrument_state.prompt_attempt,
-            retry_reason: instrument_state.last_retry_reason.clone(),
-            system_prompt_override: instrument_state.system_prompt_override.clone(),
-        }
+        build_optimization_prompt_input::<Marker, Focus>(state, PromptModality::Vision)
+    }
+
+    fn absorb(
+        state: &mut Focus,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let prompt = output.map_err(Failure::from)?;
+        let instrument_state = state.instrument_state_mut();
+        instrument_state.pending_prompt = Some(prompt);
+        instrument_state.pending_prompt_candidates.clear();
+        Ok(())
+    }
+}
+
+pub struct BuildOptimizationPromptTextOnlyFocused<Marker, Focus>(
+    PhantomData<fn() -> (Marker, Focus)>,
+);
+#[jungle::action]
+impl<Marker, Focus> Action for BuildOptimizationPromptTextOnlyFocused<Marker, Focus>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
+{
+    type Effect = BuildOptimizationPromptTextOnly;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &Focus, _input: Self::Input) -> BuildOptimizationPromptInput {
+        build_optimization_prompt_input::<Marker, Focus>(state, PromptModality::TextOnly)
     }
 
     fn absorb(

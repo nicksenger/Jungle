@@ -23,11 +23,12 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, BuildOptimizationPromptFocused, CompareIterationCandidateMels, FlattenEither,
-    FlattenLyrebirdPromptPhase, GenerateIterationCandidateAudio, GenerateIterationCandidateMels,
-    InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
-    PreparePromptCandidatesFocused, RequestPromptCandidatesFocused, SeedLyrebirdState,
-    SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
+    BeginIteration, BuildOptimizationPromptTextOnlyFocused, BuildOptimizationPromptVisionFocused,
+    CompareIterationCandidateMels, FlattenEither, FlattenLyrebirdPromptPhase,
+    GenerateIterationCandidateAudio, GenerateIterationCandidateMels, InstrumentEnabled,
+    InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
+    PreparePromptCandidatesFocused, PromptModalityVisionFocused, RequestPromptCandidatesFocused,
+    SeedLyrebirdState, SelectDspBranchFocused, SetCurrentInstrument, SkipInstrumentPromptFocused,
     SkipInstrumentSubmit, SubmitDspBranch,
 };
 use crate::tokens::{Prompt, Tool};
@@ -378,6 +379,13 @@ impl LyrebirdInstrument {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+pub enum PromptModality {
+    #[default]
+    Vision,
+    TextOnly,
+}
+
 pub trait LyrebirdInstrumentTag {
     const INSTRUMENT: LyrebirdInstrument;
 }
@@ -403,6 +411,8 @@ pub struct LyrebirdInstrumentState {
     pub instrument_parallelism: usize,
     #[serde(default)]
     pub system_prompt_override: Option<String>,
+    #[serde(default)]
+    pub prompt_modality: PromptModality,
     pub prompt_attempt: u32,
     #[serde(default)]
     pub iteration_id: String,
@@ -431,7 +441,11 @@ pub struct LyrebirdInstrumentState {
 }
 
 impl LyrebirdInstrumentState {
-    fn from_seed(seed: LyrebirdInstrumentSeed, system_prompt_override: Option<&str>) -> Self {
+    fn from_seed(
+        seed: LyrebirdInstrumentSeed,
+        system_prompt_override: Option<&str>,
+        prompt_modality: PromptModality,
+    ) -> Self {
         Self {
             instrument: seed.instrument,
             disabled: seed.disabled,
@@ -442,6 +456,7 @@ impl LyrebirdInstrumentState {
             initial_dsp_code: seed.initial_dsp_code.clone(),
             selected_branch: vec![seed.initial_dsp_code.into()],
             system_prompt_override: system_prompt_override.map(str::to_owned),
+            prompt_modality,
             ..Self::default()
         }
     }
@@ -612,8 +627,12 @@ impl LyrebirdState {
                     .as_deref(),
             ) == lyrebird_system_prompt_override_text(seed.system_prompt_override.as_deref())
         });
+        let prompt_modality_matches = LyrebirdInstrument::ALL.into_iter().all(|instrument| {
+            self.instrument_state(instrument).prompt_modality == seed.prompt_modality
+        });
 
         prompt_override_matches
+            && prompt_modality_matches
             && LyrebirdInstrument::ALL.into_iter().all(|instrument| {
                 let state = self.instrument_state(instrument);
                 seed.instruments
@@ -654,6 +673,8 @@ pub struct LyrebirdSeed {
     pub instrument_parallelism: usize,
     #[serde(default)]
     pub system_prompt_override: Option<String>,
+    #[serde(default)]
+    pub prompt_modality: PromptModality,
 }
 
 impl From<LyrebirdSeed> for LyrebirdState {
@@ -663,6 +684,7 @@ impl From<LyrebirdSeed> for LyrebirdState {
             instruments,
             instrument_parallelism,
             system_prompt_override,
+            prompt_modality,
         } = seed;
         let system_prompt_override = system_prompt_override.as_deref();
         let current_instrument = instruments
@@ -674,7 +696,11 @@ impl From<LyrebirdSeed> for LyrebirdState {
             .into_iter()
             .map(|seed| {
                 let instrument = seed.instrument;
-                let mut state = LyrebirdInstrumentState::from_seed(seed, system_prompt_override);
+                let mut state = LyrebirdInstrumentState::from_seed(
+                    seed,
+                    system_prompt_override,
+                    prompt_modality,
+                );
                 state.instrument_parallelism = instrument_parallelism;
                 (instrument, state)
             })
@@ -784,7 +810,12 @@ macro_rules! lyrebird_prompt_flow {
         #[derive(Flow)]
         pub struct $enabled(
             Step<SelectDspBranchFocused<$marker, $focus>>,
-            Step<BuildOptimizationPromptFocused<$marker, $focus>>,
+            Conditional<
+                FocusedCondition<PromptModalityVisionFocused<$focus>, $focus>,
+                Step<BuildOptimizationPromptVisionFocused<$marker, $focus>>,
+                Step<BuildOptimizationPromptTextOnlyFocused<$marker, $focus>>,
+            >,
+            Step<FlattenEither<(), $focus>>,
             Step<RequestPromptCandidatesFocused<$marker, $focus>>,
             Step<PreparePromptCandidatesFocused<$marker, $focus>>,
         );
@@ -1216,6 +1247,13 @@ struct Cli {
         help = "Override the first line of the lyrebird system prompt; defaults to the built-in DSP engineer prompt"
     )]
     system_prompt_override: Option<String>,
+    #[arg(
+        long = "prompt-modality",
+        value_enum,
+        default_value_t = PromptModality::Vision,
+        help = "Prompt modality for optimization requests: `vision` includes spectrogram images and `text-only` uses metrics-only guidance"
+    )]
+    prompt_modality: PromptModality,
     #[arg(long = "db-path")]
     db_path: Option<PathBuf>,
     #[arg(long = "jungle-redb-path")]
@@ -1297,6 +1335,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workers = cli.workers,
         tree_depth = cli.tree_depth,
         instrument_parallelism = cli.instrument_parallelism,
+        prompt_modality = ?cli.prompt_modality,
         tokens_model = %ecosystem.tokens_model,
         instruments = %selected_instruments
             .iter()
@@ -1337,6 +1376,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli.instrument_parallelism,
         &selected_instruments,
         cli.system_prompt_override,
+        cli.prompt_modality,
     );
     let journey_id = ensure_lyrebird_running(&client, &seed).await?;
 
@@ -1435,6 +1475,7 @@ fn build_seed(
     instrument_parallelism: usize,
     selected_instruments: &[LyrebirdInstrument],
     system_prompt_override: Option<String>,
+    prompt_modality: PromptModality,
 ) -> LyrebirdSeed {
     let selected_lookup = selected_instruments
         .iter()
@@ -1453,6 +1494,7 @@ fn build_seed(
             .collect(),
         instrument_parallelism,
         system_prompt_override,
+        prompt_modality,
     }
 }
 
@@ -2474,6 +2516,7 @@ mod tests {
             DEFAULT_INSTRUMENT_PARALLELISM,
             &[LyrebirdInstrument::Vocals, LyrebirdInstrument::GuitarSolo],
             Some("You are a mastering engineer.".to_owned()),
+            PromptModality::Vision,
         );
 
         let disabled_by_instrument = seed
@@ -2510,6 +2553,7 @@ mod tests {
             seed.system_prompt_override.as_deref(),
             Some("You are a mastering engineer.")
         );
+        assert_eq!(seed.prompt_modality, PromptModality::Vision);
     }
 
     #[test]
@@ -2533,6 +2577,7 @@ mod tests {
             DEFAULT_INSTRUMENT_PARALLELISM,
             &LyrebirdInstrument::ALL,
             Some("You are a mastering engineer.".to_owned()),
+            PromptModality::Vision,
         );
         let state = LyrebirdState::from(seed.clone());
 
@@ -2540,6 +2585,40 @@ mod tests {
 
         let mismatched_seed = LyrebirdSeed {
             system_prompt_override: Some("You are a DSP scientist.".to_owned()),
+            ..seed
+        };
+        assert!(!state.matches_seed_instrument_selection(&mismatched_seed));
+    }
+
+    #[test]
+    fn matches_seed_instrument_selection_requires_matching_prompt_modality() {
+        let seeds = LyrebirdInstrument::ALL
+            .into_iter()
+            .map(|instrument| LyrebirdInstrumentSeed {
+                instrument,
+                disabled: false,
+                target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()).into(),
+                target_audio_metrics: LyrebirdAudioMetrics::default(),
+                target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()).into(),
+                dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()).into(),
+                initial_dsp_code: DspCode::placeholder_initial(),
+            })
+            .collect::<Vec<_>>();
+
+        let seed = build_seed(
+            Path::new("/tmp/lyrebird"),
+            &seeds,
+            DEFAULT_INSTRUMENT_PARALLELISM,
+            &LyrebirdInstrument::ALL,
+            None,
+            PromptModality::Vision,
+        );
+        let state = LyrebirdState::from(seed.clone());
+
+        assert!(state.matches_seed_instrument_selection(&seed));
+
+        let mismatched_seed = LyrebirdSeed {
+            prompt_modality: PromptModality::TextOnly,
             ..seed
         };
         assert!(!state.matches_seed_instrument_selection(&mismatched_seed));
@@ -2871,6 +2950,7 @@ mod tests {
                 .collect(),
             instrument_parallelism: 0,
             system_prompt_override: None,
+            prompt_modality: PromptModality::Vision,
         };
 
         let ecosystem = Arc::new(
@@ -3021,6 +3101,7 @@ mod tests {
                 .collect(),
             instrument_parallelism: 0,
             system_prompt_override: None,
+            prompt_modality: PromptModality::Vision,
         };
 
         let ecosystem = Arc::new(
@@ -3578,5 +3659,19 @@ mod tests {
             cli.system_prompt_override.as_deref(),
             Some("You are a mastering engineer.")
         );
+    }
+
+    #[test]
+    fn cli_accepts_text_only_prompt_modality() {
+        let cli = Cli::try_parse_from([
+            "lyrebird",
+            "--tokens-url",
+            "https://api.openai.com/v1",
+            "--prompt-modality",
+            "text-only",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.prompt_modality, PromptModality::TextOnly);
     }
 }
