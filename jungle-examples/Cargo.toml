@@ -82,5 +82,9 @@ name = "lyrebird"
 path = "examples/lyrebird/mod.rs"
 required-features = ["image", "reqwest", "fjall"]
 
+[[example]]
+name = "rooster"
+path = "examples/rooster.rs"
+
 [lints]
 workspace = true

@@ -126,7 +126,7 @@ pub struct AgentModelTurn {
     pub tool_calls: Vec<ModelToolCall>,
 }
 
-#[derive(Optic, Clone, Debug, Serialize, Deserialize)]
+#[derive(Optic, Debug, Serialize, Deserialize)]
 pub struct AgentState<St, Tools> {
     pub pending_inputs: VecDeque<AgentInput>,
     pub transcript: Vec<TranscriptEntry>,
@@ -143,7 +143,7 @@ pub struct AgentState<St, Tools> {
     #[jungle(focus)]
     pub st: St,
     #[serde(skip)]
-    marker: PhantomData<fn() -> Tools>,
+    marker: PhantomData<Tools>,
 }
 
 impl<St, Tools> AgentState<St, Tools> {
@@ -173,6 +173,30 @@ impl<St, Tools> AgentState<St, Tools> {
 
     pub fn enqueue_input(&mut self, input: AgentInput) {
         self.pending_inputs.push_back(input);
+    }
+}
+
+impl<St, Tools> Clone for AgentState<St, Tools>
+where
+    St: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            pending_inputs: self.pending_inputs.clone(),
+            transcript: self.transcript.clone(),
+            pending_tool_calls: self.pending_tool_calls.clone(),
+            active_input: self.active_input.clone(),
+            active_tool_call: self.active_tool_call.clone(),
+            awaiting_model_turn: self.awaiting_model_turn,
+            turn_complete: self.turn_complete,
+            turn_round_index: self.turn_round_index,
+            tool_calls_in_round: self.tool_calls_in_round,
+            model_config: self.model_config.clone(),
+            settings: self.settings,
+            last_error: self.last_error.clone(),
+            st: self.st.clone(),
+            marker: PhantomData,
+        }
     }
 }
 
