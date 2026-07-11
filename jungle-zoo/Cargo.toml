@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { workspace = true }
+serde_json = "1.0.150"
 tracing = "0.1"
 
 [lints]

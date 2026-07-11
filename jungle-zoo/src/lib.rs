@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod backoff;
 pub mod condition;
 pub mod join;
