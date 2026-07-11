@@ -1,20 +1,20 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 use jungle_persist::{JungleStore, Kind, StoreBuilder};
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 use jungle_types::JourneyStatus;
 use jungle_types::{BackendError, WireIn, WireOut};
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgListener;
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 use std::sync::Arc;
 use std::time::Instant;
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-#[cfg(feature = "redb")]
+#[cfg(feature = "fjall")]
 use tokio::sync::Notify;
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 use tokio::time::Instant as TokioInstant;
 use tracing::{debug, warn};
 
@@ -22,9 +22,9 @@ use crate::{JungleServer, Result, WireRx, WireTx};
 
 #[cfg(feature = "postgres")]
 const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 const SUBSCRIPTION_LOG_INTERVAL: u64 = 256;
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 const SUBSCRIPTION_SLOW_FETCH_WARN_THRESHOLD: Duration = Duration::from_millis(100);
 const WORKER_WAKE_WAIT_WARN_SLACK_MS: u64 = 50;
 const SERVER_REQUEST_SLOW_WARN_MS: u128 = 100;
@@ -32,35 +32,35 @@ const SERVER_RESPONSE_SEND_SLOW_WARN_MS: u128 = 50;
 
 #[derive(Clone)]
 pub struct Server {
-    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[cfg(any(feature = "postgres", feature = "fjall"))]
     store: Arc<dyn JungleStore>,
-    #[cfg(feature = "redb")]
+    #[cfg(feature = "fjall")]
     journey_update_notify: Arc<Notify>,
 }
 
 impl Server {
-    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[cfg(any(feature = "postgres", feature = "fjall"))]
     pub fn builder() -> ServerBuilder {
         ServerBuilder::default()
     }
 
-    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[cfg(any(feature = "postgres", feature = "fjall"))]
     pub fn from_store(store: Arc<dyn JungleStore>) -> Self {
         Self {
             store,
-            #[cfg(feature = "redb")]
+            #[cfg(feature = "fjall")]
             journey_update_notify: Arc::new(Notify::new()),
         }
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 #[derive(Default, Clone)]
 pub struct ServerBuilder {
     db: StoreBuilder,
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 impl ServerBuilder {
     pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
         self.db = self.db.claimed_work_ttl_ms(value);
@@ -78,30 +78,31 @@ impl ServerBuilder {
         self.postgres(jungle_persist::pg::PgStore::builder().connection_string(value))
     }
 
-    #[cfg(feature = "redb")]
-    pub fn redb(mut self, builder: jungle_persist::redb::RedbStoreBuilder) -> Self {
-        self.db = self.db.kind(Kind::Redb(builder));
+    #[cfg(feature = "fjall")]
+    pub fn fjall(mut self, builder: jungle_persist::fjall::FjallStoreBuilder) -> Self {
+        self.db = self.db.kind(Kind::Fjall(builder));
         self
     }
 
-    #[cfg(feature = "redb")]
-    pub fn redb_path(self, value: impl Into<std::path::PathBuf>) -> Self {
-        self.redb(jungle_persist::redb::RedbStore::builder().path(value))
+    #[cfg(feature = "fjall")]
+    pub fn fjall_path(self, value: impl Into<std::path::PathBuf>) -> Self {
+        self.fjall(jungle_persist::fjall::FjallStore::builder().path(value))
     }
 
-    #[cfg(feature = "redb")]
+    #[cfg(feature = "fjall")]
+    /// Uses an auto-cleaned temporary Fjall directory rather than a RAM-only store.
     pub fn memory(mut self) -> Self {
         self.db = self.db.kind(Kind::Memory);
         self
     }
 
     pub async fn build(self) -> jungle_persist::Result<Server> {
-        #[cfg(all(feature = "postgres", feature = "redb"))]
+        #[cfg(all(feature = "postgres", feature = "fjall"))]
         let has_configured_database = self.db.has_kind();
-        #[cfg(all(feature = "postgres", feature = "redb"))]
+        #[cfg(all(feature = "postgres", feature = "fjall"))]
         if !has_configured_database {
             tracing::info!(
-                "both `postgres` and `redb` features are enabled; defaulting to postgres"
+                "both `postgres` and `fjall` features are enabled; defaulting to postgres"
             );
         }
         let store = self.db.build().await?;
@@ -132,7 +133,7 @@ impl JungleServer for Server {
                 generation,
                 seed,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     match self
                         .store
@@ -140,7 +141,7 @@ impl JungleServer for Server {
                         .await
                     {
                         Ok(journey_id) => {
-                            #[cfg(feature = "redb")]
+                            #[cfg(feature = "fjall")]
                             self.journey_update_notify.notify_waiters();
                             tx.send(Ok(WireOut::JourneyCreated(journey_id))).await?;
                         }
@@ -150,7 +151,7 @@ impl JungleServer for Server {
                     }
                     return Ok(());
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (namespace, animal_id, generation, seed);
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -159,7 +160,7 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::JourneyHistory(journey_id)) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let history = self
                         .store
@@ -170,7 +171,7 @@ impl JungleServer for Server {
                         })?;
                     WireOut::JourneyHistory(history)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -184,7 +185,7 @@ impl JungleServer for Server {
                 snapshot_end_sequence_id,
                 limit,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let page = self
                         .store
@@ -200,7 +201,7 @@ impl JungleServer for Server {
                         })?;
                     WireOut::JourneyReplayPage(page)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (
                         journey_id,
@@ -215,14 +216,14 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::JourneyStatus(journey_id)) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let status = self.store.journey_status(journey_id).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
                     WireOut::JourneyStatus(status)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -231,14 +232,14 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::ListJourneys { namespace }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let journeys = self.store.list_journeys(namespace).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
                     WireOut::Journeys(journeys)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = namespace;
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -250,7 +251,7 @@ impl JungleServer for Server {
                 journey_id,
                 after_sequence_id,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let mut cursor = after_sequence_id;
                     let mut fetch_iterations = 0_u64;
@@ -321,7 +322,7 @@ impl JungleServer for Server {
                                     "journey update batch already stale at server emit"
                                 );
                             }
-                            #[cfg(feature = "redb")]
+                            #[cfg(feature = "fjall")]
                             tokio::task::yield_now().await;
                             continue;
                         }
@@ -355,18 +356,18 @@ impl JungleServer for Server {
                             continue;
                         }
 
-                        #[cfg(feature = "redb")]
+                        #[cfg(feature = "fjall")]
                         {
                             let notified = self.journey_update_notify.notified();
                             let _ = tokio::time::timeout(Duration::from_secs(5), notified).await;
                             continue;
                         }
 
-                        #[cfg(not(feature = "redb"))]
+                        #[cfg(not(feature = "fjall"))]
                         tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (journey_id, after_sequence_id);
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -376,7 +377,7 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::AnimalAppearance(journey_id)) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let appearance =
                         self.store
@@ -387,7 +388,7 @@ impl JungleServer for Server {
                             })?;
                     WireOut::AnimalAppearance(appearance)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -397,7 +398,7 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::PerturbAnimal { journey_id, data }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     self.store
                         .enqueue_animal_perturbation(journey_id, data)
@@ -407,7 +408,7 @@ impl JungleServer for Server {
                         })?;
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (journey_id, data);
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -416,7 +417,7 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::ClaimPerturbable(journey_id)) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let claimed = self
                         .store
@@ -427,7 +428,7 @@ impl JungleServer for Server {
                         })?;
                     WireOut::ClaimedPerturbable(claimed)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -440,7 +441,7 @@ impl JungleServer for Server {
                 journey_id,
                 perturbation_id,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     self.store
                         .ack_animal_perturbation(journey_id, perturbation_id)
@@ -450,7 +451,7 @@ impl JungleServer for Server {
                         })?;
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (journey_id, perturbation_id);
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -464,7 +465,7 @@ impl JungleServer for Server {
                 owner_id,
                 lease_ttl_ms,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     self.store
                         .heartbeat_journey_lease(journey_id, owner_id, lease_ttl_ms)
@@ -474,7 +475,7 @@ impl JungleServer for Server {
                         })?;
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (journey_id, owner_id, lease_ttl_ms);
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -484,14 +485,14 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::PollOwnerWake { owner_id }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let wake = self.store.claim_owner_wake(owner_id).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
                     WireOut::OwnerWake(wake)
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = owner_id;
                     WireOut::OwnerWake(None)
@@ -502,7 +503,7 @@ impl JungleServer for Server {
                 timer_id,
                 wake_at_unix_ms,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     self.store
                         .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
@@ -510,11 +511,11 @@ impl JungleServer for Server {
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
-                    #[cfg(feature = "redb")]
+                    #[cfg(feature = "fjall")]
                     self.journey_update_notify.notify_waiters();
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (journey_id, timer_id, wake_at_unix_ms);
                     return Err(crate::ServerError::Backend(BackendError::Message(
@@ -524,7 +525,7 @@ impl JungleServer for Server {
                 }
             }
             Some(WireIn::JourneyComplete(journey_id)) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     self.store
                         .journey_complete(journey_id)
@@ -532,27 +533,27 @@ impl JungleServer for Server {
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
-                    #[cfg(feature = "redb")]
+                    #[cfg(feature = "fjall")]
                     self.journey_update_notify.notify_waiters();
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = journey_id;
                     WireOut::Ack
                 }
             }
             Some(WireIn::JourneyDead(journey_id)) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     self.store.journey_dead(journey_id).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
-                    #[cfg(feature = "redb")]
+                    #[cfg(feature = "fjall")]
                     self.journey_update_notify.notify_waiters();
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = journey_id;
                     WireOut::Ack
@@ -562,7 +563,7 @@ impl JungleServer for Server {
                 namespace,
                 supported_animals,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let claim_started_at = TokioInstant::now();
                     let claimed = self
@@ -585,7 +586,7 @@ impl JungleServer for Server {
                         None => WireOut::NoAvailableSteps,
                     }
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (namespace, supported_animals);
                     WireOut::NoAvailableSteps
@@ -597,7 +598,7 @@ impl JungleServer for Server {
                 supported_animals,
                 timeout_ms,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let timeout = Duration::from_millis(
                         timeout_ms
@@ -620,27 +621,27 @@ impl JungleServer for Server {
                     }
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (owner_id, namespace, supported_animals, timeout_ms);
                     WireOut::Ack
                 }
             }
             Some(WireIn::PollTimers) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let polled = self.store.poll_timers().await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
-                    #[cfg(feature = "redb")]
+                    #[cfg(feature = "fjall")]
                     if polled.is_some() {
                         self.journey_update_notify.notify_waiters();
                     }
-                    #[cfg(not(feature = "redb"))]
+                    #[cfg(not(feature = "fjall"))]
                     let _ = polled;
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     WireOut::Ack
                 }
@@ -649,7 +650,7 @@ impl JungleServer for Server {
                 event: history,
                 event_unix_ms,
             }) => {
-                #[cfg(any(feature = "postgres", feature = "redb"))]
+                #[cfg(any(feature = "postgres", feature = "fjall"))]
                 {
                     let history_event_age_ms = now_unix_ms().saturating_sub(event_unix_ms);
                     let journey_id = match &history {
@@ -718,13 +719,13 @@ impl JungleServer for Server {
                                     "HistoryEvent already stale before append_history"
                                 );
                             }
-                            #[cfg(feature = "redb")]
+                            #[cfg(feature = "fjall")]
                             self.journey_update_notify.notify_waiters();
                         }
                     }
                     WireOut::Ack
                 }
-                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                #[cfg(not(any(feature = "postgres", feature = "fjall")))]
                 {
                     let _ = (history, event_unix_ms);
                     WireOut::Ack
@@ -755,7 +756,7 @@ impl JungleServer for Server {
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 async fn wait_for_worker_wake(server: &Server, timeout: Duration) -> Result<()> {
     let deadline = TokioInstant::now() + timeout;
     let mut wait_iterations = 0_u64;
@@ -806,7 +807,7 @@ async fn wait_for_worker_wake(server: &Server, timeout: Duration) -> Result<()> 
             continue;
         }
 
-        #[cfg(feature = "redb")]
+        #[cfg(feature = "fjall")]
         {
             let notified = server.journey_update_notify.notified();
             if tokio::time::timeout(wait_for, notified).await.is_ok() {
@@ -814,14 +815,14 @@ async fn wait_for_worker_wake(server: &Server, timeout: Duration) -> Result<()> 
             }
         }
 
-        #[cfg(not(any(feature = "postgres", feature = "redb")))]
+        #[cfg(not(any(feature = "postgres", feature = "fjall")))]
         {
             tokio::time::sleep(wait_for).await;
         }
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 async fn progress_due_timers(server: &Server) -> Result<bool> {
     let mut advanced = false;
     loop {
@@ -847,14 +848,14 @@ async fn progress_due_timers(server: &Server) -> Result<bool> {
 
         advanced = true;
 
-        #[cfg(feature = "redb")]
+        #[cfg(feature = "fjall")]
         server.journey_update_notify.notify_waiters();
     }
 
     Ok(advanced)
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 async fn wait_duration_until_next_timer(server: &Server, max_wait: Duration) -> Result<Duration> {
     let Some(next_due_at_unix_ms) = server
         .store
@@ -875,7 +876,7 @@ async fn wait_duration_until_next_timer(server: &Server, max_wait: Duration) -> 
     Ok(std::cmp::min(max_wait, Duration::from_millis(due_wait_ms)))
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 fn now_unix_ms() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
@@ -916,7 +917,7 @@ fn request_slow_warn_threshold_ms(input: &WireIn) -> u128 {
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "redb"))]
+#[cfg(any(feature = "postgres", feature = "fjall"))]
 fn worker_wake_wait_warn_threshold(timeout: Duration) -> Duration {
     timeout.saturating_add(Duration::from_millis(WORKER_WAKE_WAIT_WARN_SLACK_MS))
 }
@@ -965,7 +966,7 @@ mod tests {
         assert_eq!(request_slow_warn_threshold_ms(&request), 300);
     }
 
-    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[cfg(any(feature = "postgres", feature = "fjall"))]
     #[test]
     fn worker_wake_warn_threshold_allows_timeout_slack() {
         assert_eq!(

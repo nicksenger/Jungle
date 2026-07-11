@@ -10,7 +10,7 @@ reqwest = ["dep:reqwest", "dep:base64"]
 viewer = ["dep:jungle-vision", "dep:iced", "dep:rodio", "dep:image"]
 video = ["dep:welcome-video"]
 audio = ["dep:welcome-audio"]
-redb = ["dep:redb", "dep:directories-next"]
+fjall = ["dep:fjall", "dep:directories-next"]
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
 bass = []
@@ -22,7 +22,7 @@ cron = ["dep:cron", "dep:chrono"]
 
 [dependencies]
 futures = { workspace = true }
-jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "fusion"] }
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["fjall", "fusion"] }
 jungle_zoo = { package = "jungle-zoo", path = "../jungle-zoo" }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
@@ -51,7 +51,7 @@ zensim = { version = "0.2.7", optional = true }
 rustfft = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 base64 = { version = "0.22", optional = true }
-redb = { version = "4.1", optional = true }
+fjall = { workspace = true, optional = true }
 
 [[example]]
 name = "welcome"
@@ -66,7 +66,7 @@ required-features = ["cron"]
 [[example]]
 name = "backoff"
 path = "examples/backoff/mod.rs"
-required-features = ["redb"]
+required-features = ["fjall"]
 
 [[example]]
 name = "loops"
@@ -80,7 +80,7 @@ required-features = ["viewer"]
 [[example]]
 name = "lyrebird"
 path = "examples/lyrebird/mod.rs"
-required-features = ["image", "reqwest", "redb"]
+required-features = ["image", "reqwest", "fjall"]
 
 [lints]
 workspace = true

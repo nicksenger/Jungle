@@ -2,14 +2,18 @@ use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use fjall::{
+    KeyspaceCreateOptions, PersistMode, Readable, SingleWriterTxDatabase, SingleWriterTxKeyspace,
+    SingleWriterWriteTx,
+};
 use jungle_types::{
     ClaimedPerturbable, JourneyEvent, JourneyRecord, JourneyReplayPage, JourneyStatus,
     JourneyUpdateEvent, NodeLifecycle, OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal,
     Work,
 };
-use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -17,23 +21,228 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
-const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
-const EVENT_TIMESTAMPS_TABLE: TableDefinition<&[u8], i64> =
-    TableDefinition::new("event_timestamps");
-const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
-const TIMER_TASKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("timer_tasks");
-const TIMER_DUE_INDEX_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("timer_due_index");
-const JOURNEY_LEASES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journey_leases");
-const OWNER_WAKES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("owner_wakes");
-const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
-const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("animal_perturbations");
-const ANIMAL_GENERATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("animal_generations");
-const JOURNEY_EVENT_SEQUENCE_TABLE: TableDefinition<&[u8], u64> =
-    TableDefinition::new("journey_event_sequences");
+#[derive(Clone, Copy)]
+struct KeyspaceDefinition(&'static str);
+
+impl KeyspaceDefinition {
+    const fn new(name: &'static str) -> Self {
+        Self(name)
+    }
+}
+
+const JOURNEYS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("journeys");
+const EVENTS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("events");
+const EVENT_TIMESTAMPS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("event_timestamps");
+const STEPS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("work_items");
+const TIMER_TASKS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("timer_tasks");
+const TIMER_DUE_INDEX_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("timer_due_index");
+const JOURNEY_LEASES_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("journey_leases");
+const OWNER_WAKES_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("owner_wakes");
+const APPEARANCES_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("animal_appearances");
+const PERTURBATIONS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("animal_perturbations");
+const ANIMAL_GENERATIONS_KEYSPACE: KeyspaceDefinition =
+    KeyspaceDefinition::new("animal_generations");
+const JOURNEY_EVENT_SEQUENCE_KEYSPACE: KeyspaceDefinition =
+    KeyspaceDefinition::new("journey_event_sequences");
+
+const STORE_KEYSPACES: [KeyspaceDefinition; 12] = [
+    JOURNEYS_KEYSPACE,
+    EVENTS_KEYSPACE,
+    EVENT_TIMESTAMPS_KEYSPACE,
+    STEPS_KEYSPACE,
+    TIMER_TASKS_KEYSPACE,
+    TIMER_DUE_INDEX_KEYSPACE,
+    JOURNEY_LEASES_KEYSPACE,
+    OWNER_WAKES_KEYSPACE,
+    APPEARANCES_KEYSPACE,
+    PERTURBATIONS_KEYSPACE,
+    ANIMAL_GENERATIONS_KEYSPACE,
+    JOURNEY_EVENT_SEQUENCE_KEYSPACE,
+];
+
+struct Keyspaces {
+    by_name: HashMap<&'static str, SingleWriterTxKeyspace>,
+}
+
+impl Keyspaces {
+    fn open(db: &SingleWriterTxDatabase) -> Result<Self> {
+        let mut by_name = HashMap::with_capacity(STORE_KEYSPACES.len());
+        for definition in STORE_KEYSPACES {
+            let keyspace = db
+                .keyspace(definition.0, KeyspaceCreateOptions::default)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall open {} keyspace failed: {err}",
+                        definition.0
+                    ))
+                })?;
+            by_name.insert(definition.0, keyspace);
+        }
+        Ok(Self { by_name })
+    }
+
+    fn get(&self, definition: KeyspaceDefinition) -> Result<SingleWriterTxKeyspace> {
+        self.by_name.get(definition.0).cloned().ok_or_else(|| {
+            crate::PersistenceError::Message(format!(
+                "fjall keyspace is not initialized: {}",
+                definition.0
+            ))
+        })
+    }
+}
+
+struct ByteGuard(Vec<u8>);
+
+impl ByteGuard {
+    fn value(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+struct KeyspaceIter {
+    inner: fjall::Iter,
+}
+
+impl Iterator for KeyspaceIter {
+    type Item = fjall::Result<(ByteGuard, ByteGuard)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|entry| {
+            entry
+                .into_inner()
+                .map(|(key, value)| (ByteGuard(key.to_vec()), ByteGuard(value.to_vec())))
+        })
+    }
+}
+
+struct ReadTransaction {
+    inner: fjall::Snapshot,
+    keyspaces: Arc<Keyspaces>,
+}
+
+impl ReadTransaction {
+    fn open_keyspace(&self, definition: KeyspaceDefinition) -> Result<ReadKeyspace<'_>> {
+        Ok(ReadKeyspace {
+            tx: &self.inner,
+            keyspace: self.keyspaces.get(definition)?,
+        })
+    }
+}
+
+struct ReadKeyspace<'a> {
+    tx: &'a fjall::Snapshot,
+    keyspace: SingleWriterTxKeyspace,
+}
+
+impl ReadKeyspace<'_> {
+    fn get(&self, key: &[u8]) -> fjall::Result<Option<ByteGuard>> {
+        self.tx
+            .get(&self.keyspace, key)
+            .map(|value| value.map(|value| ByteGuard(value.to_vec())))
+    }
+
+    fn iter(&self) -> fjall::Result<KeyspaceIter> {
+        Ok(KeyspaceIter {
+            inner: self.tx.iter(&self.keyspace),
+        })
+    }
+
+    fn range<K, R>(&self, range: R) -> fjall::Result<KeyspaceIter>
+    where
+        K: AsRef<[u8]>,
+        R: std::ops::RangeBounds<K>,
+    {
+        Ok(KeyspaceIter {
+            inner: self.tx.range(&self.keyspace, range),
+        })
+    }
+}
+
+struct WriteTransaction<'a> {
+    inner: RefCell<Option<SingleWriterWriteTx<'a>>>,
+    keyspaces: Arc<Keyspaces>,
+}
+
+impl<'a> WriteTransaction<'a> {
+    fn open_keyspace(&self, definition: KeyspaceDefinition) -> Result<WriteKeyspace<'_, 'a>> {
+        Ok(WriteKeyspace {
+            tx: self,
+            keyspace: self.keyspaces.get(definition)?,
+        })
+    }
+
+    fn commit(self) -> fjall::Result<()> {
+        self.inner
+            .into_inner()
+            .expect("fjall write transaction must exist until commit")
+            .commit()
+    }
+}
+
+struct WriteKeyspace<'tx, 'db> {
+    tx: &'tx WriteTransaction<'db>,
+    keyspace: SingleWriterTxKeyspace,
+}
+
+impl WriteKeyspace<'_, '_> {
+    fn get(&self, key: &[u8]) -> fjall::Result<Option<ByteGuard>> {
+        self.tx
+            .inner
+            .borrow()
+            .as_ref()
+            .expect("fjall write transaction must exist")
+            .get(&self.keyspace, key)
+            .map(|value| value.map(|value| ByteGuard(value.to_vec())))
+    }
+
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> fjall::Result<()> {
+        self.tx
+            .inner
+            .borrow_mut()
+            .as_mut()
+            .expect("fjall write transaction must exist")
+            .insert(&self.keyspace, key.to_vec(), value.to_vec());
+        Ok(())
+    }
+
+    fn remove(&mut self, key: &[u8]) -> fjall::Result<Option<ByteGuard>> {
+        self.tx
+            .inner
+            .borrow_mut()
+            .as_mut()
+            .expect("fjall write transaction must exist")
+            .take(&self.keyspace, key.to_vec())
+            .map(|value| value.map(|value| ByteGuard(value.to_vec())))
+    }
+
+    fn iter(&self) -> fjall::Result<KeyspaceIter> {
+        Ok(KeyspaceIter {
+            inner: self
+                .tx
+                .inner
+                .borrow()
+                .as_ref()
+                .expect("fjall write transaction must exist")
+                .iter(&self.keyspace),
+        })
+    }
+
+    fn range<K, R>(&self, range: R) -> fjall::Result<KeyspaceIter>
+    where
+        K: AsRef<[u8]>,
+        R: std::ops::RangeBounds<K>,
+    {
+        Ok(KeyspaceIter {
+            inner: self
+                .tx
+                .inner
+                .borrow()
+                .as_ref()
+                .expect("fjall write transaction must exist")
+                .range(&self.keyspace, range),
+        })
+    }
+}
 
 const STEP_KIND_START_JOURNEY: u8 = 0;
 const STEP_KIND_RESUME_JOURNEY: u8 = 1;
@@ -53,34 +262,75 @@ const EVENT_KIND_ACTION_FAILURE_OUTPUT: u8 = 2;
 const EVENT_KIND_SLEEP_SCHEDULED: u8 = 3;
 const EVENT_KIND_SLEEP_FIRED: u8 = 4;
 const EVENT_KIND_NODE_LIFECYCLE: u8 = 5;
-const REDB_UPDATES_LOG_INTERVAL: usize = 256;
-const REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
-const REDB_STALE_EVENT_WARN_MS: i64 = 1_000;
+const FJALL_UPDATES_LOG_INTERVAL: usize = 256;
+const FJALL_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
+const FJALL_STALE_EVENT_WARN_MS: i64 = 1_000;
 
-static REDB_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
+static FJALL_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, Clone)]
-pub struct RedbStore {
-    db: Arc<redb::Database>,
+#[derive(Clone)]
+pub struct FjallStore {
+    db: Arc<SingleWriterTxDatabase>,
+    keyspaces: Arc<Keyspaces>,
+    durability: PersistMode,
     claimed_work_ttl_ms: i64,
 }
 
-impl RedbStore {
-    pub fn builder() -> RedbStoreBuilder {
-        RedbStoreBuilder::default()
+impl std::fmt::Debug for FjallStore {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FjallStore")
+            .field("claimed_work_ttl_ms", &self.claimed_work_ttl_ms)
+            .finish_non_exhaustive()
+    }
+}
+
+impl FjallStore {
+    pub fn builder() -> FjallStoreBuilder {
+        FjallStoreBuilder::default()
     }
 
-    pub fn in_memory() -> Result<RedbStore> {
+    /// Creates an ephemeral store backed by an auto-cleaned temporary directory.
+    pub fn in_memory() -> Result<FjallStore> {
         Self::in_memory_with_claimed_work_ttl_ms(crate::DEFAULT_CLAIMED_WORK_TTL_MS)
     }
 
-    pub fn in_memory_with_claimed_work_ttl_ms(claimed_work_ttl_ms: i64) -> Result<RedbStore> {
-        let db = redb::Database::builder()
-            .create_with_backend(redb::backends::InMemoryBackend::new())
-            .map_err(crate::PersistenceError::RedbOpen)?;
-        Ok(RedbStore {
+    /// Creates an ephemeral store backed by an auto-cleaned temporary directory.
+    pub fn in_memory_with_claimed_work_ttl_ms(claimed_work_ttl_ms: i64) -> Result<FjallStore> {
+        let path =
+            std::env::temp_dir().join(format!("jungle-fjall-{}", Uuid::new_v4().as_hyphenated()));
+        Self::open(path, true, claimed_work_ttl_ms)
+    }
+
+    fn open(path: PathBuf, temporary: bool, claimed_work_ttl_ms: i64) -> Result<Self> {
+        let db = SingleWriterTxDatabase::builder(path)
+            .temporary(temporary)
+            .open()
+            .map_err(crate::PersistenceError::FjallOpen)?;
+        let keyspaces = Keyspaces::open(&db)?;
+        Ok(Self {
             db: Arc::new(db),
+            keyspaces: Arc::new(keyspaces),
+            durability: if temporary {
+                PersistMode::Buffer
+            } else {
+                PersistMode::SyncAll
+            },
             claimed_work_ttl_ms: claimed_work_ttl_ms.max(0),
+        })
+    }
+
+    fn begin_write(&self) -> Result<WriteTransaction<'_>> {
+        Ok(WriteTransaction {
+            inner: RefCell::new(Some(self.db.write_tx().durability(Some(self.durability)))),
+            keyspaces: Arc::clone(&self.keyspaces),
+        })
+    }
+
+    fn begin_read(&self) -> Result<ReadTransaction> {
+        Ok(ReadTransaction {
+            inner: self.db.read_tx(),
+            keyspaces: Arc::clone(&self.keyspaces),
         })
     }
 
@@ -90,23 +340,23 @@ impl RedbStore {
         new_status: JourneyStatus,
         expected_current: Option<JourneyStatus>,
     ) -> Result<()> {
-        let write_tx = self.db.begin_write().map_err(|err| {
+        let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb update_journey_status begin failed: {err}"
+                "fjall update_journey_status begin failed: {err}"
             ))
         })?;
 
         {
-            let mut journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+            let mut journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb update_journey_status open journeys table failed: {err}"
+                    "fjall update_journey_status open journeys keyspace failed: {err}"
                 ))
             })?;
             let key = &journey_id.as_bytes()[..];
             let existing_raw = {
                 let Some(existing) = journeys.get(key).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb update_journey_status read journey failed: {err}"
+                        "fjall update_journey_status read journey failed: {err}"
                     ))
                 })?
                 else {
@@ -119,7 +369,7 @@ impl RedbStore {
 
             let flow = decode_journey(
                 existing_raw.as_slice(),
-                "redb update_journey_status decode journey value",
+                "fjall update_journey_status decode journey value",
             )?;
             if expected_current.is_none_or(|expected| flow.status == expected) {
                 let updated_value = encode_journey(
@@ -133,7 +383,7 @@ impl RedbStore {
                     .insert(key, updated_value.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb update_journey_status write journey failed: {err}"
+                            "fjall update_journey_status write journey failed: {err}"
                         ))
                     })?;
             }
@@ -141,7 +391,7 @@ impl RedbStore {
 
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb update_journey_status commit failed: {err}"
+                "fjall update_journey_status commit failed: {err}"
             ))
         })?;
         Ok(())
@@ -149,12 +399,12 @@ impl RedbStore {
 }
 
 #[derive(Debug, Clone)]
-pub struct RedbStoreBuilder {
+pub struct FjallStoreBuilder {
     path: Option<PathBuf>,
     claimed_work_ttl_ms: i64,
 }
 
-impl Default for RedbStoreBuilder {
+impl Default for FjallStoreBuilder {
     fn default() -> Self {
         Self {
             path: None,
@@ -163,7 +413,7 @@ impl Default for RedbStoreBuilder {
     }
 }
 
-impl RedbStoreBuilder {
+impl FjallStoreBuilder {
     pub fn path(mut self, value: impl Into<PathBuf>) -> Self {
         self.path = Some(value.into());
         self
@@ -174,22 +424,18 @@ impl RedbStoreBuilder {
         self
     }
 
-    pub fn build(self) -> Result<RedbStore> {
-        let path = self.path.ok_or(crate::PersistenceError::MissingRedbPath)?;
-        let db = redb::Database::create(path).map_err(crate::PersistenceError::RedbOpen)?;
-        Ok(RedbStore {
-            db: Arc::new(db),
-            claimed_work_ttl_ms: self.claimed_work_ttl_ms,
-        })
+    pub fn build(self) -> Result<FjallStore> {
+        let path = self.path.ok_or(crate::PersistenceError::MissingFjallPath)?;
+        FjallStore::open(path, false, self.claimed_work_ttl_ms)
     }
 }
 
 #[async_trait]
-impl JungleStore for RedbStore {
+impl JungleStore for FjallStore {
     async fn migrate(&self) -> Result<()> {
         match SCHEMA_VERSION {
             SchemaVersion::V0 => {
-                jungle_migrate::migrate_redb_v0(&self.db).map_err(crate::PersistenceError::Message)
+                jungle_migrate::migrate_fjall_v0(&self.db).map_err(crate::PersistenceError::Message)
             }
         }
     }
@@ -205,16 +451,16 @@ impl JungleStore for RedbStore {
         let work_item_id = Uuid::new_v4();
         let expiry = Utc::now();
 
-        let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb create_journey begin failed: {err}"))
+        let write_tx = self.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("fjall create_journey begin failed: {err}"))
         })?;
 
         {
             let generations = write_tx
-                .open_table(ANIMAL_GENERATIONS_TABLE)
+                .open_keyspace(ANIMAL_GENERATIONS_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb create_journey open animal_generations table failed: {err}"
+                        "fjall create_journey open animal_generations keyspace failed: {err}"
                     ))
                 })?;
             let generation_key = encode_animal_generation_key(namespace.as_str(), animal_id);
@@ -222,11 +468,11 @@ impl JungleStore for RedbStore {
                 .get(generation_key.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb create_journey read animal generation failed: {err}"
+                        "fjall create_journey read animal generation failed: {err}"
                     ))
                 })?
                 .map(|value| {
-                    decode_generation(value.value(), "redb create_journey decode generation")
+                    decode_generation(value.value(), "fjall create_journey decode generation")
                 })
                 .transpose()?
                 .unwrap_or(0);
@@ -237,9 +483,9 @@ impl JungleStore for RedbStore {
                 )));
             }
 
-            let mut journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+            let mut journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb create_journey open journeys table failed: {err}"
+                    "fjall create_journey open journeys keyspace failed: {err}"
                 ))
             })?;
             let flow_value = encode_journey(
@@ -253,31 +499,30 @@ impl JungleStore for RedbStore {
                 .insert(&journey_id.as_bytes()[..], flow_value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb create_journey insert journey failed: {err}"
+                        "fjall create_journey insert journey failed: {err}"
                     ))
                 })?;
 
-            let mut sequences =
-                write_tx
-                    .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
-                    .map_err(|err| {
-                        crate::PersistenceError::Message(format!(
-                            "redb create_journey open journey_event_sequences table failed: {err}"
-                        ))
-                    })?;
-            sequences
-                .insert(&journey_id.as_bytes()[..], 0_u64)
+            let mut sequences = write_tx
+                .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb create_journey initialize journey event sequence failed: {err}"
+                        "fjall create_journey open journey_event_sequences keyspace failed: {err}"
+                    ))
+                })?;
+            sequences
+                .insert(&journey_id.as_bytes()[..], &0_u64.to_be_bytes())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall create_journey initialize journey event sequence failed: {err}"
                     ))
                 })?;
         }
 
         {
-            let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
+            let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb create_journey open work_items table failed: {err}"
+                    "fjall create_journey open work_items keyspace failed: {err}"
                 ))
             })?;
 
@@ -292,27 +537,27 @@ impl JungleStore for RedbStore {
                 .insert(&work_item_id.as_bytes()[..], work_item_value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb create_journey insert work item failed: {err}"
+                        "fjall create_journey insert work item failed: {err}"
                     ))
                 })?;
         }
 
         write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb create_journey commit failed: {err}"))
+            crate::PersistenceError::Message(format!("fjall create_journey commit failed: {err}"))
         })?;
 
         Ok(journey_id)
     }
 
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
-        let read_tx = self.db.begin_read().map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_history begin read failed: {err}"
+                "fjall journey_history begin read failed: {err}"
             ))
         })?;
-        let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+        let events = read_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_history open events table failed: {err}"
+                "fjall journey_history open events keyspace failed: {err}"
             ))
         })?;
         let start_key = encode_event_key(journey_id, 0);
@@ -321,7 +566,7 @@ impl JungleStore for RedbStore {
             .range(start_key.as_slice()..=end_key.as_slice())
             .map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb journey_history range events failed: {err}"
+                    "fjall journey_history range events failed: {err}"
                 ))
             })?;
 
@@ -329,13 +574,13 @@ impl JungleStore for RedbStore {
         for entry in iter {
             let (key, value) = entry.map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb journey_history read events entry failed: {err}"
+                    "fjall journey_history read events entry failed: {err}"
                 ))
             })?;
             let (_, sequence_id) =
-                decode_event_key(key.value(), "redb journey_history decode event key")?;
+                decode_event_key(key.value(), "fjall journey_history decode event key")?;
             let (kind, data) =
-                decode_event_value(value.value(), "redb journey_history decode event value")?;
+                decode_event_value(value.value(), "fjall journey_history decode event value")?;
             rows.push((sequence_id, kind, data));
         }
 
@@ -355,31 +600,36 @@ impl JungleStore for RedbStore {
     ) -> Result<JourneyReplayPage> {
         let fetch_started_at = Instant::now();
         let limit = limit.max(1) as usize;
-        let read_tx = self.db.begin_read().map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_replay_page begin read failed: {err}"
+                "fjall journey_replay_page begin read failed: {err}"
             ))
         })?;
         let snapshot_end_sequence_id = match snapshot_end_sequence_id {
             Some(sequence_id) => Some(sequence_id),
             None => {
-                let sequences =
-                    read_tx
-                        .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
-                        .map_err(|err| {
-                            crate::PersistenceError::Message(format!(
-                                "redb journey_replay_page open sequence table failed: {err}"
-                            ))
-                        })?;
+                let sequences = read_tx
+                    .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall journey_replay_page open sequence keyspace failed: {err}"
+                        ))
+                    })?;
                 let key = &journey_id.as_bytes()[..];
                 sequences
                     .get(key)
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb journey_replay_page read sequence failed: {err}"
+                            "fjall journey_replay_page read sequence failed: {err}"
                         ))
                     })?
-                    .map(|value| value.value())
+                    .map(|value| {
+                        decode_u64(
+                            value.value(),
+                            "fjall journey_replay_page decode next sequence",
+                        )
+                    })
+                    .transpose()?
                     .and_then(|next_sequence| next_sequence.checked_sub(1))
             }
         };
@@ -388,9 +638,9 @@ impl JungleStore for RedbStore {
             if after_sequence_id.is_some_and(|after| after >= snapshot_end_sequence_id) {
                 Vec::new()
             } else {
-                let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+                let events = read_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb journey_replay_page open events table failed: {err}"
+                        "fjall journey_replay_page open events keyspace failed: {err}"
                     ))
                 })?;
                 let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
@@ -400,7 +650,7 @@ impl JungleStore for RedbStore {
                     .range(start_key.as_slice()..=end_key.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb journey_replay_page range events failed: {err}"
+                            "fjall journey_replay_page range events failed: {err}"
                         ))
                     })?;
 
@@ -408,14 +658,16 @@ impl JungleStore for RedbStore {
                 for entry in iter.take(limit) {
                     let (key, value) = entry.map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb journey_replay_page read events entry failed: {err}"
+                            "fjall journey_replay_page read events entry failed: {err}"
                         ))
                     })?;
-                    let (_, sequence_id) =
-                        decode_event_key(key.value(), "redb journey_replay_page decode event key")?;
+                    let (_, sequence_id) = decode_event_key(
+                        key.value(),
+                        "fjall journey_replay_page decode event key",
+                    )?;
                     let (kind, data) = decode_event_value(
                         value.value(),
-                        "redb journey_replay_page decode event value",
+                        "fjall journey_replay_page decode event value",
                     )?;
                     out.push(JourneyEvent {
                         sequence_id,
@@ -429,7 +681,7 @@ impl JungleStore for RedbStore {
         };
 
         let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
-        if fetch_elapsed_ms > REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+        if fetch_elapsed_ms > FJALL_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
             warn!(
                 journey_id = %journey_id,
                 after_sequence_id = after_sequence_id.unwrap_or(0),
@@ -437,7 +689,7 @@ impl JungleStore for RedbStore {
                 limit,
                 events_len = events.len(),
                 fetch_elapsed_ms,
-                "slow redb journey_replay_page query"
+                "slow fjall journey_replay_page query"
             );
         }
 
@@ -457,17 +709,17 @@ impl JungleStore for RedbStore {
             return Ok(Vec::new());
         }
 
-        let read_tx = self.db.begin_read().map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_events_since begin read failed: {err}"
+                "fjall journey_events_since begin read failed: {err}"
             ))
         })?;
-        let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+        let events = read_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_events_since open events table failed: {err}"
+                "fjall journey_events_since open events keyspace failed: {err}"
             ))
         })?;
-        let event_timestamps = read_tx.open_table(EVENT_TIMESTAMPS_TABLE).ok();
+        let event_timestamps = read_tx.open_keyspace(EVENT_TIMESTAMPS_KEYSPACE).ok();
         let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
         let start_key = encode_event_key(journey_id, start_sequence_id);
         let end_key = encode_event_key(journey_id, u64::MAX);
@@ -475,7 +727,7 @@ impl JungleStore for RedbStore {
             .range(start_key.as_slice()..=end_key.as_slice())
             .map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb journey_events_since range events failed: {err}"
+                    "fjall journey_events_since range events failed: {err}"
                 ))
             })?;
 
@@ -483,19 +735,25 @@ impl JungleStore for RedbStore {
         for entry in iter {
             let (key, value) = entry.map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb journey_events_since read events entry failed: {err}"
+                    "fjall journey_events_since read events entry failed: {err}"
                 ))
             })?;
             let (_, sequence_id) =
-                decode_event_key(key.value(), "redb journey_events_since decode event key")?;
+                decode_event_key(key.value(), "fjall journey_events_since decode event key")?;
             let event_unix_ms = event_timestamps
                 .as_ref()
                 .and_then(|timestamps| timestamps.get(key.value()).ok().flatten())
-                .map(|value| value.value())
+                .map(|value| {
+                    decode_i64(
+                        value.value(),
+                        "fjall journey_events_since decode event timestamp",
+                    )
+                })
+                .transpose()?
                 .unwrap_or(0);
             let (kind, data) = decode_event_value(
                 value.value(),
-                "redb journey_events_since decode event value",
+                "fjall journey_events_since decode event value",
             )?;
             rows.push((sequence_id, event_unix_ms, kind, data));
         }
@@ -509,13 +767,13 @@ impl JungleStore for RedbStore {
             });
         }
         let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
-        let fetch_count = REDB_UPDATES_FETCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        let fetch_count = FJALL_UPDATES_FETCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
         let now_ms = now_unix_ms();
         let mut max_event_age_ms = 0_i64;
         for update in updates.iter() {
             max_event_age_ms = max_event_age_ms.max(now_ms.saturating_sub(update.event_unix_ms));
         }
-        if fetch_elapsed_ms > REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+        if fetch_elapsed_ms > FJALL_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
             warn!(
                 journey_id = %journey_id,
                 fetch_count,
@@ -523,9 +781,9 @@ impl JungleStore for RedbStore {
                 updates_len = updates.len(),
                 fetch_elapsed_ms,
                 max_event_age_ms,
-                "slow redb journey_update_events_since query"
+                "slow fjall journey_update_events_since query"
             );
-        } else if max_event_age_ms > REDB_STALE_EVENT_WARN_MS {
+        } else if max_event_age_ms > FJALL_STALE_EVENT_WARN_MS {
             warn!(
                 journey_id = %journey_id,
                 fetch_count,
@@ -533,9 +791,9 @@ impl JungleStore for RedbStore {
                 updates_len = updates.len(),
                 fetch_elapsed_ms,
                 max_event_age_ms,
-                "redb journey_update_events_since returned stale events"
+                "fjall journey_update_events_since returned stale events"
             );
-        } else if fetch_count % REDB_UPDATES_LOG_INTERVAL == 0 {
+        } else if fetch_count.is_multiple_of(FJALL_UPDATES_LOG_INTERVAL) {
             debug!(
                 journey_id = %journey_id,
                 fetch_count,
@@ -543,22 +801,22 @@ impl JungleStore for RedbStore {
                 updates_len = updates.len(),
                 fetch_elapsed_ms,
                 max_event_age_ms,
-                "redb journey_update_events_since heartbeat"
+                "fjall journey_update_events_since heartbeat"
             );
         }
         Ok(updates)
     }
 
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
-        let read_tx = self.db.begin_read().map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_status begin read failed: {err}"
+                "fjall journey_status begin read failed: {err}"
             ))
         })?;
 
-        let journeys = read_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+        let journeys = read_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_status open journeys table failed: {err}"
+                "fjall journey_status open journeys keyspace failed: {err}"
             ))
         })?;
 
@@ -566,7 +824,7 @@ impl JungleStore for RedbStore {
             .get(&journey_id.as_bytes()[..])
             .map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb journey_status read journey failed: {err}"
+                    "fjall journey_status read journey failed: {err}"
                 ))
             })?
             .ok_or_else(|| {
@@ -575,23 +833,25 @@ impl JungleStore for RedbStore {
 
         let flow = decode_journey(
             flow_value.value(),
-            "redb journey_status decode journey value",
+            "fjall journey_status decode journey value",
         )?;
         Ok(flow.status)
     }
 
     async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>> {
-        let read_tx = self.db.begin_read().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb list_journeys begin read failed: {err}"))
-        })?;
-        let journeys = read_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb list_journeys open journeys table failed: {err}"
+                "fjall list_journeys begin read failed: {err}"
+            ))
+        })?;
+        let journeys = read_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "fjall list_journeys open journeys keyspace failed: {err}"
             ))
         })?;
         let iter = journeys.iter().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb list_journeys iterate journeys failed: {err}"
+                "fjall list_journeys iterate journeys failed: {err}"
             ))
         })?;
 
@@ -599,13 +859,13 @@ impl JungleStore for RedbStore {
         for entry in iter {
             let (raw_id, raw_journey) = entry.map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb list_journeys read journeys entry failed: {err}"
+                    "fjall list_journeys read journeys entry failed: {err}"
                 ))
             })?;
-            let journey_id = decode_uuid(raw_id.value(), "redb list_journeys decode journey id")?;
+            let journey_id = decode_uuid(raw_id.value(), "fjall list_journeys decode journey id")?;
             let journey = decode_journey(
                 raw_journey.value(),
-                "redb list_journeys decode journey value",
+                "fjall list_journeys decode journey value",
             )?;
             if journey.namespace != namespace {
                 continue;
@@ -624,22 +884,22 @@ impl JungleStore for RedbStore {
     }
 
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
-        let read_tx = self.db.begin_read().map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb animal_appearance begin read failed: {err}"
+                "fjall animal_appearance begin read failed: {err}"
             ))
         })?;
 
-        let appearances = read_tx.open_table(APPEARANCES_TABLE).map_err(|err| {
+        let appearances = read_tx.open_keyspace(APPEARANCES_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb animal_appearance open animal_appearances table failed: {err}"
+                "fjall animal_appearance open animal_appearances keyspace failed: {err}"
             ))
         })?;
 
         let key = &journey_id.as_bytes()[..];
         let value = appearances.get(key).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb animal_appearance read appearance failed: {err}"
+                "fjall animal_appearance read appearance failed: {err}"
             ))
         })?;
 
@@ -647,63 +907,65 @@ impl JungleStore for RedbStore {
     }
 
     async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
-        let write_tx = self.db.begin_write().map_err(|err| {
+        let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb upsert_animal_appearance begin failed: {err}"
+                "fjall upsert_animal_appearance begin failed: {err}"
             ))
         })?;
 
         {
-            let mut appearances = write_tx.open_table(APPEARANCES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb upsert_animal_appearance open animal_appearances table failed: {err}"
+            let mut appearances = write_tx
+                .open_keyspace(APPEARANCES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                    "fjall upsert_animal_appearance open animal_appearances keyspace failed: {err}"
                 ))
-            })?;
+                })?;
             appearances
                 .insert(&journey_id.as_bytes()[..], data.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb upsert_animal_appearance write failed: {err}"
+                        "fjall upsert_animal_appearance write failed: {err}"
                     ))
                 })?;
         }
 
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb upsert_animal_appearance commit failed: {err}"
+                "fjall upsert_animal_appearance commit failed: {err}"
             ))
         })?;
         Ok(())
     }
 
     async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
-        let write_tx = self.db.begin_write().map_err(|err| {
+        let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb enqueue_animal_perturbation begin failed: {err}"
+                "fjall enqueue_animal_perturbation begin failed: {err}"
             ))
         })?;
 
         {
-            let mut perturbations = write_tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb enqueue_animal_perturbation open animal_perturbations table failed: {err}"
+                    "fjall enqueue_animal_perturbation open animal_perturbations keyspace failed: {err}"
                 ))
             })?;
 
             let mut max_sequence: Option<u64> = None;
             let iter = perturbations.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb enqueue_animal_perturbation iterate table failed: {err}"
+                    "fjall enqueue_animal_perturbation iterate keyspace failed: {err}"
                 ))
             })?;
             for entry in iter {
                 let (key, _) = entry.map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb enqueue_animal_perturbation read entry failed: {err}"
+                        "fjall enqueue_animal_perturbation read entry failed: {err}"
                     ))
                 })?;
                 let (entry_journey_id, sequence_id) =
-                    decode_event_key(key.value(), "redb enqueue_animal_perturbation decode key")?;
+                    decode_event_key(key.value(), "fjall enqueue_animal_perturbation decode key")?;
                 if entry_journey_id == journey_id {
                     max_sequence =
                         Some(max_sequence.map_or(sequence_id, |max| max.max(sequence_id)));
@@ -717,14 +979,14 @@ impl JungleStore for RedbStore {
                 .insert(key.as_slice(), value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb enqueue_animal_perturbation insert failed: {err}"
+                        "fjall enqueue_animal_perturbation insert failed: {err}"
                     ))
                 })?;
         }
 
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb enqueue_animal_perturbation commit failed: {err}"
+                "fjall enqueue_animal_perturbation commit failed: {err}"
             ))
         })?;
         Ok(())
@@ -734,9 +996,9 @@ impl JungleStore for RedbStore {
         &self,
         journey_id: Uuid,
     ) -> Result<Option<ClaimedPerturbable>> {
-        let write_tx = self.db.begin_write().map_err(|err| {
+        let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb claim_animal_perturbation begin failed: {err}"
+                "fjall claim_animal_perturbation begin failed: {err}"
             ))
         })?;
 
@@ -745,30 +1007,30 @@ impl JungleStore for RedbStore {
         let mut selected: Option<(u64, Vec<u8>)> = None;
 
         {
-            let mut perturbations = write_tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_animal_perturbation open animal_perturbations table failed: {err}"
+                    "fjall claim_animal_perturbation open animal_perturbations keyspace failed: {err}"
                 ))
             })?;
             let iter = perturbations.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_animal_perturbation iterate table failed: {err}"
+                    "fjall claim_animal_perturbation iterate keyspace failed: {err}"
                 ))
             })?;
             for entry in iter {
                 let (key, value) = entry.map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb claim_animal_perturbation read entry failed: {err}"
+                        "fjall claim_animal_perturbation read entry failed: {err}"
                     ))
                 })?;
                 let (entry_journey_id, sequence_id) =
-                    decode_event_key(key.value(), "redb claim_animal_perturbation decode key")?;
+                    decode_event_key(key.value(), "fjall claim_animal_perturbation decode key")?;
                 if entry_journey_id != journey_id {
                     continue;
                 }
                 let (entry_lease_until, payload) = decode_perturbation_value(
                     value.value(),
-                    "redb claim_animal_perturbation decode value",
+                    "fjall claim_animal_perturbation decode value",
                 )?;
                 if entry_lease_until != 0 && entry_lease_until >= now {
                     continue;
@@ -789,7 +1051,7 @@ impl JungleStore for RedbStore {
                     .insert(key.as_slice(), value.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb claim_animal_perturbation write claim failed: {err}"
+                            "fjall claim_animal_perturbation write claim failed: {err}"
                         ))
                     })?;
             }
@@ -797,7 +1059,7 @@ impl JungleStore for RedbStore {
 
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb claim_animal_perturbation commit failed: {err}"
+                "fjall claim_animal_perturbation commit failed: {err}"
             ))
         })?;
 
@@ -811,21 +1073,24 @@ impl JungleStore for RedbStore {
     }
 
     async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {
-        let write_tx = self.db.begin_write().map_err(|err| {
+        let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb ack_animal_perturbation begin failed: {err}"
+                "fjall ack_animal_perturbation begin failed: {err}"
             ))
         })?;
         {
-            let mut perturbations = write_tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb ack_animal_perturbation open animal_perturbations table failed: {err}"
+            let mut perturbations =
+                write_tx
+                    .open_keyspace(PERTURBATIONS_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                    "fjall ack_animal_perturbation open animal_perturbations keyspace failed: {err}"
                 ))
-            })?;
+                    })?;
             let key = encode_event_key(journey_id, perturbation_id);
             let removed = perturbations.remove(key.as_slice()).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb ack_animal_perturbation remove failed: {err}"
+                    "fjall ack_animal_perturbation remove failed: {err}"
                 ))
             })?;
             if removed.is_none() {
@@ -836,7 +1101,7 @@ impl JungleStore for RedbStore {
         }
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb ack_animal_perturbation commit failed: {err}"
+                "fjall ack_animal_perturbation commit failed: {err}"
             ))
         })?;
         Ok(())
@@ -852,61 +1117,65 @@ impl JungleStore for RedbStore {
         let lease_ttl_ms = lease_ttl_ms.max(0);
         let lease_until_millis = now_millis.saturating_add(lease_ttl_ms);
 
-        let write_tx = self.db.begin_write().map_err(|err| {
+        let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb heartbeat_journey_lease begin failed: {err}"
+                "fjall heartbeat_journey_lease begin failed: {err}"
             ))
         })?;
         {
-            let mut leases = write_tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb heartbeat_journey_lease open journey_leases table failed: {err}"
-                ))
-            })?;
+            let mut leases = write_tx
+                .open_keyspace(JOURNEY_LEASES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall heartbeat_journey_lease open journey_leases keyspace failed: {err}"
+                    ))
+                })?;
             let key = &journey_id.as_bytes()[..];
             let value = encode_journey_lease(owner_id, lease_until_millis, now_millis);
             leases.insert(key, value.as_slice()).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb heartbeat_journey_lease write lease failed: {err}"
+                    "fjall heartbeat_journey_lease write lease failed: {err}"
                 ))
             })?;
         }
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb heartbeat_journey_lease commit failed: {err}"
+                "fjall heartbeat_journey_lease commit failed: {err}"
             ))
         })?;
         Ok(())
     }
 
     async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
-        let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb claim_owner_wake begin failed: {err}"))
+        let write_tx = self.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("fjall claim_owner_wake begin failed: {err}"))
         })?;
 
         let mut selected_key: Option<Vec<u8>> = None;
         let mut selected_value: Option<Vec<u8>> = None;
 
         {
-            let mut owner_wakes = write_tx.open_table(OWNER_WAKES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb claim_owner_wake open owner_wakes table failed: {err}"
-                ))
-            })?;
+            let mut owner_wakes = write_tx
+                .open_keyspace(OWNER_WAKES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake open owner_wakes keyspace failed: {err}"
+                    ))
+                })?;
 
             let iter = owner_wakes.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_owner_wake iterate owner_wakes failed: {err}"
+                    "fjall claim_owner_wake iterate owner_wakes failed: {err}"
                 ))
             })?;
             for entry in iter {
                 let (key, value) = entry.map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb claim_owner_wake read owner_wakes entry failed: {err}"
+                        "fjall claim_owner_wake read owner_wakes entry failed: {err}"
                     ))
                 })?;
                 let (entry_owner_id, _, _) =
-                    decode_owner_wake_key(key.value(), "redb claim_owner_wake decode key")?;
+                    decode_owner_wake_key(key.value(), "fjall claim_owner_wake decode key")?;
                 if entry_owner_id == owner_id {
                     selected_key = Some(key.value().to_vec());
                     selected_value = Some(value.value().to_vec());
@@ -917,20 +1186,21 @@ impl JungleStore for RedbStore {
             if let Some(key) = selected_key.as_ref() {
                 owner_wakes.remove(key.as_slice()).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb claim_owner_wake remove wake failed: {err}"
+                        "fjall claim_owner_wake remove wake failed: {err}"
                     ))
                 })?;
             }
         }
 
         write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb claim_owner_wake commit failed: {err}"))
+            crate::PersistenceError::Message(format!("fjall claim_owner_wake commit failed: {err}"))
         })?;
 
         let Some(value) = selected_value else {
             return Ok(None);
         };
-        let wake = decode_owner_wake_value(value.as_slice(), "redb claim_owner_wake decode value")?;
+        let wake =
+            decode_owner_wake_value(value.as_slice(), "fjall claim_owner_wake decode value")?;
         Ok(Some(wake))
     }
 
@@ -964,8 +1234,8 @@ impl JungleStore for RedbStore {
             .map(|animal| (animal.animal_id, animal.generation))
             .collect();
 
-        let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
+        let write_tx = self.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("fjall claim_work begin failed: {err}"))
         })?;
         let now = Utc::now();
         let now_millis = now_unix_ms();
@@ -974,85 +1244,87 @@ impl JungleStore for RedbStore {
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
         {
-            let mut generation_table =
-                write_tx
-                    .open_table(ANIMAL_GENERATIONS_TABLE)
-                    .map_err(|err| {
-                        crate::PersistenceError::Message(format!(
-                            "redb claim_work open animal_generations table failed: {err}"
-                        ))
-                    })?;
+            let mut generation_keyspace = write_tx
+                .open_keyspace(ANIMAL_GENERATIONS_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_work open animal_generations keyspace failed: {err}"
+                    ))
+                })?;
             for supported in supported_animals {
                 let key = encode_animal_generation_key(namespace.as_str(), supported.animal_id);
-                let existing = generation_table
+                let existing = generation_keyspace
                     .get(key.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb claim_work read animal generation failed: {err}"
+                            "fjall claim_work read animal generation failed: {err}"
                         ))
                     })?
                     .map(|value| {
-                        decode_generation(value.value(), "redb claim_work decode generation")
+                        decode_generation(value.value(), "fjall claim_work decode generation")
                     })
                     .transpose()?
                     .unwrap_or(0);
                 if supported.generation > existing {
-                    generation_table
+                    generation_keyspace
                         .insert(
                             key.as_slice(),
                             supported.generation.to_be_bytes().as_slice(),
                         )
                         .map_err(|err| {
                             crate::PersistenceError::Message(format!(
-                                "redb claim_work write animal generation failed: {err}"
+                                "fjall claim_work write animal generation failed: {err}"
                             ))
                         })?;
                 }
             }
 
-            let journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+            let journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_work open journeys table failed: {err}"
+                    "fjall claim_work open journeys keyspace failed: {err}"
                 ))
             })?;
-            let journey_leases = write_tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
+            let journey_leases =
+                write_tx
+                    .open_keyspace(JOURNEY_LEASES_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall claim_work open journey_leases keyspace failed: {err}"
+                        ))
+                    })?;
+            let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_work open journey_leases table failed: {err}"
-                ))
-            })?;
-            let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb claim_work open work_items table failed: {err}"
+                    "fjall claim_work open work_items keyspace failed: {err}"
                 ))
             })?;
 
             let iter = work_items.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_work iterate work_items failed: {err}"
+                    "fjall claim_work iterate work_items failed: {err}"
                 ))
             })?;
 
             for entry in iter {
                 let (key, value) = entry.map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb claim_work read work_items entry failed: {err}"
+                        "fjall claim_work read work_items entry failed: {err}"
                     ))
                 })?;
-                let id = decode_uuid(key.value(), "redb claim_work decode work_item id")?;
+                let id = decode_uuid(key.value(), "fjall claim_work decode work_item id")?;
                 let (journey_id, kind, status, expiry) =
-                    decode_work_item(value.value(), "redb claim_work decode work_item value")?;
+                    decode_work_item(value.value(), "fjall claim_work decode work_item value")?;
 
                 let has_active_lease = match journey_leases
                     .get(&journey_id.as_bytes()[..])
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb claim_work read journey lease failed: {err}"
+                            "fjall claim_work read journey lease failed: {err}"
                         ))
                     })? {
                     Some(raw_lease) => {
                         let lease = decode_journey_lease(
                             raw_lease.value(),
-                            "redb claim_work decode journey lease",
+                            "fjall claim_work decode journey lease",
                         )?;
                         lease.lease_until_unix_ms > now_millis
                     }
@@ -1071,17 +1343,17 @@ impl JungleStore for RedbStore {
                     .get(&journey_id.as_bytes()[..])
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb claim_work read journey for namespace filter failed: {err}"
+                            "fjall claim_work read journey for namespace filter failed: {err}"
                         ))
                     })?
                     .ok_or_else(|| {
                         crate::PersistenceError::Message(format!(
-                            "redb claim_work missing journey for work item {id}"
+                            "fjall claim_work missing journey for work item {id}"
                         ))
                     })?;
                 let journey = decode_journey(
                     journey_raw.value(),
-                    "redb claim_work decode journey for namespace filter",
+                    "fjall claim_work decode journey for namespace filter",
                 )?;
                 if journey.namespace != namespace.as_str() {
                     continue;
@@ -1123,7 +1395,7 @@ impl JungleStore for RedbStore {
                     .insert(work_item_id_key, claimed.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb claim_work update work_items status failed: {err}"
+                            "fjall claim_work update work_items status failed: {err}"
                         ))
                     })?;
             }
@@ -1131,15 +1403,15 @@ impl JungleStore for RedbStore {
 
         let Some((selected_id, selected_journey_id, selected_kind, _)) = selected else {
             write_tx.commit().map_err(|err| {
-                crate::PersistenceError::Message(format!("redb claim_work commit failed: {err}"))
+                crate::PersistenceError::Message(format!("fjall claim_work commit failed: {err}"))
             })?;
             return Ok(None);
         };
 
         let flow = {
-            let journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+            let journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb claim_work open journeys table failed: {err}"
+                    "fjall claim_work open journeys keyspace failed: {err}"
                 ))
             })?;
             let flow_key = &selected_journey_id.as_bytes()[..];
@@ -1147,19 +1419,19 @@ impl JungleStore for RedbStore {
                 .get(flow_key)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb claim_work read journey failed: {err}"
+                        "fjall claim_work read journey failed: {err}"
                     ))
                 })?
                 .ok_or_else(|| {
                     crate::PersistenceError::Message(format!(
-                        "redb claim_work missing journey for work item {selected_id}"
+                        "fjall claim_work missing journey for work item {selected_id}"
                     ))
                 })?;
-            decode_journey(flow_value.value(), "redb claim_work decode journey value")?
+            decode_journey(flow_value.value(), "fjall claim_work decode journey value")?
         };
 
         write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb claim_work commit failed: {err}"))
+            crate::PersistenceError::Message(format!("fjall claim_work commit failed: {err}"))
         })?;
 
         let work = match selected_kind {
@@ -1243,43 +1515,47 @@ impl JungleStore for RedbStore {
             ),
             RunnerOut::Appearance { .. } => {
                 return Err(crate::PersistenceError::Message(
-                    "appearance snapshots are not history events in redb".to_string(),
+                    "appearance snapshots are not history events in fjall".to_string(),
                 ))
             }
         };
 
-        let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb append_history begin failed: {err}"))
+        let write_tx = self.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("fjall append_history begin failed: {err}"))
         })?;
 
         {
-            let mut events = write_tx.open_table(EVENTS_TABLE).map_err(|err| {
+            let mut events = write_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb append_history open events table failed: {err}"
+                    "fjall append_history open events keyspace failed: {err}"
                 ))
             })?;
             let mut event_timestamps =
-                write_tx.open_table(EVENT_TIMESTAMPS_TABLE).map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb append_history open event_timestamps table failed: {err}"
-                    ))
-                })?;
-            let mut sequences =
                 write_tx
-                    .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                    .open_keyspace(EVENT_TIMESTAMPS_KEYSPACE)
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb append_history open journey_event_sequences table failed: {err}"
+                            "fjall append_history open event_timestamps keyspace failed: {err}"
                         ))
                     })?;
+            let mut sequences = write_tx
+                .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall append_history open journey_event_sequences keyspace failed: {err}"
+                    ))
+                })?;
 
             let key = &journey_id.as_bytes()[..];
             let sequence_id = if let Some(next) = sequences.get(key).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb append_history read journey_event_sequences failed: {err}"
+                    "fjall append_history read journey_event_sequences failed: {err}"
                 ))
             })? {
-                next.value()
+                decode_u64(
+                    next.value(),
+                    "fjall append_history decode next event sequence",
+                )?
             } else {
                 let start_key = encode_event_key(journey_id, 0);
                 let end_key = encode_event_key(journey_id, u64::MAX);
@@ -1287,19 +1563,19 @@ impl JungleStore for RedbStore {
                     .range(start_key.as_slice()..=end_key.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb append_history range events failed: {err}"
+                            "fjall append_history range events failed: {err}"
                         ))
                     })?;
                 let mut next_sequence = 0_u64;
                 for entry in iter {
                     let (event_key, _) = entry.map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb append_history read events entry failed: {err}"
+                            "fjall append_history read events entry failed: {err}"
                         ))
                     })?;
                     let (_, existing_sequence_id) = decode_event_key(
                         event_key.value(),
-                        "redb append_history decode event key",
+                        "fjall append_history decode event key",
                     )?;
                     next_sequence = next_sequence.max(existing_sequence_id.saturating_add(1));
                 }
@@ -1312,27 +1588,27 @@ impl JungleStore for RedbStore {
                 .insert(event_key.as_slice(), event_value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb append_history insert event failed: {err}"
+                        "fjall append_history insert event failed: {err}"
                     ))
                 })?;
             event_timestamps
-                .insert(event_key.as_slice(), event_unix_ms)
+                .insert(event_key.as_slice(), &event_unix_ms.to_be_bytes())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb append_history insert event timestamp failed: {err}"
+                        "fjall append_history insert event timestamp failed: {err}"
                     ))
                 })?;
             sequences
-                .insert(key, sequence_id.saturating_add(1))
+                .insert(key, &sequence_id.saturating_add(1).to_be_bytes())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb append_history write journey_event_sequences failed: {err}"
+                        "fjall append_history write journey_event_sequences failed: {err}"
                     ))
                 })?;
         }
 
         write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb append_history commit failed: {err}"))
+            crate::PersistenceError::Message(format!("fjall append_history commit failed: {err}"))
         })?;
 
         Ok(())
@@ -1350,66 +1626,73 @@ impl JungleStore for RedbStore {
             ))
         })?;
 
-        let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!(
-                "redb schedule_sleep_timer begin failed: {err}"
-            ))
-        })?;
-
         {
-            let mut timers = write_tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
+            let write_tx = self.begin_write().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb schedule_sleep_timer open timer_tasks table failed: {err}"
+                    "fjall schedule_sleep_timer begin failed: {err}"
                 ))
             })?;
-            let mut due_index = write_tx.open_table(TIMER_DUE_INDEX_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb schedule_sleep_timer open timer_due_index table failed: {err}"
-                ))
-            })?;
-            let timer_key = &timer_id.as_bytes()[..];
-            if let Some(existing) = timers.get(timer_key).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb schedule_sleep_timer read existing timer task failed: {err}"
-                ))
-            })? {
-                let existing_timer = decode_timer_task(
-                    existing.value(),
-                    "redb schedule_sleep_timer decode existing timer task",
-                )?;
-                let stale_due_key = encode_timer_due_index_key(
-                    existing_timer.visible_at.timestamp_millis(),
-                    timer_id,
-                );
-                let _ = due_index.remove(stale_due_key.as_slice()).map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb schedule_sleep_timer remove stale timer_due_index entry failed: {err}"
-                    ))
-                })?;
-            }
-            let timer_value = encode_timer_task(journey_id, TIMER_STATUS_PENDING, wake_at, 0);
-            timers
-                .insert(timer_key, timer_value.as_slice())
-                .map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb schedule_sleep_timer insert timer task failed: {err}"
-                    ))
-                })?;
-            let due_key = encode_timer_due_index_key(wake_at.timestamp_millis(), timer_id);
-            due_index
-                .insert(due_key.as_slice(), &[] as &[u8])
-                .map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb schedule_sleep_timer insert timer_due_index entry failed: {err}"
-                    ))
-                })?;
-        }
 
-        write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!(
-                "redb schedule_sleep_timer commit failed: {err}"
-            ))
-        })?;
+            {
+                let mut timers = write_tx
+                    .open_keyspace(TIMER_TASKS_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall schedule_sleep_timer open timer_tasks keyspace failed: {err}"
+                        ))
+                    })?;
+                let mut due_index =
+                    write_tx
+                        .open_keyspace(TIMER_DUE_INDEX_KEYSPACE)
+                        .map_err(|err| {
+                            crate::PersistenceError::Message(format!(
+                            "fjall schedule_sleep_timer open timer_due_index keyspace failed: {err}"
+                        ))
+                        })?;
+                let timer_key = &timer_id.as_bytes()[..];
+                if let Some(existing) = timers.get(timer_key).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall schedule_sleep_timer read existing timer task failed: {err}"
+                    ))
+                })? {
+                    let existing_timer = decode_timer_task(
+                        existing.value(),
+                        "fjall schedule_sleep_timer decode existing timer task",
+                    )?;
+                    let stale_due_key = encode_timer_due_index_key(
+                        existing_timer.visible_at.timestamp_millis(),
+                        timer_id,
+                    );
+                    let _ = due_index.remove(stale_due_key.as_slice()).map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall schedule_sleep_timer remove stale timer_due_index entry failed: {err}"
+                        ))
+                    })?;
+                }
+                let timer_value = encode_timer_task(journey_id, TIMER_STATUS_PENDING, wake_at, 0);
+                timers
+                    .insert(timer_key, timer_value.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall schedule_sleep_timer insert timer task failed: {err}"
+                        ))
+                    })?;
+                let due_key = encode_timer_due_index_key(wake_at.timestamp_millis(), timer_id);
+                due_index
+                    .insert(due_key.as_slice(), &[] as &[u8])
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall schedule_sleep_timer insert timer_due_index entry failed: {err}"
+                        ))
+                    })?;
+            }
+
+            write_tx.commit().map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "fjall schedule_sleep_timer commit failed: {err}"
+                ))
+            })?;
+        }
 
         self.append_history(
             RunnerOut::SleepScheduled {
@@ -1423,45 +1706,47 @@ impl JungleStore for RedbStore {
     }
 
     async fn next_timer_due_at(&self) -> Result<Option<i64>> {
-        let read_tx = self.db.begin_read().map_err(|err| {
+        let read_tx = self.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb next_timer_due_at begin read failed: {err}"
+                "fjall next_timer_due_at begin read failed: {err}"
             ))
         })?;
-        let timers = read_tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
+        let timers = read_tx.open_keyspace(TIMER_TASKS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb next_timer_due_at open timer_tasks table failed: {err}"
+                "fjall next_timer_due_at open timer_tasks keyspace failed: {err}"
             ))
         })?;
-        let due_index = read_tx.open_table(TIMER_DUE_INDEX_TABLE).map_err(|err| {
-            crate::PersistenceError::Message(format!(
-                "redb next_timer_due_at open timer_due_index table failed: {err}"
-            ))
-        })?;
+        let due_index = read_tx
+            .open_keyspace(TIMER_DUE_INDEX_KEYSPACE)
+            .map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "fjall next_timer_due_at open timer_due_index keyspace failed: {err}"
+                ))
+            })?;
         let due_start = encode_timer_due_index_key(i64::MIN, Uuid::nil());
         let due_end = encode_timer_due_index_bound_key(i64::MAX, true);
         let due_iter = due_index
             .range(due_start.as_slice()..=due_end.as_slice())
             .map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb next_timer_due_at range timer_due_index failed: {err}"
+                    "fjall next_timer_due_at range timer_due_index failed: {err}"
                 ))
             })?;
 
         for due_entry in due_iter {
             let (due_key, _) = due_entry.map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb next_timer_due_at read timer_due_index entry failed: {err}"
+                    "fjall next_timer_due_at read timer_due_index entry failed: {err}"
                 ))
             })?;
             let (indexed_visible_at_unix_ms, timer_id) = decode_timer_due_index_key(
                 due_key.value(),
-                "redb next_timer_due_at decode timer_due_index key",
+                "fjall next_timer_due_at decode timer_due_index key",
             )?;
 
             let Some(timer_value) = timers.get(&timer_id.as_bytes()[..]).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb next_timer_due_at read timer task by due index failed: {err}"
+                    "fjall next_timer_due_at read timer task by due index failed: {err}"
                 ))
             })?
             else {
@@ -1470,7 +1755,7 @@ impl JungleStore for RedbStore {
 
             let timer = decode_timer_task(
                 timer_value.value(),
-                "redb next_timer_due_at decode timer task by due index",
+                "fjall next_timer_due_at decode timer task by due index",
             )?;
             let timer_visible_at_unix_ms = timer.visible_at.timestamp_millis();
             if timer.status != TIMER_STATUS_PENDING
@@ -1489,29 +1774,34 @@ impl JungleStore for RedbStore {
         let now = Utc::now();
         let now_millis = now.timestamp_millis();
 
-        let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb poll_timers begin failed: {err}"))
+        let write_tx = self.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("fjall poll_timers begin failed: {err}"))
         })?;
 
         let mut selected: Option<(Uuid, Uuid, DateTime<Utc>)> = None;
         {
-            let mut timers = write_tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb poll_timers open timer_tasks table failed: {err}"
-                ))
-            })?;
-            let mut due_index = write_tx.open_table(TIMER_DUE_INDEX_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb poll_timers open timer_due_index table failed: {err}"
-                ))
-            })?;
+            let mut timers = write_tx
+                .open_keyspace(TIMER_TASKS_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall poll_timers open timer_tasks keyspace failed: {err}"
+                    ))
+                })?;
+            let mut due_index =
+                write_tx
+                    .open_keyspace(TIMER_DUE_INDEX_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall poll_timers open timer_due_index keyspace failed: {err}"
+                        ))
+                    })?;
             let due_start = encode_timer_due_index_key(i64::MIN, Uuid::nil());
             let due_end = encode_timer_due_index_bound_key(now_millis, true);
             let due_iter = due_index
                 .range(due_start.as_slice()..=due_end.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers range timer_due_index failed: {err}"
+                        "fjall poll_timers range timer_due_index failed: {err}"
                     ))
                 })?;
             let mut stale_due_keys: Vec<Vec<u8>> = Vec::new();
@@ -1519,18 +1809,18 @@ impl JungleStore for RedbStore {
             for due_entry in due_iter {
                 let (due_key, _) = due_entry.map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers read timer_due_index entry failed: {err}"
+                        "fjall poll_timers read timer_due_index entry failed: {err}"
                     ))
                 })?;
                 let (indexed_visible_at_unix_ms, timer_id) = decode_timer_due_index_key(
                     due_key.value(),
-                    "redb poll_timers decode timer_due_index key",
+                    "fjall poll_timers decode timer_due_index key",
                 )?;
 
                 let timer_key = &timer_id.as_bytes()[..];
                 let Some(timer_value) = timers.get(timer_key).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers read timer task by due index failed: {err}"
+                        "fjall poll_timers read timer task by due index failed: {err}"
                     ))
                 })?
                 else {
@@ -1540,7 +1830,7 @@ impl JungleStore for RedbStore {
 
                 let timer = decode_timer_task(
                     timer_value.value(),
-                    "redb poll_timers decode timer task by due index",
+                    "fjall poll_timers decode timer task by due index",
                 )?;
                 let timer_visible_at_unix_ms = timer.visible_at.timestamp_millis();
                 if timer.status != TIMER_STATUS_PENDING
@@ -1559,7 +1849,7 @@ impl JungleStore for RedbStore {
             for stale_due_key in stale_due_keys {
                 let _ = due_index.remove(stale_due_key.as_slice()).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers remove stale timer_due_index entry failed: {err}"
+                        "fjall poll_timers remove stale timer_due_index entry failed: {err}"
                     ))
                 })?;
             }
@@ -1570,7 +1860,7 @@ impl JungleStore for RedbStore {
                     .insert(&timer_id.as_bytes()[..], fired.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb poll_timers mark timer task fired failed: {err}"
+                            "fjall poll_timers mark timer task fired failed: {err}"
                         ))
                     })?;
                 let due_key = selected_due_key.unwrap_or_else(|| {
@@ -1578,7 +1868,7 @@ impl JungleStore for RedbStore {
                 });
                 let _ = due_index.remove(due_key.as_slice()).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers remove fired timer_due_index entry failed: {err}"
+                        "fjall poll_timers remove fired timer_due_index entry failed: {err}"
                     ))
                 })?;
             }
@@ -1586,26 +1876,28 @@ impl JungleStore for RedbStore {
 
         let Some((timer_id, journey_id, _)) = selected else {
             write_tx.commit().map_err(|err| {
-                crate::PersistenceError::Message(format!("redb poll_timers commit failed: {err}"))
+                crate::PersistenceError::Message(format!("fjall poll_timers commit failed: {err}"))
             })?;
             return Ok(None);
         };
 
         let mut valid_owner: Option<Uuid> = None;
         {
-            let leases = write_tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb poll_timers open journey_leases table failed: {err}"
-                ))
-            })?;
+            let leases = write_tx
+                .open_keyspace(JOURNEY_LEASES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall poll_timers open journey_leases keyspace failed: {err}"
+                    ))
+                })?;
             let lease_entry = leases.get(&journey_id.as_bytes()[..]).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb poll_timers read journey lease failed: {err}"
+                    "fjall poll_timers read journey lease failed: {err}"
                 ))
             })?;
             if let Some(raw) = lease_entry {
                 let lease =
-                    decode_journey_lease(raw.value(), "redb poll_timers decode journey lease")?;
+                    decode_journey_lease(raw.value(), "fjall poll_timers decode journey lease")?;
                 if lease.lease_until_unix_ms > now_millis {
                     valid_owner = Some(lease.owner_id);
                 }
@@ -1613,11 +1905,13 @@ impl JungleStore for RedbStore {
         }
 
         if let Some(owner_id) = valid_owner {
-            let mut owner_wakes = write_tx.open_table(OWNER_WAKES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb poll_timers open owner_wakes table failed: {err}"
-                ))
-            })?;
+            let mut owner_wakes = write_tx
+                .open_keyspace(OWNER_WAKES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall poll_timers open owner_wakes keyspace failed: {err}"
+                    ))
+                })?;
             let wake_id = Uuid::new_v4();
             let key = encode_owner_wake_key(owner_id, now_millis, wake_id);
             let value = encode_owner_wake_value(journey_id, timer_id);
@@ -1625,13 +1919,13 @@ impl JungleStore for RedbStore {
                 .insert(key.as_slice(), value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers enqueue owner wake failed: {err}"
+                        "fjall poll_timers enqueue owner wake failed: {err}"
                     ))
                 })?;
         } else {
-            let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
+            let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb poll_timers open work_items table failed: {err}"
+                    "fjall poll_timers open work_items keyspace failed: {err}"
                 ))
             })?;
             let work_item_id = Uuid::new_v4();
@@ -1645,38 +1939,39 @@ impl JungleStore for RedbStore {
                 .insert(&work_item_id.as_bytes()[..], value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers enqueue resume work item failed: {err}"
+                        "fjall poll_timers enqueue resume work item failed: {err}"
                     ))
                 })?;
         }
 
         {
-            let mut events = write_tx.open_table(EVENTS_TABLE).map_err(|err| {
+            let mut events = write_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb poll_timers open events table failed: {err}"
+                    "fjall poll_timers open events keyspace failed: {err}"
                 ))
             })?;
             let mut event_timestamps =
-                write_tx.open_table(EVENT_TIMESTAMPS_TABLE).map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb poll_timers open event_timestamps table failed: {err}"
-                    ))
-                })?;
-            let mut sequences =
                 write_tx
-                    .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                    .open_keyspace(EVENT_TIMESTAMPS_KEYSPACE)
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb poll_timers open journey_event_sequences table failed: {err}"
+                            "fjall poll_timers open event_timestamps keyspace failed: {err}"
                         ))
                     })?;
+            let mut sequences = write_tx
+                .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall poll_timers open journey_event_sequences keyspace failed: {err}"
+                    ))
+                })?;
             let key = &journey_id.as_bytes()[..];
             let sequence_id = if let Some(next) = sequences.get(key).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb poll_timers read journey_event_sequences failed: {err}"
+                    "fjall poll_timers read journey_event_sequences failed: {err}"
                 ))
             })? {
-                next.value()
+                decode_u64(next.value(), "fjall poll_timers decode next event sequence")?
             } else {
                 let start_key = encode_event_key(journey_id, 0);
                 let end_key = encode_event_key(journey_id, u64::MAX);
@@ -1684,18 +1979,18 @@ impl JungleStore for RedbStore {
                     .range(start_key.as_slice()..=end_key.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb poll_timers range events failed: {err}"
+                            "fjall poll_timers range events failed: {err}"
                         ))
                     })?;
                 let mut next_sequence = 0_u64;
                 for entry in iter {
                     let (event_key, _) = entry.map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "redb poll_timers read events entry failed: {err}"
+                            "fjall poll_timers read events entry failed: {err}"
                         ))
                     })?;
                     let (_, existing_sequence_id) =
-                        decode_event_key(event_key.value(), "redb poll_timers decode event key")?;
+                        decode_event_key(event_key.value(), "fjall poll_timers decode event key")?;
                     next_sequence = next_sequence.max(existing_sequence_id.saturating_add(1));
                 }
                 next_sequence
@@ -1712,27 +2007,27 @@ impl JungleStore for RedbStore {
                 .insert(event_key.as_slice(), event_value.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers insert sleep fired event failed: {err}"
+                        "fjall poll_timers insert sleep fired event failed: {err}"
                     ))
                 })?;
             event_timestamps
-                .insert(event_key.as_slice(), now_millis)
+                .insert(event_key.as_slice(), &now_millis.to_be_bytes())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers insert sleep fired event timestamp failed: {err}"
+                        "fjall poll_timers insert sleep fired event timestamp failed: {err}"
                     ))
                 })?;
             sequences
-                .insert(key, sequence_id.saturating_add(1))
+                .insert(key, &sequence_id.saturating_add(1).to_be_bytes())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb poll_timers write journey_event_sequences failed: {err}"
+                        "fjall poll_timers write journey_event_sequences failed: {err}"
                     ))
                 })?;
         }
 
         write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb poll_timers commit failed: {err}"))
+            crate::PersistenceError::Message(format!("fjall poll_timers commit failed: {err}"))
         })?;
 
         Ok(Some(()))
@@ -1791,6 +2086,26 @@ fn decode_uuid(raw: &[u8], context: &str) -> Result<Uuid> {
     let mut id_bytes = [0_u8; 16];
     id_bytes.copy_from_slice(raw);
     Ok(Uuid::from_bytes(id_bytes))
+}
+
+fn decode_u64(raw: &[u8], context: &str) -> Result<u64> {
+    let bytes: [u8; 8] = raw.try_into().map_err(|_| {
+        crate::PersistenceError::Message(format!(
+            "{context}: expected 8-byte u64 value, got {}",
+            raw.len()
+        ))
+    })?;
+    Ok(u64::from_be_bytes(bytes))
+}
+
+fn decode_i64(raw: &[u8], context: &str) -> Result<i64> {
+    let bytes: [u8; 8] = raw.try_into().map_err(|_| {
+        crate::PersistenceError::Message(format!(
+            "{context}: expected 8-byte i64 value, got {}",
+            raw.len()
+        ))
+    })?;
+    Ok(i64::from_be_bytes(bytes))
 }
 
 fn encode_work_item(
@@ -2270,7 +2585,7 @@ fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<Runner
             Ok(RunnerOut::NodeLifecycle(event))
         }
         other => Err(crate::PersistenceError::Message(format!(
-            "unsupported event kind in redb: {other}"
+            "unsupported event kind in fjall: {other}"
         ))),
     }
 }
@@ -2323,7 +2638,7 @@ fn decode_runner_update_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result
             Ok(RunnerUpdateOut::NodeLifecycle(event))
         }
         other => Err(crate::PersistenceError::Message(format!(
-            "unsupported event kind in redb: {other}"
+            "unsupported event kind in fjall: {other}"
         ))),
     }
 }
@@ -2346,4 +2661,217 @@ fn decode_perturbation_value(raw: &[u8], context: &str) -> Result<(i64, Vec<u8>)
     lease_bytes.copy_from_slice(&raw[..8]);
     let lease_until = i64::from_be_bytes(lease_bytes);
     Ok((lease_until, raw[8..].to_vec()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn file_backed_store_reopens_and_continues_event_sequence() {
+        let tempdir = tempfile::tempdir().expect("temporary directory should be created");
+        let path = tempdir.path().join("jungle.fjall");
+
+        let store = FjallStore::builder()
+            .path(&path)
+            .build()
+            .expect("fjall store should open");
+        store.migrate().await.expect("migration should succeed");
+        let journey_id = store
+            .create_journey("reopen".to_string(), 7, 0, vec![1, 2, 3])
+            .await
+            .expect("journey should be created");
+        store
+            .append_history(
+                RunnerOut::EffectInput {
+                    node_id: 10,
+                    data: vec![4],
+                    uuid: journey_id,
+                },
+                100,
+            )
+            .await
+            .expect("first event should append");
+        store
+            .append_history(
+                RunnerOut::EffectSuccessOutput {
+                    node_id: 10,
+                    data: vec![5],
+                    uuid: journey_id,
+                },
+                101,
+            )
+            .await
+            .expect("second event should append");
+        store
+            .upsert_animal_appearance(journey_id, vec![6, 7])
+            .await
+            .expect("appearance should persist");
+        store
+            .enqueue_animal_perturbation(journey_id, vec![8, 9])
+            .await
+            .expect("perturbation should persist");
+        drop(store);
+
+        let reopened = FjallStore::builder()
+            .path(&path)
+            .build()
+            .expect("fjall store should reopen");
+        reopened
+            .migrate()
+            .await
+            .expect("migration should be idempotent");
+        assert_eq!(
+            reopened
+                .journey_status(journey_id)
+                .await
+                .expect("journey status should load"),
+            JourneyStatus::Created
+        );
+        assert_eq!(
+            reopened
+                .animal_appearance(journey_id)
+                .await
+                .expect("appearance should load"),
+            Some(vec![6, 7])
+        );
+        let updates = reopened
+            .journey_update_events_since(journey_id, None)
+            .await
+            .expect("updates should load");
+        assert_eq!(
+            updates
+                .iter()
+                .map(|event| event.event_unix_ms)
+                .collect::<Vec<_>>(),
+            vec![100, 101]
+        );
+        let perturbation = reopened
+            .claim_animal_perturbation(journey_id)
+            .await
+            .expect("perturbation claim should succeed")
+            .expect("persisted perturbation should exist");
+        assert_eq!(perturbation.id, 0);
+        assert_eq!(perturbation.data, vec![8, 9]);
+        reopened
+            .append_history(
+                RunnerOut::EffectFailureOutput {
+                    node_id: 10,
+                    data: vec![11],
+                    uuid: journey_id,
+                },
+                102,
+            )
+            .await
+            .expect("event should append after reopen");
+        let page = reopened
+            .journey_replay_page(journey_id, None, None, 10)
+            .await
+            .expect("replay should load");
+        assert_eq!(page.snapshot_end_sequence_id, Some(2));
+        assert_eq!(
+            page.events
+                .iter()
+                .map(|event| event.sequence_id)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_read_modify_write_operations_are_serialized() {
+        const CONCURRENCY: u32 = 16;
+
+        let store = FjallStore::in_memory().expect("temporary fjall store should open");
+        store.migrate().await.expect("migration should succeed");
+        let journey_id = store
+            .create_journey("concurrency".to_string(), 3, 0, vec![1])
+            .await
+            .expect("journey should be created");
+
+        let mut append_tasks = Vec::new();
+        for node_id in 0..CONCURRENCY {
+            let store = store.clone();
+            append_tasks.push(tokio::spawn(async move {
+                store
+                    .append_history(
+                        RunnerOut::EffectInput {
+                            node_id,
+                            data: vec![node_id as u8],
+                            uuid: journey_id,
+                        },
+                        i64::from(node_id),
+                    )
+                    .await
+            }));
+        }
+        for task in append_tasks {
+            task.await
+                .expect("append task should join")
+                .expect("append should succeed");
+        }
+        let page = store
+            .journey_replay_page(journey_id, None, None, CONCURRENCY + 1)
+            .await
+            .expect("replay should load");
+        assert_eq!(
+            page.events
+                .iter()
+                .map(|event| event.sequence_id)
+                .collect::<Vec<_>>(),
+            (0..u64::from(CONCURRENCY)).collect::<Vec<_>>()
+        );
+
+        let mut work_tasks = Vec::new();
+        for _ in 0..CONCURRENCY {
+            let store = store.clone();
+            work_tasks.push(tokio::spawn(async move {
+                store
+                    .claim_work(
+                        "concurrency".to_string(),
+                        vec![SupportedAnimal {
+                            animal_id: 3,
+                            generation: 0,
+                        }],
+                    )
+                    .await
+            }));
+        }
+        let mut work_winners = 0;
+        for task in work_tasks {
+            if task
+                .await
+                .expect("work task should join")
+                .expect("work claim should succeed")
+                .is_some()
+            {
+                work_winners += 1;
+            }
+        }
+        assert_eq!(work_winners, 1);
+
+        store
+            .enqueue_animal_perturbation(journey_id, vec![42])
+            .await
+            .expect("perturbation should enqueue");
+        let mut perturbation_tasks = Vec::new();
+        for _ in 0..CONCURRENCY {
+            let store = store.clone();
+            perturbation_tasks.push(tokio::spawn(async move {
+                store.claim_animal_perturbation(journey_id).await
+            }));
+        }
+        let mut perturbation_winners = 0;
+        for task in perturbation_tasks {
+            if task
+                .await
+                .expect("perturbation task should join")
+                .expect("perturbation claim should succeed")
+                .is_some()
+            {
+                perturbation_winners += 1;
+            }
+        }
+        assert_eq!(perturbation_winners, 1);
+    }
 }

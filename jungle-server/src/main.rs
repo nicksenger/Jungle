@@ -30,12 +30,12 @@ struct Opt {
     #[cfg(feature = "postgres")]
     #[clap(long = "postgres-connection-string")]
     postgres_connection_string: Option<String>,
-    /// redb file path
-    #[cfg(feature = "redb")]
-    #[clap(long = "redb-path")]
-    redb_path: Option<PathBuf>,
-    /// use in-memory redb persistence backend
-    #[cfg(feature = "redb")]
+    /// Fjall database directory
+    #[cfg(feature = "fjall")]
+    #[clap(long = "fjall-path")]
+    fjall_path: Option<PathBuf>,
+    /// use an auto-cleaned temporary Fjall database
+    #[cfg(feature = "fjall")]
     #[clap(long = "memory")]
     memory: bool,
 }
@@ -63,11 +63,11 @@ impl From<Opt> for jungle_server::ServerBuilder {
         if let Some(connection_string) = opt.postgres_connection_string {
             builder = builder.postgres_connection_string(connection_string);
         }
-        #[cfg(feature = "redb")]
-        if let Some(path) = opt.redb_path {
-            builder = builder.redb_path(path);
+        #[cfg(feature = "fjall")]
+        if let Some(path) = opt.fjall_path {
+            builder = builder.fjall_path(path);
         }
-        #[cfg(feature = "redb")]
+        #[cfg(feature = "fjall")]
         if opt.memory {
             builder = builder.memory();
         }

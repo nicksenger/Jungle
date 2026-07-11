@@ -157,7 +157,7 @@ fn highest_generation_helper_picks_latest_for_animal_id() {
 #[tokio::test]
 async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -165,7 +165,7 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -248,7 +248,7 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
 #[tokio::test]
 async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -256,7 +256,7 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }

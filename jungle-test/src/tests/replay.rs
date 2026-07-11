@@ -909,7 +909,7 @@ impl From<ReplayJoinState> for () {
 #[tokio::test]
 async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -917,7 +917,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -1022,7 +1022,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 #[tokio::test]
 async fn replay_after_join_live_history_crash_skips_child_events_and_resumes() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -1030,7 +1030,7 @@ async fn replay_after_join_live_history_crash_skips_child_events_and_resumes() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -1213,7 +1213,7 @@ async fn replay_join_runner_reaches_gate_after_parallel_focused_join() {
 #[tokio::test]
 async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_own_writes() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -1221,7 +1221,7 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -1335,7 +1335,7 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
 #[tokio::test]
 async fn replay_recovery_synthesizes_missing_effect_success_outputs_once() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -1343,7 +1343,7 @@ async fn replay_recovery_synthesizes_missing_effect_success_outputs_once() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -1461,7 +1461,7 @@ async fn replay_recovery_synthesizes_missing_effect_success_outputs_once() {
 #[tokio::test]
 async fn replay_cursor_freezes_snapshot_end_sequence_id_while_history_grows() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -1469,7 +1469,7 @@ async fn replay_cursor_freezes_snapshot_end_sequence_id_while_history_grows() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -1780,7 +1780,7 @@ impl From<ReplayTimeoutState> for () {
 #[tokio::test]
 async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeating_pre_steps() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -1788,7 +1788,7 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }

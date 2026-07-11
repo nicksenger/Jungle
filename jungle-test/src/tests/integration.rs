@@ -568,9 +568,9 @@ impl From<LiveAppearanceState> for () {
 }
 
 #[tokio::test]
-async fn redb_client_worker_flow_runs_to_completion() {
+async fn fjall_client_worker_flow_runs_to_completion() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -578,7 +578,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -640,9 +640,9 @@ async fn postgres_client_worker_flow_runs_to_completion() {
 }
 
 #[tokio::test]
-async fn redb_client_worker_streams_step_updates_end_to_end() {
+async fn fjall_client_worker_streams_step_updates_end_to_end() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -650,7 +650,7 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }

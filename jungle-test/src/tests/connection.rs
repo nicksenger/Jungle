@@ -336,7 +336,7 @@ async fn client_exchanges_messages_with_mock_server() {
 #[tokio::test]
 async fn flow_status_moves_created_to_alive_to_completed() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
 
     let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
@@ -344,7 +344,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -390,7 +390,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 #[tokio::test]
 async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
 
     let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
@@ -398,7 +398,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -462,7 +462,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 #[tokio::test]
 async fn dropping_one_client_clone_does_not_close_transport_for_others() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
 
     let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
@@ -470,7 +470,7 @@ async fn dropping_one_client_clone_does_not_close_transport_for_others() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -499,7 +499,7 @@ async fn dropping_one_client_clone_does_not_close_transport_for_others() {
 #[tokio::test]
 async fn poll_timers_promotes_due_sleep_to_resume_work() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
 
     let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
@@ -507,7 +507,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -756,7 +756,7 @@ async fn client_handles_animal_perturbation_round_trip() {
 #[tokio::test]
 async fn poll_work_is_scoped_by_namespace() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
 
     let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
@@ -764,7 +764,7 @@ async fn poll_work_is_scoped_by_namespace() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }

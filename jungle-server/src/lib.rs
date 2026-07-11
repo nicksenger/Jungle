@@ -151,7 +151,7 @@ pub struct ServerBuilder {
     connection_limit: Option<usize>,
     backend: Option<Box<dyn JungleServer>>,
     backend_is_mock: bool,
-    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[cfg(any(feature = "postgres", feature = "fjall"))]
     db: server::ServerBuilder,
 }
 
@@ -169,7 +169,7 @@ impl Default for ServerBuilder {
             connection_limit: None,
             backend: None,
             backend_is_mock: false,
-            #[cfg(any(feature = "postgres", feature = "redb"))]
+            #[cfg(any(feature = "postgres", feature = "fjall"))]
             db: server::Server::builder(),
         }
     }
@@ -216,7 +216,7 @@ impl ServerBuilder {
     }
 
     pub fn claimed_work_ttl_ms(mut self, value: i64) -> Self {
-        #[cfg(any(feature = "postgres", feature = "redb"))]
+        #[cfg(any(feature = "postgres", feature = "fjall"))]
         {
             self.db = self.db.claimed_work_ttl_ms(value);
         }
@@ -244,19 +244,20 @@ impl ServerBuilder {
         self
     }
 
-    #[cfg(feature = "redb")]
-    pub fn redb(mut self, builder: jungle_persist::redb::RedbStoreBuilder) -> Self {
-        self.db = self.db.redb(builder);
+    #[cfg(feature = "fjall")]
+    pub fn fjall(mut self, builder: jungle_persist::fjall::FjallStoreBuilder) -> Self {
+        self.db = self.db.fjall(builder);
         self
     }
 
-    #[cfg(feature = "redb")]
-    pub fn redb_path(mut self, value: impl Into<PathBuf>) -> Self {
-        self.db = self.db.redb_path(value);
+    #[cfg(feature = "fjall")]
+    pub fn fjall_path(mut self, value: impl Into<PathBuf>) -> Self {
+        self.db = self.db.fjall_path(value);
         self
     }
 
-    #[cfg(feature = "redb")]
+    #[cfg(feature = "fjall")]
+    /// Uses an auto-cleaned temporary Fjall directory rather than a RAM-only store.
     pub fn memory(mut self) -> Self {
         self.db = self.db.memory();
         self
@@ -273,7 +274,7 @@ impl ServerBuilder {
             connection_limit,
             backend,
             backend_is_mock,
-            #[cfg(any(feature = "postgres", feature = "redb"))]
+            #[cfg(any(feature = "postgres", feature = "fjall"))]
             db,
         } = self;
 
@@ -282,14 +283,14 @@ impl ServerBuilder {
         let backend: Box<dyn JungleServer> = if let Some(backend) = backend {
             backend
         } else {
-            #[cfg(any(feature = "postgres", feature = "redb"))]
+            #[cfg(any(feature = "postgres", feature = "fjall"))]
             {
                 Box::new(db.build().await.map_err(ServerError::Store)?)
             }
-            #[cfg(not(any(feature = "postgres", feature = "redb")))]
+            #[cfg(not(any(feature = "postgres", feature = "fjall")))]
             {
                 panic!(
-                    "no persistence backend compiled; enable `postgres` or `redb` feature, or provide MockServer explicitly"
+                    "no persistence backend compiled; enable `postgres` or `fjall` feature, or provide MockServer explicitly"
                 );
             }
         };
@@ -451,7 +452,7 @@ pub enum ServerError {
     WriteWireFrame(#[source] quinn::WriteError),
     #[error("backend request handling failed: {0}")]
     Backend(#[source] BackendError),
-    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[cfg(any(feature = "postgres", feature = "fjall"))]
     #[error("store initialization failed: {0}")]
     Store(#[source] jungle_persist::PersistenceError),
 }

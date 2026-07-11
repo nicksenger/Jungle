@@ -8,7 +8,7 @@ default = []
 postgres = []
 
 [dependencies]
-jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb", "fusion"] }
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "fjall", "fusion"] }
 jungle_zoo = { package = "jungle-zoo", path = "../jungle-zoo" }
 
 [dev-dependencies]
@@ -20,7 +20,7 @@ proptest = "1"
 uuid = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 postcard = { workspace = true, features = ["alloc"] }
-redb = "4.1"
+fjall = { workspace = true }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
 tempfile = "3"
 chrono = "0.4"

@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-redb = ["dep:redb", "dep:jungle-migrate", "jungle-migrate/redb"]
+fjall = ["dep:fjall", "dep:jungle-migrate", "jungle-migrate/fjall"]
 postgres = ["dep:sqlx", "dep:jungle-migrate", "jungle-migrate/postgres"]
 
 [dependencies]
@@ -19,8 +19,12 @@ jungle-migrate = { path = "../jungle-migrate", optional = true, default-features
 thiserror = { workspace = true }
 tracing = "0.1"
 chrono = "0.4"
-redb = { version = "4.1", optional = true }
+fjall = { workspace = true, optional = true }
 sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls", "uuid"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

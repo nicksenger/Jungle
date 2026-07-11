@@ -77,9 +77,9 @@ impl<St, T> Action for AnnounceFailure<St, T> {
 #[tokio::test]
 async fn backoff_snapshot_marks_sleep_running_and_fail_failed() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let backend = Server::builder()
-        .redb_path(&db_path)
+        .fjall_path(&db_path)
         .build()
         .await
         .expect("local server backend should build");

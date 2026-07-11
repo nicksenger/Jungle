@@ -7,8 +7,8 @@ edition = "2021"
 default = []
 server = ["dep:jungle-server"]
 pg = ["server", "jungle-server/postgres"]
-redb = ["server", "jungle-server/redb"]
-fusion = ["dep:jungle-fusion", "redb"]
+fjall = ["server", "jungle-server/fjall"]
+fusion = ["dep:jungle-fusion", "fjall"]
 
 [dependencies]
 inception = { workspace = true }

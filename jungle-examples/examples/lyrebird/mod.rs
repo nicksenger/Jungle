@@ -1071,7 +1071,7 @@ impl TokensApiConfig {
 
 #[derive(Clone)]
 pub struct PulseCodePurgatory {
-    db: Arc<redb::Database>,
+    db: Arc<mcts::MctsDb>,
     db_path: PathBuf,
     runtime_session_id: String,
     tokens_model: String,
@@ -1256,8 +1256,8 @@ struct Cli {
     prompt_modality: PromptModality,
     #[arg(long = "db-path")]
     db_path: Option<PathBuf>,
-    #[arg(long = "jungle-redb-path")]
-    jungle_redb_path: Option<PathBuf>,
+    #[arg(long = "jungle-fjall-path")]
+    jungle_fjall_path: Option<PathBuf>,
     #[arg(long = "workers", default_value_t = DEFAULT_WORKERS, value_parser = parse_workers)]
     workers: usize,
     #[arg(
@@ -1305,10 +1305,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let workspace_root = std::env::current_dir()?;
     let output_root = default_lyrebird_root()?;
-    let jungle_redb_path = cli
-        .jungle_redb_path
-        .unwrap_or_else(|| output_root.join("jungle.redb"));
-    ensure_parent_dir_exists(&jungle_redb_path)?;
+    let jungle_fjall_path = cli
+        .jungle_fjall_path
+        .unwrap_or_else(|| output_root.join("jungle.fjall"));
+    ensure_parent_dir_exists(&jungle_fjall_path)?;
     let selected_instruments = normalize_instrument_selection(cli.instruments.as_deref());
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
@@ -1342,13 +1342,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|instrument| instrument.slug())
             .collect::<Vec<_>>()
             .join(","),
-        jungle_redb_path = %jungle_redb_path.display(),
-        mcts_redb_path = %ecosystem.db_path.display(),
+        jungle_fjall_path = %jungle_fjall_path.display(),
+        mcts_fjall_path = %ecosystem.db_path.display(),
         "starting lyrebird runtime"
     );
 
     let backend = Server::builder()
-        .redb_path(&jungle_redb_path)
+        .fjall_path(&jungle_fjall_path)
         .build()
         .await?;
     let client = FusedClient::builder()
@@ -1382,8 +1382,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(
         %journey_id,
-        jungle_redb_path = %jungle_redb_path.display(),
-        mcts_redb_path = %ecosystem.db_path.display(),
+        jungle_fjall_path = %jungle_fjall_path.display(),
+        mcts_fjall_path = %ecosystem.db_path.display(),
         "lyrebird active"
     );
 
@@ -1898,7 +1898,7 @@ mod tests {
     );
     #[derive(Flow)]
     struct ConcurrentLyrebirdPromptJoin(
-        jungle_zoo::ClonedJoinUnit<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
+        jungle_zoo::ClonedJoin<i32, RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
     );
 
     struct ConcurrentLyrebirdPromptAnimal;
@@ -2957,7 +2957,7 @@ mod tests {
             PulseCodePurgatory::new(
                 Url::parse("http://localhost:1/v1").expect("lyrebird test tokens URL should parse"),
                 None,
-                Some(root.join("mcts.redb")),
+                Some(root.join("mcts.fjall")),
             )
             .expect("lyrebird test ecosystem should build")
             .with_mcts_config(
@@ -3108,7 +3108,7 @@ mod tests {
             PulseCodePurgatory::new(
                 Url::parse("http://localhost:1/v1").expect("debug tokens URL should parse"),
                 None,
-                Some(root.join("mcts.redb")),
+                Some(root.join("mcts.fjall")),
             )
             .expect("debug lyrebird ecosystem should build")
             .with_mcts_config(

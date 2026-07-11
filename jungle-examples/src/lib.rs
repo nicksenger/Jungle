@@ -183,7 +183,7 @@ fn spawn_server_runtime(listen_addr: SocketAddr, db_path: std::path::PathBuf) {
         runtime.block_on(async move {
             let _ = ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await;
         });
@@ -192,7 +192,7 @@ fn spawn_server_runtime(listen_addr: SocketAddr, db_path: std::path::PathBuf) {
 
 pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
     let listen_addr = reserve_local_addr();
-    let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.redb", Uuid::new_v4()));
+    let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.fjall", Uuid::new_v4()));
 
     spawn_server_runtime(listen_addr, db_path);
 
