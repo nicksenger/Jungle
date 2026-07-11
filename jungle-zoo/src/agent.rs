@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::time::Duration;
+use tracing::debug;
 
 const DEFAULT_IDLE_POLL_MS: u64 = 250;
 const DEFAULT_MAX_ROUNDS_PER_TURN: u32 = 16;
@@ -252,7 +253,9 @@ async fn request_agent_model_turn(input: AgentModelRequest) -> Result<AgentModel
         .await
         .map_err(|err| format!("failed to decode chat completions response: {err}"))?;
 
-    extract_agent_model_turn(response)
+    let turn = extract_agent_model_turn(response)?;
+    debug!(response = ?turn, "received agent model response");
+    Ok(turn)
 }
 
 fn build_openai_client(token: Option<&str>) -> Result<reqwest::Client, String> {
