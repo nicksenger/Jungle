@@ -25,6 +25,8 @@ const DEFAULT_CIRCADIAN_INTERVAL: &str = "1h";
 const CONNECT_RETRY_ATTEMPTS: u32 = 20;
 const CONNECT_RETRY_DELAY_MS: u64 = 100;
 const CONNECT_TIMEOUT_MS: u64 = 250;
+const PERTURB_CONNECT_TIMEOUT_MS: u64 = 2_000;
+const PERTURB_REQUEST_TIMEOUT_MS: u64 = 2_000;
 const CIRCADIAN_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
 const CIRCADIAN_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
 const CIRCADIAN_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
@@ -265,22 +267,39 @@ impl<J> Effect<J> for PerturbRoosterEffect {
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
-            let client = Client::builder()
-                .namespace(RoosterEcosystem::NAME)
-                .remote(input.roost_addr)
-                .server_name(input.server_name)
-                .build()
-                .await
-                .map_err(|err| format!("failed to connect circadian perturb client: {err}"))?;
+            let client = tokio::time::timeout(
+                Duration::from_millis(PERTURB_CONNECT_TIMEOUT_MS),
+                Client::builder()
+                    .namespace(RoosterEcosystem::NAME)
+                    .remote(input.roost_addr)
+                    .server_name(input.server_name)
+                    .build(),
+            )
+            .await
+            .map_err(|_| {
+                format!(
+                    "timed out connecting circadian perturb client after {}ms",
+                    PERTURB_CONNECT_TIMEOUT_MS
+                )
+            })?
+            .map_err(|err| format!("failed to connect circadian perturb client: {err}"))?;
             let perturbation = AgentInput {
                 prompt: input.prompt,
             };
             let payload = postcard::to_allocvec(&perturbation)
                 .map_err(|err| format!("failed to encode rooster perturbation: {err}"))?;
-            client
-                .perturb_animal(input.rooster_journey_id, payload)
-                .await
-                .map_err(|err| format!("failed to perturb rooster journey: {err}"))?;
+            tokio::time::timeout(
+                Duration::from_millis(PERTURB_REQUEST_TIMEOUT_MS),
+                client.perturb_animal(input.rooster_journey_id, payload),
+            )
+            .await
+            .map_err(|_| {
+                format!(
+                    "timed out perturbing rooster journey after {}ms",
+                    PERTURB_REQUEST_TIMEOUT_MS
+                )
+            })?
+            .map_err(|err| format!("failed to perturb rooster journey: {err}"))?;
             Ok(())
         }
     }

@@ -18,6 +18,8 @@ const DEFAULT_MAX_TOOL_CALLS_PER_ROUND: u32 = 32;
 const MODEL_TURN_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
 const MODEL_TURN_BACKOFF_MULTIPLIER: u8 = 2;
 const MODEL_TURN_BACKOFF_MAX_DELAY_MS: u64 = 8_000;
+const OPENAI_CONNECT_TIMEOUT_MS: u64 = 5_000;
+const OPENAI_REQUEST_TIMEOUT_MS: u64 = 30_000;
 
 pub trait Tool {
     const NAME: &'static str;
@@ -275,6 +277,8 @@ fn build_openai_client(token: Option<&str>) -> Result<reqwest::Client, String> {
 
     reqwest::Client::builder()
         .default_headers(headers)
+        .connect_timeout(Duration::from_millis(OPENAI_CONNECT_TIMEOUT_MS))
+        .timeout(Duration::from_millis(OPENAI_REQUEST_TIMEOUT_MS))
         .build()
         .map_err(|err| format!("failed to build OpenAI client: {err}"))
 }
