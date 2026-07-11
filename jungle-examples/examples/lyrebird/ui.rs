@@ -2,7 +2,7 @@ use crate::{Lyrebird, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdState
 use iced::widget::{column, container, image as iced_image, mouse_area, row, stack, text};
 use iced::window;
 use iced::{
-    ContentFit, Element, Font, Length, Subscription, Task, alignment, clipboard, window::Screenshot,
+    alignment, clipboard, window::Screenshot, ContentFit, Element, Font, Length, Subscription, Task,
 };
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};

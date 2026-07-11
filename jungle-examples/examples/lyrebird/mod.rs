@@ -1898,7 +1898,7 @@ mod tests {
     );
     #[derive(Flow)]
     struct ConcurrentLyrebirdPromptJoin(
-        jungle_zoo::ClonedJoinUnit<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
+        jungle_zoo::ClonedJoin<i32, RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
     );
 
     struct ConcurrentLyrebirdPromptAnimal;

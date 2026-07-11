@@ -30,33 +30,34 @@ impl KeyspaceDefinition {
     }
 }
 
-const JOURNEYS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("journeys");
-const EVENTS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("events");
-const EVENT_TIMESTAMPS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("event_timestamps");
-const STEPS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("work_items");
-const TIMER_TASKS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("timer_tasks");
-const TIMER_DUE_INDEX_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("timer_due_index");
-const JOURNEY_LEASES_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("journey_leases");
-const OWNER_WAKES_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("owner_wakes");
-const APPEARANCES_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("animal_appearances");
-const PERTURBATIONS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("animal_perturbations");
-const ANIMAL_GENERATIONS_TABLE: KeyspaceDefinition = KeyspaceDefinition::new("animal_generations");
-const JOURNEY_EVENT_SEQUENCE_TABLE: KeyspaceDefinition =
+const JOURNEYS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("journeys");
+const EVENTS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("events");
+const EVENT_TIMESTAMPS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("event_timestamps");
+const STEPS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("work_items");
+const TIMER_TASKS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("timer_tasks");
+const TIMER_DUE_INDEX_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("timer_due_index");
+const JOURNEY_LEASES_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("journey_leases");
+const OWNER_WAKES_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("owner_wakes");
+const APPEARANCES_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("animal_appearances");
+const PERTURBATIONS_KEYSPACE: KeyspaceDefinition = KeyspaceDefinition::new("animal_perturbations");
+const ANIMAL_GENERATIONS_KEYSPACE: KeyspaceDefinition =
+    KeyspaceDefinition::new("animal_generations");
+const JOURNEY_EVENT_SEQUENCE_KEYSPACE: KeyspaceDefinition =
     KeyspaceDefinition::new("journey_event_sequences");
 
 const STORE_KEYSPACES: [KeyspaceDefinition; 12] = [
-    JOURNEYS_TABLE,
-    EVENTS_TABLE,
-    EVENT_TIMESTAMPS_TABLE,
-    STEPS_TABLE,
-    TIMER_TASKS_TABLE,
-    TIMER_DUE_INDEX_TABLE,
-    JOURNEY_LEASES_TABLE,
-    OWNER_WAKES_TABLE,
-    APPEARANCES_TABLE,
-    PERTURBATIONS_TABLE,
-    ANIMAL_GENERATIONS_TABLE,
-    JOURNEY_EVENT_SEQUENCE_TABLE,
+    JOURNEYS_KEYSPACE,
+    EVENTS_KEYSPACE,
+    EVENT_TIMESTAMPS_KEYSPACE,
+    STEPS_KEYSPACE,
+    TIMER_TASKS_KEYSPACE,
+    TIMER_DUE_INDEX_KEYSPACE,
+    JOURNEY_LEASES_KEYSPACE,
+    OWNER_WAKES_KEYSPACE,
+    APPEARANCES_KEYSPACE,
+    PERTURBATIONS_KEYSPACE,
+    ANIMAL_GENERATIONS_KEYSPACE,
+    JOURNEY_EVENT_SEQUENCE_KEYSPACE,
 ];
 
 struct Keyspaces {
@@ -346,9 +347,9 @@ impl FjallStore {
         })?;
 
         {
-            let mut journeys = write_tx.open_keyspace(JOURNEYS_TABLE).map_err(|err| {
+            let mut journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall update_journey_status open journeys table failed: {err}"
+                    "fjall update_journey_status open journeys keyspace failed: {err}"
                 ))
             })?;
             let key = &journey_id.as_bytes()[..];
@@ -456,10 +457,10 @@ impl JungleStore for FjallStore {
 
         {
             let generations = write_tx
-                .open_keyspace(ANIMAL_GENERATIONS_TABLE)
+                .open_keyspace(ANIMAL_GENERATIONS_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall create_journey open animal_generations table failed: {err}"
+                        "fjall create_journey open animal_generations keyspace failed: {err}"
                     ))
                 })?;
             let generation_key = encode_animal_generation_key(namespace.as_str(), animal_id);
@@ -482,9 +483,9 @@ impl JungleStore for FjallStore {
                 )));
             }
 
-            let mut journeys = write_tx.open_keyspace(JOURNEYS_TABLE).map_err(|err| {
+            let mut journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall create_journey open journeys table failed: {err}"
+                    "fjall create_journey open journeys keyspace failed: {err}"
                 ))
             })?;
             let flow_value = encode_journey(
@@ -503,10 +504,10 @@ impl JungleStore for FjallStore {
                 })?;
 
             let mut sequences = write_tx
-                .open_keyspace(JOURNEY_EVENT_SEQUENCE_TABLE)
+                .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall create_journey open journey_event_sequences table failed: {err}"
+                        "fjall create_journey open journey_event_sequences keyspace failed: {err}"
                     ))
                 })?;
             sequences
@@ -519,9 +520,9 @@ impl JungleStore for FjallStore {
         }
 
         {
-            let mut work_items = write_tx.open_keyspace(STEPS_TABLE).map_err(|err| {
+            let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall create_journey open work_items table failed: {err}"
+                    "fjall create_journey open work_items keyspace failed: {err}"
                 ))
             })?;
 
@@ -554,9 +555,9 @@ impl JungleStore for FjallStore {
                 "fjall journey_history begin read failed: {err}"
             ))
         })?;
-        let events = read_tx.open_keyspace(EVENTS_TABLE).map_err(|err| {
+        let events = read_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "fjall journey_history open events table failed: {err}"
+                "fjall journey_history open events keyspace failed: {err}"
             ))
         })?;
         let start_key = encode_event_key(journey_id, 0);
@@ -608,10 +609,10 @@ impl JungleStore for FjallStore {
             Some(sequence_id) => Some(sequence_id),
             None => {
                 let sequences = read_tx
-                    .open_keyspace(JOURNEY_EVENT_SEQUENCE_TABLE)
+                    .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "fjall journey_replay_page open sequence table failed: {err}"
+                            "fjall journey_replay_page open sequence keyspace failed: {err}"
                         ))
                     })?;
                 let key = &journey_id.as_bytes()[..];
@@ -637,9 +638,9 @@ impl JungleStore for FjallStore {
             if after_sequence_id.is_some_and(|after| after >= snapshot_end_sequence_id) {
                 Vec::new()
             } else {
-                let events = read_tx.open_keyspace(EVENTS_TABLE).map_err(|err| {
+                let events = read_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall journey_replay_page open events table failed: {err}"
+                        "fjall journey_replay_page open events keyspace failed: {err}"
                     ))
                 })?;
                 let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
@@ -713,12 +714,12 @@ impl JungleStore for FjallStore {
                 "fjall journey_events_since begin read failed: {err}"
             ))
         })?;
-        let events = read_tx.open_keyspace(EVENTS_TABLE).map_err(|err| {
+        let events = read_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "fjall journey_events_since open events table failed: {err}"
+                "fjall journey_events_since open events keyspace failed: {err}"
             ))
         })?;
-        let event_timestamps = read_tx.open_keyspace(EVENT_TIMESTAMPS_TABLE).ok();
+        let event_timestamps = read_tx.open_keyspace(EVENT_TIMESTAMPS_KEYSPACE).ok();
         let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
         let start_key = encode_event_key(journey_id, start_sequence_id);
         let end_key = encode_event_key(journey_id, u64::MAX);
@@ -813,9 +814,9 @@ impl JungleStore for FjallStore {
             ))
         })?;
 
-        let journeys = read_tx.open_keyspace(JOURNEYS_TABLE).map_err(|err| {
+        let journeys = read_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "fjall journey_status open journeys table failed: {err}"
+                "fjall journey_status open journeys keyspace failed: {err}"
             ))
         })?;
 
@@ -843,9 +844,9 @@ impl JungleStore for FjallStore {
                 "fjall list_journeys begin read failed: {err}"
             ))
         })?;
-        let journeys = read_tx.open_keyspace(JOURNEYS_TABLE).map_err(|err| {
+        let journeys = read_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "fjall list_journeys open journeys table failed: {err}"
+                "fjall list_journeys open journeys keyspace failed: {err}"
             ))
         })?;
         let iter = journeys.iter().map_err(|err| {
@@ -889,9 +890,9 @@ impl JungleStore for FjallStore {
             ))
         })?;
 
-        let appearances = read_tx.open_keyspace(APPEARANCES_TABLE).map_err(|err| {
+        let appearances = read_tx.open_keyspace(APPEARANCES_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "fjall animal_appearance open animal_appearances table failed: {err}"
+                "fjall animal_appearance open animal_appearances keyspace failed: {err}"
             ))
         })?;
 
@@ -913,11 +914,13 @@ impl JungleStore for FjallStore {
         })?;
 
         {
-            let mut appearances = write_tx.open_keyspace(APPEARANCES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "fjall upsert_animal_appearance open animal_appearances table failed: {err}"
+            let mut appearances = write_tx
+                .open_keyspace(APPEARANCES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                    "fjall upsert_animal_appearance open animal_appearances keyspace failed: {err}"
                 ))
-            })?;
+                })?;
             appearances
                 .insert(&journey_id.as_bytes()[..], data.as_slice())
                 .map_err(|err| {
@@ -943,16 +946,16 @@ impl JungleStore for FjallStore {
         })?;
 
         {
-            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_TABLE).map_err(|err| {
+            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall enqueue_animal_perturbation open animal_perturbations table failed: {err}"
+                    "fjall enqueue_animal_perturbation open animal_perturbations keyspace failed: {err}"
                 ))
             })?;
 
             let mut max_sequence: Option<u64> = None;
             let iter = perturbations.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall enqueue_animal_perturbation iterate table failed: {err}"
+                    "fjall enqueue_animal_perturbation iterate keyspace failed: {err}"
                 ))
             })?;
             for entry in iter {
@@ -1004,14 +1007,14 @@ impl JungleStore for FjallStore {
         let mut selected: Option<(u64, Vec<u8>)> = None;
 
         {
-            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_TABLE).map_err(|err| {
+            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall claim_animal_perturbation open animal_perturbations table failed: {err}"
+                    "fjall claim_animal_perturbation open animal_perturbations keyspace failed: {err}"
                 ))
             })?;
             let iter = perturbations.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall claim_animal_perturbation iterate table failed: {err}"
+                    "fjall claim_animal_perturbation iterate keyspace failed: {err}"
                 ))
             })?;
             for entry in iter {
@@ -1076,11 +1079,14 @@ impl JungleStore for FjallStore {
             ))
         })?;
         {
-            let mut perturbations = write_tx.open_keyspace(PERTURBATIONS_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "fjall ack_animal_perturbation open animal_perturbations table failed: {err}"
+            let mut perturbations =
+                write_tx
+                    .open_keyspace(PERTURBATIONS_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                    "fjall ack_animal_perturbation open animal_perturbations keyspace failed: {err}"
                 ))
-            })?;
+                    })?;
             let key = encode_event_key(journey_id, perturbation_id);
             let removed = perturbations.remove(key.as_slice()).map_err(|err| {
                 crate::PersistenceError::Message(format!(
@@ -1118,10 +1124,10 @@ impl JungleStore for FjallStore {
         })?;
         {
             let mut leases = write_tx
-                .open_keyspace(JOURNEY_LEASES_TABLE)
+                .open_keyspace(JOURNEY_LEASES_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall heartbeat_journey_lease open journey_leases table failed: {err}"
+                        "fjall heartbeat_journey_lease open journey_leases keyspace failed: {err}"
                     ))
                 })?;
             let key = &journey_id.as_bytes()[..];
@@ -1149,11 +1155,13 @@ impl JungleStore for FjallStore {
         let mut selected_value: Option<Vec<u8>> = None;
 
         {
-            let mut owner_wakes = write_tx.open_keyspace(OWNER_WAKES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "fjall claim_owner_wake open owner_wakes table failed: {err}"
-                ))
-            })?;
+            let mut owner_wakes = write_tx
+                .open_keyspace(OWNER_WAKES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake open owner_wakes keyspace failed: {err}"
+                    ))
+                })?;
 
             let iter = owner_wakes.iter().map_err(|err| {
                 crate::PersistenceError::Message(format!(
@@ -1236,17 +1244,16 @@ impl JungleStore for FjallStore {
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
         {
-            let mut generation_table =
-                write_tx
-                    .open_keyspace(ANIMAL_GENERATIONS_TABLE)
-                    .map_err(|err| {
-                        crate::PersistenceError::Message(format!(
-                            "fjall claim_work open animal_generations table failed: {err}"
-                        ))
-                    })?;
+            let mut generation_keyspace = write_tx
+                .open_keyspace(ANIMAL_GENERATIONS_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_work open animal_generations keyspace failed: {err}"
+                    ))
+                })?;
             for supported in supported_animals {
                 let key = encode_animal_generation_key(namespace.as_str(), supported.animal_id);
-                let existing = generation_table
+                let existing = generation_keyspace
                     .get(key.as_slice())
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
@@ -1259,7 +1266,7 @@ impl JungleStore for FjallStore {
                     .transpose()?
                     .unwrap_or(0);
                 if supported.generation > existing {
-                    generation_table
+                    generation_keyspace
                         .insert(
                             key.as_slice(),
                             supported.generation.to_be_bytes().as_slice(),
@@ -1272,21 +1279,22 @@ impl JungleStore for FjallStore {
                 }
             }
 
-            let journeys = write_tx.open_keyspace(JOURNEYS_TABLE).map_err(|err| {
+            let journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall claim_work open journeys table failed: {err}"
+                    "fjall claim_work open journeys keyspace failed: {err}"
                 ))
             })?;
-            let journey_leases = write_tx
-                .open_keyspace(JOURNEY_LEASES_TABLE)
-                .map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "fjall claim_work open journey_leases table failed: {err}"
-                    ))
-                })?;
-            let mut work_items = write_tx.open_keyspace(STEPS_TABLE).map_err(|err| {
+            let journey_leases =
+                write_tx
+                    .open_keyspace(JOURNEY_LEASES_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall claim_work open journey_leases keyspace failed: {err}"
+                        ))
+                    })?;
+            let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall claim_work open work_items table failed: {err}"
+                    "fjall claim_work open work_items keyspace failed: {err}"
                 ))
             })?;
 
@@ -1401,9 +1409,9 @@ impl JungleStore for FjallStore {
         };
 
         let flow = {
-            let journeys = write_tx.open_keyspace(JOURNEYS_TABLE).map_err(|err| {
+            let journeys = write_tx.open_keyspace(JOURNEYS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall claim_work open journeys table failed: {err}"
+                    "fjall claim_work open journeys keyspace failed: {err}"
                 ))
             })?;
             let flow_key = &selected_journey_id.as_bytes()[..];
@@ -1517,24 +1525,24 @@ impl JungleStore for FjallStore {
         })?;
 
         {
-            let mut events = write_tx.open_keyspace(EVENTS_TABLE).map_err(|err| {
+            let mut events = write_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall append_history open events table failed: {err}"
+                    "fjall append_history open events keyspace failed: {err}"
                 ))
             })?;
             let mut event_timestamps =
                 write_tx
-                    .open_keyspace(EVENT_TIMESTAMPS_TABLE)
+                    .open_keyspace(EVENT_TIMESTAMPS_KEYSPACE)
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "fjall append_history open event_timestamps table failed: {err}"
+                            "fjall append_history open event_timestamps keyspace failed: {err}"
                         ))
                     })?;
             let mut sequences = write_tx
-                .open_keyspace(JOURNEY_EVENT_SEQUENCE_TABLE)
+                .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall append_history open journey_event_sequences table failed: {err}"
+                        "fjall append_history open journey_event_sequences keyspace failed: {err}"
                     ))
                 })?;
 
@@ -1626,17 +1634,19 @@ impl JungleStore for FjallStore {
             })?;
 
             {
-                let mut timers = write_tx.open_keyspace(TIMER_TASKS_TABLE).map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "fjall schedule_sleep_timer open timer_tasks table failed: {err}"
-                    ))
-                })?;
+                let mut timers = write_tx
+                    .open_keyspace(TIMER_TASKS_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall schedule_sleep_timer open timer_tasks keyspace failed: {err}"
+                        ))
+                    })?;
                 let mut due_index =
                     write_tx
-                        .open_keyspace(TIMER_DUE_INDEX_TABLE)
+                        .open_keyspace(TIMER_DUE_INDEX_KEYSPACE)
                         .map_err(|err| {
                             crate::PersistenceError::Message(format!(
-                            "fjall schedule_sleep_timer open timer_due_index table failed: {err}"
+                            "fjall schedule_sleep_timer open timer_due_index keyspace failed: {err}"
                         ))
                         })?;
                 let timer_key = &timer_id.as_bytes()[..];
@@ -1701,16 +1711,16 @@ impl JungleStore for FjallStore {
                 "fjall next_timer_due_at begin read failed: {err}"
             ))
         })?;
-        let timers = read_tx.open_keyspace(TIMER_TASKS_TABLE).map_err(|err| {
+        let timers = read_tx.open_keyspace(TIMER_TASKS_KEYSPACE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "fjall next_timer_due_at open timer_tasks table failed: {err}"
+                "fjall next_timer_due_at open timer_tasks keyspace failed: {err}"
             ))
         })?;
         let due_index = read_tx
-            .open_keyspace(TIMER_DUE_INDEX_TABLE)
+            .open_keyspace(TIMER_DUE_INDEX_KEYSPACE)
             .map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall next_timer_due_at open timer_due_index table failed: {err}"
+                    "fjall next_timer_due_at open timer_due_index keyspace failed: {err}"
                 ))
             })?;
         let due_start = encode_timer_due_index_key(i64::MIN, Uuid::nil());
@@ -1770,18 +1780,21 @@ impl JungleStore for FjallStore {
 
         let mut selected: Option<(Uuid, Uuid, DateTime<Utc>)> = None;
         {
-            let mut timers = write_tx.open_keyspace(TIMER_TASKS_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "fjall poll_timers open timer_tasks table failed: {err}"
-                ))
-            })?;
-            let mut due_index = write_tx
-                .open_keyspace(TIMER_DUE_INDEX_TABLE)
+            let mut timers = write_tx
+                .open_keyspace(TIMER_TASKS_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall poll_timers open timer_due_index table failed: {err}"
+                        "fjall poll_timers open timer_tasks keyspace failed: {err}"
                     ))
                 })?;
+            let mut due_index =
+                write_tx
+                    .open_keyspace(TIMER_DUE_INDEX_KEYSPACE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall poll_timers open timer_due_index keyspace failed: {err}"
+                        ))
+                    })?;
             let due_start = encode_timer_due_index_key(i64::MIN, Uuid::nil());
             let due_end = encode_timer_due_index_bound_key(now_millis, true);
             let due_iter = due_index
@@ -1871,10 +1884,10 @@ impl JungleStore for FjallStore {
         let mut valid_owner: Option<Uuid> = None;
         {
             let leases = write_tx
-                .open_keyspace(JOURNEY_LEASES_TABLE)
+                .open_keyspace(JOURNEY_LEASES_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall poll_timers open journey_leases table failed: {err}"
+                        "fjall poll_timers open journey_leases keyspace failed: {err}"
                     ))
                 })?;
             let lease_entry = leases.get(&journey_id.as_bytes()[..]).map_err(|err| {
@@ -1892,11 +1905,13 @@ impl JungleStore for FjallStore {
         }
 
         if let Some(owner_id) = valid_owner {
-            let mut owner_wakes = write_tx.open_keyspace(OWNER_WAKES_TABLE).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "fjall poll_timers open owner_wakes table failed: {err}"
-                ))
-            })?;
+            let mut owner_wakes = write_tx
+                .open_keyspace(OWNER_WAKES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall poll_timers open owner_wakes keyspace failed: {err}"
+                    ))
+                })?;
             let wake_id = Uuid::new_v4();
             let key = encode_owner_wake_key(owner_id, now_millis, wake_id);
             let value = encode_owner_wake_value(journey_id, timer_id);
@@ -1908,9 +1923,9 @@ impl JungleStore for FjallStore {
                     ))
                 })?;
         } else {
-            let mut work_items = write_tx.open_keyspace(STEPS_TABLE).map_err(|err| {
+            let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall poll_timers open work_items table failed: {err}"
+                    "fjall poll_timers open work_items keyspace failed: {err}"
                 ))
             })?;
             let work_item_id = Uuid::new_v4();
@@ -1930,24 +1945,24 @@ impl JungleStore for FjallStore {
         }
 
         {
-            let mut events = write_tx.open_keyspace(EVENTS_TABLE).map_err(|err| {
+            let mut events = write_tx.open_keyspace(EVENTS_KEYSPACE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "fjall poll_timers open events table failed: {err}"
+                    "fjall poll_timers open events keyspace failed: {err}"
                 ))
             })?;
             let mut event_timestamps =
                 write_tx
-                    .open_keyspace(EVENT_TIMESTAMPS_TABLE)
+                    .open_keyspace(EVENT_TIMESTAMPS_KEYSPACE)
                     .map_err(|err| {
                         crate::PersistenceError::Message(format!(
-                            "fjall poll_timers open event_timestamps table failed: {err}"
+                            "fjall poll_timers open event_timestamps keyspace failed: {err}"
                         ))
                     })?;
             let mut sequences = write_tx
-                .open_keyspace(JOURNEY_EVENT_SEQUENCE_TABLE)
+                .open_keyspace(JOURNEY_EVENT_SEQUENCE_KEYSPACE)
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "fjall poll_timers open journey_event_sequences table failed: {err}"
+                        "fjall poll_timers open journey_event_sequences keyspace failed: {err}"
                     ))
                 })?;
             let key = &journey_id.as_bytes()[..];

@@ -90,6 +90,7 @@ impl ServerBuilder {
     }
 
     #[cfg(feature = "fjall")]
+    /// Uses an auto-cleaned temporary Fjall directory rather than a RAM-only store.
     pub fn memory(mut self) -> Self {
         self.db = self.db.kind(Kind::Memory);
         self
