@@ -20,7 +20,7 @@ const DEFAULT_LOG_FILTER: &str = "warn,backoff=info";
 const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_CRONFISH_DIR: &str = ".cronfish";
-const DEFAULT_REDB_FILENAME: &str = "db.redb";
+const DEFAULT_FJALL_FILENAME: &str = "db.fjall";
 
 pub(crate) type CronExpr = String;
 
@@ -59,7 +59,7 @@ struct ServerArgs {
     #[arg(long, default_value = DEFAULT_SERVER_ADDR)]
     listen: SocketAddr,
     #[arg(long)]
-    redb_path: Option<PathBuf>,
+    fjall_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -67,7 +67,7 @@ struct DaemonArgs {
     #[arg(long, default_value = DEFAULT_SERVER_ADDR)]
     listen: SocketAddr,
     #[arg(long)]
-    redb_path: Option<PathBuf>,
+    fjall_path: Option<PathBuf>,
     #[arg(long, default_value = DEFAULT_SERVER_NAME)]
     server_name: String,
 }
@@ -166,11 +166,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let redb_path = args.redb_path.unwrap_or(default_redb_path()?);
-    ensure_parent_dir_exists(&redb_path)?;
+    let fjall_path = args.fjall_path.unwrap_or(default_fjall_path()?);
+    ensure_parent_dir_exists(&fjall_path)?;
     jungle_sdk::server::ServerBuilder::new()
         .listen(args.listen)
-        .redb_path(redb_path)
+        .fjall_path(fjall_path)
         .run()
         .await?;
     Ok(())
@@ -184,12 +184,12 @@ async fn run_worker(args: ConnectionArgs) -> Result<(), Box<dyn std::error::Erro
 }
 
 async fn run_daemon(args: DaemonArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let redb_path = args.redb_path.unwrap_or(default_redb_path()?);
-    ensure_parent_dir_exists(&redb_path)?;
+    let fjall_path = args.fjall_path.unwrap_or(default_fjall_path()?);
+    ensure_parent_dir_exists(&fjall_path)?;
 
     let server_builder = jungle_sdk::server::ServerBuilder::new()
         .listen(args.listen)
-        .redb_path(redb_path);
+        .fjall_path(fjall_path);
     let mut server_task = tokio::spawn(async move { server_builder.run().await });
 
     let connection = ConnectionArgs {
@@ -352,8 +352,8 @@ fn cronfish_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(PathBuf::from(home).join(DEFAULT_CRONFISH_DIR))
 }
 
-fn default_redb_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(cronfish_dir()?.join(DEFAULT_REDB_FILENAME))
+fn default_fjall_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(cronfish_dir()?.join(DEFAULT_FJALL_FILENAME))
 }
 
 fn ensure_parent_dir_exists(path: &Path) -> Result<(), Box<dyn std::error::Error>> {

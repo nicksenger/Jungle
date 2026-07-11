@@ -3,7 +3,10 @@ use super::{
     PulseCodePurgatoryError,
 };
 use directories_next::BaseDirs;
-use redb::{ReadableTable, TableDefinition};
+use fjall::{
+    KeyspaceCreateOptions, PersistMode, Readable, SingleWriterTxDatabase, SingleWriterTxKeyspace,
+    SingleWriterWriteTx,
+};
 use serde::{Deserialize, Serialize};
 use std::any::type_name;
 use std::cmp::Ordering;
@@ -16,8 +19,20 @@ use tracing::warn;
 
 const ROOT_NODE_ID: u64 = 0;
 const MCTS_SCHEMA_VERSION: &str = "v2-score-metrics";
-const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_trees");
-const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_nodes");
+const MCTS_TREES_KEYSPACE: &str = "lyrebird_mcts_trees";
+const MCTS_NODES_KEYSPACE: &str = "lyrebird_mcts_nodes";
+
+pub(crate) struct MctsDb {
+    db: SingleWriterTxDatabase,
+    trees: SingleWriterTxKeyspace,
+    nodes: SingleWriterTxKeyspace,
+}
+
+impl MctsDb {
+    fn write_tx(&self) -> SingleWriterWriteTx<'_> {
+        self.db.write_tx().durability(Some(PersistMode::SyncAll))
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Submission<Data> {
@@ -58,7 +73,7 @@ struct StoredMctsNode {
 
 pub(crate) fn open_mcts_db(
     db_path: Option<PathBuf>,
-) -> Result<(Arc<redb::Database>, PathBuf), PulseCodePurgatoryError> {
+) -> Result<(Arc<MctsDb>, PathBuf), PulseCodePurgatoryError> {
     let db_path = resolve_mcts_db_path(db_path)?;
     if let Some(parent) = db_path.parent() {
         fs::create_dir_all(parent).map_err(|source| PulseCodePurgatoryError::CreateDbDir {
@@ -66,14 +81,30 @@ pub(crate) fn open_mcts_db(
             source,
         })?;
     }
-    let db = redb::Database::create(&db_path).map_err(|err| {
-        PulseCodePurgatoryError::Persistence(format!(
-            "failed to open mcts database {}: {err}",
-            db_path.display()
-        ))
-    })?;
+    let db = SingleWriterTxDatabase::builder(&db_path)
+        .open()
+        .map_err(|err| {
+            PulseCodePurgatoryError::Persistence(format!(
+                "failed to open mcts database {}: {err}",
+                db_path.display()
+            ))
+        })?;
+    let trees = db
+        .keyspace(MCTS_TREES_KEYSPACE, KeyspaceCreateOptions::default)
+        .map_err(|err| {
+            PulseCodePurgatoryError::Persistence(format!(
+                "failed to open mcts trees keyspace: {err}"
+            ))
+        })?;
+    let nodes = db
+        .keyspace(MCTS_NODES_KEYSPACE, KeyspaceCreateOptions::default)
+        .map_err(|err| {
+            PulseCodePurgatoryError::Persistence(format!(
+                "failed to open mcts nodes keyspace: {err}"
+            ))
+        })?;
 
-    Ok((Arc::new(db), db_path))
+    Ok((Arc::new(MctsDb { db, trees, nodes }), db_path))
 }
 
 impl PulseCodePurgatory {
@@ -84,11 +115,9 @@ impl PulseCodePurgatory {
         Tag: LyrebirdInstrumentTag,
     {
         let instrument = Tag::INSTRUMENT;
-        let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!("mcts select begin_write failed: {err}"))
-        })?;
+        let mut write_tx = self.db.write_tx();
         let tag = type_name::<Tag>();
-        let (mut tree_state, nodes) = load_mcts_tree(&write_tx, tag)?;
+        let (mut tree_state, nodes) = load_mcts_tree(&mut write_tx, &self.db, tag)?;
         if let Some(pending_selected_node_id) = tree_state.pending_selected_node_id {
             if tree_state.pending_session_id.as_deref() == Some(self.runtime_session_id.as_str()) {
                 return Err(PulseCodePurgatoryError::MctsProtocol(format!(
@@ -123,7 +152,7 @@ impl PulseCodePurgatory {
 
         tree_state.pending_selected_node_id = Some(selected_node_id);
         tree_state.pending_session_id = Some(self.runtime_session_id.clone());
-        save_tree_state(&write_tx, tag, &tree_state)?;
+        save_tree_state(&mut write_tx, &self.db, tag, &tree_state)?;
         write_tx.commit().map_err(|err| {
             PulseCodePurgatoryError::Persistence(format!("mcts select commit failed: {err}"))
         })?;
@@ -155,11 +184,9 @@ impl PulseCodePurgatory {
             }
         }
 
-        let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!("mcts submit begin_write failed: {err}"))
-        })?;
+        let mut write_tx = self.db.write_tx();
         let tag = type_name::<Tag>();
-        let (mut tree_state, mut nodes) = load_mcts_tree(&write_tx, tag)?;
+        let (mut tree_state, mut nodes) = load_mcts_tree(&mut write_tx, &self.db, tag)?;
         if tree_state.pending_session_id.as_deref() != Some(self.runtime_session_id.as_str()) {
             return Err(PulseCodePurgatoryError::MctsProtocol(format!(
                 "{} tree pending selection does not belong to this runtime; select must precede submit",
@@ -208,8 +235,8 @@ impl PulseCodePurgatory {
             backpropagate_mcts(&mut nodes, new_node_id, submission.score as f64, instrument)?;
         }
 
-        save_tree_state(&write_tx, tag, &tree_state)?;
-        save_tree_nodes(&write_tx, tag, &nodes)?;
+        save_tree_state(&mut write_tx, &self.db, tag, &tree_state)?;
+        save_tree_nodes(&mut write_tx, &self.db, tag, &nodes)?;
         write_tx.commit().map_err(|err| {
             PulseCodePurgatoryError::Persistence(format!("mcts submit commit failed: {err}"))
         })?;
@@ -224,10 +251,8 @@ impl PulseCodePurgatory {
     where
         Tag: LyrebirdInstrumentTag,
     {
-        let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!("mcts test begin_write failed: {err}"))
-        })?;
-        let snapshot = load_mcts_tree(&write_tx, type_name::<Tag>())?;
+        let mut write_tx = self.db.write_tx();
+        let snapshot = load_mcts_tree(&mut write_tx, &self.db, type_name::<Tag>())?;
         write_tx.commit().map_err(|err| {
             PulseCodePurgatoryError::Persistence(format!("mcts test commit failed: {err}"))
         })?;
@@ -269,7 +294,7 @@ fn resolve_mcts_db_path(db_path: Option<PathBuf>) -> Result<PathBuf, PulseCodePu
                 .home_dir()
                 .join(".jungle")
                 .join("lyrebird")
-                .join("mcts.redb"))
+                .join("mcts.fjall"))
         }
     }
 }
@@ -303,78 +328,58 @@ fn root_node() -> StoredMctsNode {
 }
 
 fn load_mcts_tree(
-    write_tx: &redb::WriteTransaction,
+    write_tx: &mut SingleWriterWriteTx<'_>,
+    db: &MctsDb,
     tag: &str,
 ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodePurgatoryError> {
     let tree_state = {
-        let mut trees = write_tx.open_table(MCTS_TREES_TABLE).map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!("open mcts trees table failed: {err}"))
-        })?;
         let key = tree_key(tag);
-        let existing = trees
-            .get(key.as_slice())
+        let existing = write_tx
+            .get(&db.trees, key.as_slice())
             .map_err(|err| {
                 PulseCodePurgatoryError::Persistence(format!(
                     "read tree state for {tag} failed: {err}"
                 ))
             })?
-            .map(|value| value.value().to_vec());
+            .map(|value| value.to_vec());
 
         match existing {
             Some(value) => serde_json::from_slice(&value)?,
             None => {
                 let state = initial_tree_state();
                 let encoded = serde_json::to_vec(&state)?;
-                trees
-                    .insert(key.as_slice(), encoded.as_slice())
-                    .map_err(|err| {
-                        PulseCodePurgatoryError::Persistence(format!(
-                            "initialize tree state for {tag} failed: {err}"
-                        ))
-                    })?;
+                write_tx.insert(&db.trees, key, encoded);
                 state
             }
         }
     };
 
     let mut nodes = HashMap::new();
-    {
-        let mut node_table = write_tx.open_table(MCTS_NODES_TABLE).map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!("open mcts nodes table failed: {err}"))
-        })?;
+    for node_id in &tree_state.node_ids {
+        let key = node_key(tag, *node_id);
+        let existing = write_tx
+            .get(&db.nodes, key.as_slice())
+            .map_err(|err| {
+                PulseCodePurgatoryError::Persistence(format!(
+                    "read node {node_id} for tree {tag} failed: {err}"
+                ))
+            })?
+            .map(|value| value.to_vec());
 
-        for node_id in &tree_state.node_ids {
-            let key = node_key(tag, *node_id);
-            let existing = node_table
-                .get(key.as_slice())
-                .map_err(|err| {
-                    PulseCodePurgatoryError::Persistence(format!(
-                        "read node {node_id} for tree {tag} failed: {err}"
-                    ))
-                })?
-                .map(|value| value.value().to_vec());
-
-            match existing {
-                Some(value) => {
-                    nodes.insert(*node_id, serde_json::from_slice(&value)?);
-                }
-                None if *node_id == ROOT_NODE_ID => {
-                    let root = root_node();
-                    let encoded = serde_json::to_vec(&root)?;
-                    node_table
-                        .insert(key.as_slice(), encoded.as_slice())
-                        .map_err(|err| {
-                            PulseCodePurgatoryError::Persistence(format!(
-                                "initialize root node for {tag} failed: {err}"
-                            ))
-                        })?;
-                    nodes.insert(ROOT_NODE_ID, root);
-                }
-                None => {
-                    return Err(PulseCodePurgatoryError::Persistence(format!(
-                        "node {node_id} missing for tree {tag}"
-                    )));
-                }
+        match existing {
+            Some(value) => {
+                nodes.insert(*node_id, serde_json::from_slice(&value)?);
+            }
+            None if *node_id == ROOT_NODE_ID => {
+                let root = root_node();
+                let encoded = serde_json::to_vec(&root)?;
+                write_tx.insert(&db.nodes, key, encoded);
+                nodes.insert(ROOT_NODE_ID, root);
+            }
+            None => {
+                return Err(PulseCodePurgatoryError::Persistence(format!(
+                    "node {node_id} missing for tree {tag}"
+                )));
             }
         }
     }
@@ -383,43 +388,27 @@ fn load_mcts_tree(
 }
 
 fn save_tree_state(
-    write_tx: &redb::WriteTransaction,
+    write_tx: &mut SingleWriterWriteTx<'_>,
+    db: &MctsDb,
     tag: &str,
     tree_state: &StoredMctsTree,
 ) -> Result<(), PulseCodePurgatoryError> {
-    let mut trees = write_tx.open_table(MCTS_TREES_TABLE).map_err(|err| {
-        PulseCodePurgatoryError::Persistence(format!("open mcts trees table failed: {err}"))
-    })?;
     let key = tree_key(tag);
     let encoded = serde_json::to_vec(tree_state)?;
-    trees
-        .insert(key.as_slice(), encoded.as_slice())
-        .map_err(|err| {
-            PulseCodePurgatoryError::Persistence(format!(
-                "write tree state for {tag} failed: {err}"
-            ))
-        })?;
+    write_tx.insert(&db.trees, key, encoded);
     Ok(())
 }
 
 fn save_tree_nodes(
-    write_tx: &redb::WriteTransaction,
+    write_tx: &mut SingleWriterWriteTx<'_>,
+    db: &MctsDb,
     tag: &str,
     nodes: &HashMap<u64, StoredMctsNode>,
 ) -> Result<(), PulseCodePurgatoryError> {
-    let mut node_table = write_tx.open_table(MCTS_NODES_TABLE).map_err(|err| {
-        PulseCodePurgatoryError::Persistence(format!("open mcts nodes table failed: {err}"))
-    })?;
     for (node_id, node) in nodes {
         let key = node_key(tag, *node_id);
         let encoded = serde_json::to_vec(node)?;
-        node_table
-            .insert(key.as_slice(), encoded.as_slice())
-            .map_err(|err| {
-                PulseCodePurgatoryError::Persistence(format!(
-                    "write node {node_id} for tree {tag} failed: {err}"
-                ))
-            })?;
+        write_tx.insert(&db.nodes, key, encoded);
     }
     Ok(())
 }
@@ -584,7 +573,7 @@ mod tests {
     fn temp_db_path(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join("jungle-lyrebird-tests")
-            .join(format!("{name}-{}.redb", Uuid::new_v4()))
+            .join(format!("{name}-{}.fjall", Uuid::new_v4()))
     }
 
     fn dsp_code(iteration_id: &str, similarity: Option<f32>) -> DspCode {
@@ -704,7 +693,7 @@ mod tests {
     #[test]
     fn resolves_default_db_path_under_home_directory() {
         let db_path = resolve_mcts_db_path(None).unwrap();
-        assert!(db_path.ends_with(".jungle/lyrebird/mcts.redb"));
+        assert!(db_path.ends_with(".jungle/lyrebird/mcts.fjall"));
     }
 
     #[test]

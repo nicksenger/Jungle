@@ -7,12 +7,12 @@ use jungle_types::{
 use thiserror::Error;
 use uuid::Uuid;
 
+#[cfg(feature = "fjall")]
+pub mod fjall;
 pub mod mock;
 pub mod models;
 #[cfg(feature = "postgres")]
 pub mod pg;
-#[cfg(feature = "redb")]
-pub mod redb;
 
 pub type Error = PersistenceError;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -22,9 +22,9 @@ pub const DEFAULT_CLAIMED_WORK_TTL_MS: i64 = 30_000;
 pub enum Kind {
     #[cfg(feature = "postgres")]
     Postgres(pg::PgStoreBuilder),
-    #[cfg(feature = "redb")]
-    Redb(redb::RedbStoreBuilder),
-    #[cfg(feature = "redb")]
+    #[cfg(feature = "fjall")]
+    Fjall(fjall::FjallStoreBuilder),
+    #[cfg(feature = "fjall")]
     Memory,
 }
 
@@ -72,23 +72,24 @@ impl StoreBuilder {
         self.postgres(pg::PgStore::builder().connection_string(value))
     }
 
-    #[cfg(feature = "redb")]
-    pub fn redb(self, builder: redb::RedbStoreBuilder) -> Self {
-        self.kind(Kind::Redb(builder))
+    #[cfg(feature = "fjall")]
+    pub fn fjall(self, builder: fjall::FjallStoreBuilder) -> Self {
+        self.kind(Kind::Fjall(builder))
     }
 
-    #[cfg(feature = "redb")]
-    pub fn redb_path(self, value: impl Into<std::path::PathBuf>) -> Self {
-        self.redb(redb::RedbStore::builder().path(value))
+    #[cfg(feature = "fjall")]
+    pub fn fjall_path(self, value: impl Into<std::path::PathBuf>) -> Self {
+        self.fjall(fjall::FjallStore::builder().path(value))
     }
 
-    #[cfg(feature = "redb")]
+    #[cfg(feature = "fjall")]
+    /// Uses an auto-cleaned temporary Fjall directory rather than a RAM-only store.
     pub fn memory(self) -> Self {
         self.kind(Kind::Memory)
     }
 
     pub async fn build(self) -> Result<Box<dyn JungleStore>> {
-        #[cfg(all(feature = "postgres", feature = "redb"))]
+        #[cfg(all(feature = "postgres", feature = "fjall"))]
         {
             match self.kind {
                 Some(Kind::Postgres(builder)) => {
@@ -98,14 +99,14 @@ impl StoreBuilder {
                         .await?;
                     return Ok(Box::new(store));
                 }
-                Some(Kind::Redb(builder)) => {
+                Some(Kind::Fjall(builder)) => {
                     let store = builder
                         .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
                         .build()?;
                     return Ok(Box::new(store));
                 }
                 Some(Kind::Memory) => {
-                    let store = redb::RedbStore::in_memory_with_claimed_work_ttl_ms(
+                    let store = fjall::FjallStore::in_memory_with_claimed_work_ttl_ms(
                         self.claimed_work_ttl_ms,
                     )?;
                     return Ok(Box::new(store));
@@ -120,7 +121,7 @@ impl StoreBuilder {
             }
         }
 
-        #[cfg(all(feature = "postgres", not(feature = "redb")))]
+        #[cfg(all(feature = "postgres", not(feature = "fjall")))]
         {
             match self.kind {
                 Some(Kind::Postgres(builder)) => {
@@ -140,23 +141,23 @@ impl StoreBuilder {
             }
         }
 
-        #[cfg(all(feature = "redb", not(feature = "postgres")))]
+        #[cfg(all(feature = "fjall", not(feature = "postgres")))]
         {
             match self.kind {
-                Some(Kind::Redb(builder)) => {
+                Some(Kind::Fjall(builder)) => {
                     let store = builder
                         .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
                         .build()?;
                     return Ok(Box::new(store));
                 }
                 Some(Kind::Memory) => {
-                    let store = redb::RedbStore::in_memory_with_claimed_work_ttl_ms(
+                    let store = fjall::FjallStore::in_memory_with_claimed_work_ttl_ms(
                         self.claimed_work_ttl_ms,
                     )?;
                     return Ok(Box::new(store));
                 }
                 None => {
-                    let store = redb::RedbStore::builder()
+                    let store = fjall::FjallStore::builder()
                         .claimed_work_ttl_ms(self.claimed_work_ttl_ms)
                         .build()?;
                     return Ok(Box::new(store));
@@ -166,7 +167,7 @@ impl StoreBuilder {
 
         #[allow(unreachable_code)]
         Err(PersistenceError::Message(
-            "no persistence backend compiled; enable `postgres` or `redb` feature".to_string(),
+            "no persistence backend compiled; enable `postgres` or `fjall` feature".to_string(),
         ))
     }
 }
@@ -184,12 +185,12 @@ pub enum PersistenceError {
     #[cfg(feature = "postgres")]
     #[error("postgres query failed: {0}")]
     PostgresQuery(#[source] sqlx::Error),
-    #[cfg(feature = "redb")]
-    #[error("redb database path is required")]
-    MissingRedbPath,
-    #[cfg(feature = "redb")]
-    #[error("redb open/create failed: {0}")]
-    RedbOpen(#[source] ::redb::DatabaseError),
+    #[cfg(feature = "fjall")]
+    #[error("fjall database path is required")]
+    MissingFjallPath,
+    #[cfg(feature = "fjall")]
+    #[error("fjall open/create failed: {0}")]
+    FjallOpen(#[source] ::fjall::Error),
 }
 
 /// Storage backend contract for persistence implementations.
@@ -272,7 +273,7 @@ pub fn ensure_store_backend_available_or_mock(using_mock: bool) {
         return;
     }
 
-    if !cfg!(any(feature = "postgres", feature = "redb")) {
-        panic!("no persistence backend compiled; enable `postgres` or `redb` feature");
+    if !cfg!(any(feature = "postgres", feature = "fjall")) {
+        panic!("no persistence backend compiled; enable `postgres` or `fjall` feature");
     }
 }

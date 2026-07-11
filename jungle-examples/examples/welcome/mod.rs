@@ -400,23 +400,23 @@ async fn run_transport_server(listen_addr: SocketAddr) -> Result<(), String> {
         return result.map_err(|err| err.to_string());
     }
 
-    #[cfg(all(feature = "redb", not(feature = "postgres")))]
+    #[cfg(all(feature = "fjall", not(feature = "postgres")))]
     {
-        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.redb", Uuid::new_v4()));
+        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.fjall", Uuid::new_v4()));
         info!(
             %listen_addr,
             db_path = %db_path.display(),
-            "starting welcome transport server in redb mode"
+            "starting welcome transport server in fjall mode"
         );
         return ServerBuilder::new()
             .listen(listen_addr)
-            .redb_path(db_path)
+            .fjall_path(db_path)
             .run()
             .await
             .map_err(|err| err.to_string());
     }
 
-    #[cfg(not(any(feature = "redb", feature = "postgres")))]
+    #[cfg(not(any(feature = "fjall", feature = "postgres")))]
     {
         info!(%listen_addr, "starting welcome transport server in memory mode");
         ServerBuilder::new()
@@ -1276,15 +1276,15 @@ async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive
         return Ok((client, keep_alive));
     }
 
-    #[cfg(all(feature = "redb", not(feature = "postgres")))]
+    #[cfg(all(feature = "fjall", not(feature = "postgres")))]
     {
-        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.redb", Uuid::new_v4()));
+        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.fjall", Uuid::new_v4()));
         let backend = jungle_sdk::server::Server::builder()
-            .redb_path(db_path)
+            .fjall_path(db_path)
             .build()
             .await
             .map_err(|err| {
-                error!(error = %err, "failed building redb server backend");
+                error!(error = %err, "failed building fjall server backend");
                 err.to_string()
             })?;
         let client = FusedClient::builder()
@@ -1292,13 +1292,13 @@ async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive
             .build()
             .await
             .map_err(|err| {
-                error!(error = %err, "failed building local client with redb backend");
+                error!(error = %err, "failed building local client with fjall backend");
                 err.to_string()
             })?;
         return Ok((client, keep_alive));
     }
 
-    #[cfg(not(any(feature = "redb", feature = "postgres")))]
+    #[cfg(not(any(feature = "fjall", feature = "postgres")))]
     {
         let client = FusedClient::builder().build().await.map_err(|err| {
             error!(error = %err, "failed building in-memory local client");
@@ -1350,13 +1350,13 @@ async fn setup_transport_runtime_client(
         return Ok((client, keep_alive));
     }
 
-    #[cfg(all(feature = "redb", not(feature = "postgres")))]
+    #[cfg(all(feature = "fjall", not(feature = "postgres")))]
     {
-        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.redb", Uuid::new_v4()));
+        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.fjall", Uuid::new_v4()));
         let server_task = tokio::spawn(async move {
             if let Err(err) = ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
             {
@@ -1368,7 +1368,7 @@ async fn setup_transport_runtime_client(
         return Ok((client, keep_alive));
     }
 
-    #[cfg(not(any(feature = "redb", feature = "postgres")))]
+    #[cfg(not(any(feature = "fjall", feature = "postgres")))]
     {
         let server_task = tokio::spawn(async move {
             if let Err(err) = ServerBuilder::new()

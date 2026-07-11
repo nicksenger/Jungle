@@ -1,16 +1,26 @@
+use fjall::{KeyspaceCreateOptions, Readable, SingleWriterTxDatabase};
 use jungle_sdk::server::ServerBuilder;
-use redb::{Database, ReadableDatabase, TableDefinition};
 use sqlx::PgPool;
 use std::path::Path;
 use std::time::Duration;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
-const REDB_SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
-    TableDefinition::new("jungle_schema_metadata");
-const REDB_JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
-const REDB_EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
-const REDB_STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const FJALL_KEYSPACES: [&str; 13] = [
+    "jungle_schema_metadata",
+    "journeys",
+    "events",
+    "event_timestamps",
+    "work_items",
+    "timer_tasks",
+    "timer_due_index",
+    "journey_leases",
+    "owner_wakes",
+    "animal_appearances",
+    "animal_perturbations",
+    "animal_generations",
+    "journey_event_sequences",
+];
 
 #[tokio::test]
 async fn postgres_server_startup_runs_migrations() {
@@ -74,9 +84,9 @@ async fn postgres_server_startup_runs_migrations() {
 }
 
 #[tokio::test]
-async fn redb_server_startup_runs_migrations() {
+async fn fjall_server_startup_runs_migrations() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
 
     let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
@@ -84,7 +94,7 @@ async fn redb_server_startup_runs_migrations() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -103,15 +113,20 @@ async fn redb_server_startup_runs_migrations() {
     server_task.abort();
     let _ = server_task.await;
 
-    assert!(initialized, "redb file was not created before timeout");
+    assert!(
+        initialized,
+        "fjall database directory was not created before timeout"
+    );
 
-    let (schema_version, journeys_exists, events_exists, work_items_exists) =
-        redb_migration_state(&db_path)
-            .unwrap_or_else(|err| panic!("failed to read redb file state after startup: {err}"));
+    let (schema_version, keyspace_states) = fjall_migration_state(&db_path)
+        .unwrap_or_else(|err| panic!("failed to read fjall database state after startup: {err}"));
     assert_eq!(schema_version, Some(0));
-    assert!(journeys_exists);
-    assert!(events_exists);
-    assert!(work_items_exists);
+    for (name, exists) in keyspace_states {
+        assert!(
+            exists,
+            "fjall keyspace should exist after migration: {name}"
+        );
+    }
 }
 
 async fn migration_state(
@@ -160,26 +175,31 @@ async fn migration_state(
     ))
 }
 
-fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool), String> {
-    let db = Database::open(db_path).map_err(|err| err.to_string())?;
-    let read_txn = db.begin_read().map_err(|err| err.to_string())?;
-
-    let metadata = read_txn
-        .open_table(REDB_SCHEMA_METADATA_TABLE)
+fn fjall_migration_state(
+    db_path: &Path,
+) -> Result<(Option<u32>, Vec<(&'static str, bool)>), String> {
+    let db = SingleWriterTxDatabase::builder(db_path)
+        .open()
         .map_err(|err| err.to_string())?;
-    let schema_version = metadata
-        .get(1)
+    let metadata = db
+        .keyspace("jungle_schema_metadata", KeyspaceCreateOptions::default)
+        .map_err(|err| err.to_string())?;
+    let schema_version = db
+        .read_tx()
+        .get(&metadata, [1_u8])
         .map_err(|err| err.to_string())?
-        .map(|v| v.value());
+        .map(|value| {
+            let bytes: [u8; 4] = value
+                .as_ref()
+                .try_into()
+                .map_err(|_| format!("invalid schema version length: {}", value.len()))?;
+            Ok::<u32, String>(u32::from_be_bytes(bytes))
+        })
+        .transpose()?;
+    let keyspace_states = FJALL_KEYSPACES
+        .into_iter()
+        .map(|name| (name, db.keyspace_exists(name)))
+        .collect();
 
-    let journeys_exists = read_txn.open_table(REDB_JOURNEYS_TABLE).is_ok();
-    let events_exists = read_txn.open_table(REDB_EVENTS_TABLE).is_ok();
-    let work_items_exists = read_txn.open_table(REDB_STEPS_TABLE).is_ok();
-
-    Ok((
-        schema_version,
-        journeys_exists,
-        events_exists,
-        work_items_exists,
-    ))
+    Ok((schema_version, keyspace_states))
 }

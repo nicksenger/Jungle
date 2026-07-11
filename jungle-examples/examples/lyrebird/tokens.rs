@@ -301,7 +301,7 @@ mod tests {
     fn temp_db_path(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join("jungle-lyrebird-tests")
-            .join(format!("{name}-{}.redb", Uuid::new_v4()))
+            .join(format!("{name}-{}.fjall", Uuid::new_v4()))
     }
 
     #[test]

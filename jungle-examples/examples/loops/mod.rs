@@ -93,11 +93,11 @@ impl Ecosystem for LoopZoo {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
-    let db_path = std::env::temp_dir().join(format!("jungle-loop-{}.redb", Uuid::new_v4()));
+    let db_path = std::env::temp_dir().join(format!("jungle-loop-{}.fjall", Uuid::new_v4()));
 
     info!(db_path = %db_path.display(), "starting loop runtime");
 
-    let backend = Server::builder().redb_path(&db_path).build().await?;
+    let backend = Server::builder().fjall_path(&db_path).build().await?;
     let client = FusedClient::builder()
         .namespace(LoopZoo::NAME)
         .backend(backend)

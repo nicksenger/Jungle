@@ -57,14 +57,14 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
-    let db_path = std::env::temp_dir().join(format!("jungle-backoff-{}.redb", Uuid::new_v4()));
+    let db_path = std::env::temp_dir().join(format!("jungle-backoff-{}.fjall", Uuid::new_v4()));
 
     info!(
         db_path = %db_path.display(),
         "starting backoff runtime"
     );
 
-    let backend = Server::builder().redb_path(&db_path).build().await?;
+    let backend = Server::builder().fjall_path(&db_path).build().await?;
     let client = FusedClient::builder()
         .namespace(BackoffZoo::NAME)
         .backend(backend)

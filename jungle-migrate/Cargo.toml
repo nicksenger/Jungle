@@ -6,12 +6,12 @@ edition = "2021"
 [features]
 default = []
 postgres = ["dep:sqlx"]
-redb = ["dep:redb"]
+fjall = ["dep:fjall"]
 
 [dependencies]
 tracing = "0.1"
 sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
-redb = { version = "4.1", optional = true }
+fjall = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

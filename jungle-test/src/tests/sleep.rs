@@ -452,7 +452,7 @@ impl From<ParallelFocusedJoinSleepState> for () {
 #[tokio::test]
 async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -460,7 +460,7 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -546,7 +546,7 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
 #[tokio::test]
 async fn focused_join_sleep_suspends_until_backend_wake() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -554,7 +554,7 @@ async fn focused_join_sleep_suspends_until_backend_wake() {
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }
@@ -663,7 +663,7 @@ async fn focused_join_sleep_suspends_until_backend_wake() {
 #[tokio::test]
 async fn focused_join_sleep_schedules_parallel_branch_wakes_before_first_resume() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+    let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
@@ -671,7 +671,7 @@ async fn focused_join_sleep_schedules_parallel_branch_wakes_before_first_resume(
         async move {
             ServerBuilder::new()
                 .listen(listen_addr)
-                .redb_path(db_path)
+                .fjall_path(db_path)
                 .run()
                 .await
         }

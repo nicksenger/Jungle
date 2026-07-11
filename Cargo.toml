@@ -21,6 +21,7 @@ exclude = ["jungle-test/compile-times"]
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 postcard = "1.1"
+fjall = "3.1.6"
 inception = { git = "https://github.com/nicksenger/inception.git", branch = "jungle" }
 typosaurus = { git = "https://github.com/nicksenger/typosaurus.git", branch = "jungle" }
 futures = "0.3"
