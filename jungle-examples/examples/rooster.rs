@@ -322,7 +322,12 @@ impl Action for CircadianPerturbRooster {
         _state: &mut CircadianState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.map_err(Failure::Message)?;
+        if let Err(err) = output {
+            warn!(
+                error = %err,
+                "circadian perturb failed; keeping journey alive and retrying next cycle"
+            );
+        }
         Ok(())
     }
 }
