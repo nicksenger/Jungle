@@ -358,7 +358,7 @@ pub struct RoosterFlow(
 );
 
 #[derive(Flow)]
-pub struct CircadianBody(Step<CircadianSleep>, Step<CircadianPerturbRooster>);
+pub struct CircadianBody(Step<CircadianPerturbRooster>, Step<CircadianSleep>);
 
 #[derive(Flow)]
 pub struct CircadianFlow(

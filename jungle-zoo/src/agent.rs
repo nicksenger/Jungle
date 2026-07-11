@@ -672,7 +672,7 @@ impl<St, Tools> Action for SleepWhenIdle<St, Tools> {
     type Output = ();
 
     fn emit(state: &AgentState<St, Tools>, _input: Self::Input) -> Duration {
-        Duration::from_millis(state.settings.idle_poll_ms.max(1))
+        Duration::from_millis(state.settings.idle_poll_ms.max(1_000))
     }
 
     fn absorb(
