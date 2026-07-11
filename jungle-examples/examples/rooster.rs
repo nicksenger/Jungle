@@ -21,6 +21,9 @@ const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";
 const DEFAULT_CIRCADIAN_INTERVAL: &str = "1h";
+const CONNECT_RETRY_ATTEMPTS: u32 = 20;
+const CONNECT_RETRY_DELAY_MS: u64 = 100;
+const CONNECT_TIMEOUT_MS: u64 = 250;
 const CIRCADIAN_PROMPT: &str =
     "You are a rooster. Use the 'Cockadoodledoo' and 'Cluck' tools to make sounds if you want.";
 
@@ -532,20 +535,35 @@ async fn run_roost(args: RoostArgs) -> Result<(), Box<dyn std::error::Error>> {
     info!(listen = %args.listen, "starting rooster roost server");
     #[allow(unused_mut)]
     let mut builder = jungle_sdk::server::ServerBuilder::new().listen(args.listen);
+    #[allow(unused_mut)]
+    let mut backend_selected = false;
 
     #[cfg(feature = "postgres")]
     if let Some(connection_string) = args.postgres_connection_string {
         builder = builder.postgres_connection_string(connection_string);
+        backend_selected = true;
+        info!("roost configured with postgres backend");
     }
 
     #[cfg(feature = "fjall")]
     if let Some(path) = args.fjall_path {
         ensure_parent_dir_exists(&path)?;
         builder = builder.fjall_path(path);
+        backend_selected = true;
+        info!("roost configured with fjall backend");
     }
 
     #[cfg(feature = "fjall")]
     if args.memory {
+        builder = builder.memory();
+        backend_selected = true;
+        info!("roost configured with in-memory backend (--memory)");
+    }
+
+    if !backend_selected {
+        warn!(
+            "no persistence backend configured for roost; defaulting to in-memory backend (pass --fjall-path for persistence)"
+        );
         builder = builder.memory();
     }
 
@@ -564,7 +582,13 @@ struct SpawnSession {
 }
 
 async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn std::error::Error>> {
+    info!(
+        roost_addr = %args.roost_addr,
+        server_name = %args.server_name,
+        "connecting rooster spawn session client"
+    );
     let client = connect_client_with_retry(&args).await?;
+    info!("connected rooster spawn client");
     let worker_client = client.clone();
     let worker_ecosystem = RoosterEcosystem;
     let worker_handle = tokio::spawn(async move {
@@ -586,6 +610,7 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
         },
         settings: AgentSettings::default(),
     };
+    info!("spawning rooster journey");
     let rooster_journey_id = client.spawn::<Rooster>(&rooster_seed).await?.journey_id;
 
     let circadian_seed = CircadianState {
@@ -594,6 +619,7 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
         roost_addr: args.roost_addr,
         server_name: args.server_name.clone(),
     };
+    info!("spawning circadian journey");
     let circadian_journey_id = client.spawn::<Circadian>(&circadian_seed).await?.journey_id;
 
     info!(
@@ -617,12 +643,16 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
 }
 
 fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
+    info!("creating tokio runtime for rooster spawn");
     let runtime = tokio::runtime::Runtime::new()?;
+    info!("setting up rooster spawn session");
     let session = runtime.block_on(setup_spawn_session(&args))?;
+    info!("rooster spawn session ready");
 
     #[cfg(feature = "viewer")]
     {
         println!("launching rooster vision UI (close the window to stop)");
+        info!("launching rooster vision UI");
         vision_ui::run_ui(
             session.client.clone(),
             session.rooster_journey_id,
@@ -648,22 +678,54 @@ fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
 async fn connect_client_with_retry(args: &SpawnArgs) -> Result<Client, Box<dyn std::error::Error>> {
     let mut attempts = 0_u32;
     loop {
-        match Client::builder()
+        attempts = attempts.saturating_add(1);
+        debug!(
+            attempt = attempts,
+            max_attempts = CONNECT_RETRY_ATTEMPTS,
+            roost_addr = %args.roost_addr,
+            "attempting rooster client connection"
+        );
+
+        let connect = Client::builder()
             .namespace(RoosterEcosystem::NAME)
             .remote(args.roost_addr)
             .server_name(args.server_name.clone())
-            .build()
-            .await
-        {
-            Ok(client) => return Ok(client),
-            Err(err) => {
-                attempts = attempts.saturating_add(1);
-                if attempts >= 50 {
+            .build();
+
+        match tokio::time::timeout(Duration::from_millis(CONNECT_TIMEOUT_MS), connect).await {
+            Ok(Ok(client)) => {
+                info!(attempt = attempts, "connected rooster client");
+                return Ok(client);
+            }
+            Ok(Err(err)) => {
+                warn!(
+                    attempt = attempts,
+                    max_attempts = CONNECT_RETRY_ATTEMPTS,
+                    error = %err,
+                    "failed rooster client connection attempt"
+                );
+                if attempts >= CONNECT_RETRY_ATTEMPTS {
                     return Err(Box::new(err));
                 }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            Err(_) => {
+                warn!(
+                    attempt = attempts,
+                    max_attempts = CONNECT_RETRY_ATTEMPTS,
+                    timeout_ms = CONNECT_TIMEOUT_MS,
+                    "rooster client connection attempt timed out"
+                );
+                if attempts >= CONNECT_RETRY_ATTEMPTS {
+                    return Err(format!(
+                        "timed out connecting to rooster roost at {} after {} attempts ({}ms timeout each)",
+                        args.roost_addr, CONNECT_RETRY_ATTEMPTS, CONNECT_TIMEOUT_MS
+                    )
+                    .into());
+                }
             }
         }
+
+        tokio::time::sleep(Duration::from_millis(CONNECT_RETRY_DELAY_MS)).await;
     }
 }
 
