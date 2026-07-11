@@ -10,8 +10,8 @@ use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutableEffectRequest,
     ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, NodeLifecycle, Observable,
-    ObservationBridge, OwnerWake, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
-    SupportedAnimal, Work,
+    ObservationBridge, OwnerWake, Perturbable, PerturbationBridge, RunnerOut, Sleep,
+    StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -413,6 +413,7 @@ fn runner_out_kind(history: &RunnerOut) -> &'static str {
         RunnerOut::Appearance { .. } => "appearance",
         RunnerOut::SleepScheduled { .. } => "sleep_scheduled",
         RunnerOut::SleepFired { .. } => "sleep_fired",
+        RunnerOut::PerturbationApplied { .. } => "perturbation_applied",
     }
 }
 
@@ -1184,6 +1185,17 @@ where
             break;
         }
         loop {
+            apply_replay_perturbations::<T, A>(executor, replay, tx, journey_id).await?;
+            let current_event = replay.peek().await?;
+            if replay_event_completes_pending_request(
+                current_event.as_ref(),
+                journey_id,
+                &pending,
+                sleep_effect_type,
+            ) {
+                break;
+            }
+
             let request = match executor.next_executable_request(initial_input.clone()) {
                 Ok(request) => request,
                 Err(ExecutorError::Complete) | Err(ExecutorError::AwaitingCompletion) => break,
@@ -1256,6 +1268,97 @@ struct ReplayPendingRequest {
     request: ExecutableEffectRequest,
     effect_type: &'static str,
     has_live_history: bool,
+}
+
+async fn discard_replay_informational_events(
+    replay: &mut ReplayCursor,
+    journey_id: Uuid,
+) -> Result<(), ExecutorError> {
+    while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
+        let _ = replay.discard_front().await?;
+    }
+    Ok(())
+}
+
+async fn apply_replay_perturbations<T, A>(
+    executor: &mut ContextExecutor<T, A>,
+    replay: &mut ReplayCursor,
+    tx: &mut RunnerChannelTx,
+    journey_id: Uuid,
+) -> Result<(), ExecutorError>
+where
+    T: 'static,
+    A: BoundAnimal + Perturbable,
+    BoundAnimalJourney<A>:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+{
+    loop {
+        discard_replay_informational_events(replay, journey_id).await?;
+        let Some(RunnerOut::PerturbationApplied {
+            uuid,
+            perturbation_id,
+            data,
+        }) = replay.peek().await?
+        else {
+            return Ok(());
+        };
+        if uuid != journey_id {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay found perturbation for another journey (journey={journey_id}, history_journey={uuid})"
+            )));
+        }
+
+        let applied = <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(
+            executor.state_mut(),
+            &data,
+        )?;
+        if !applied {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay found perturbation for an animal that does not support perturbations (journey={journey_id}, perturbation_id={perturbation_id})"
+            )));
+        }
+        let _ = replay.discard_front().await?;
+
+        let (done_tx, done_rx) = oneshot::channel();
+        tx.send((
+            RunnerChannelMessage::AckPerturbable {
+                journey_id,
+                perturbation_id,
+            },
+            done_tx,
+        ))
+        .await
+        .map_err(|_| ExecutorError::ClientTransportClosed)?;
+        match done_rx
+            .await
+            .map_err(|_| ExecutorError::ClientTransportAckDropped)??
+        {
+            RunnerChannelResponse::Ack => {}
+            RunnerChannelResponse::ClaimedPerturbation(_) => {
+                return Err(ExecutorError::ClientTransport(
+                    "worker expected ack response for replayed perturbation".to_string(),
+                ));
+            }
+        }
+    }
+}
+
+fn replay_event_completes_pending_request(
+    event: Option<&RunnerOut>,
+    journey_id: Uuid,
+    pending: &HashMap<u32, ReplayPendingRequest>,
+    sleep_effect_type: &'static str,
+) -> bool {
+    match event {
+        Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+        | Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. }) => {
+            *uuid == journey_id && pending.contains_key(node_id)
+        }
+        Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id => pending
+            .values()
+            .any(|request| request.effect_type == sleep_effect_type),
+        _ => false,
+    }
 }
 
 async fn reconcile_replay_effect_input(

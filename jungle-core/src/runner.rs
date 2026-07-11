@@ -556,23 +556,32 @@ where
         let Some(claimed) = claimed else {
             break;
         };
+        let perturbation_id = claimed.id;
+        let data = claimed.data;
 
         {
             let state = executor.state_mut();
-            let applied = <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(
-                state,
-                &claimed.data,
-            )?;
+            let applied =
+                <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(state, &data)?;
             if !applied {
                 break;
             }
         }
+        send_history(
+            tx,
+            RunnerOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id,
+                data,
+            },
+        )
+        .await?;
 
         let (done_tx, done_rx) = oneshot::channel();
         tx.send((
             RunnerChannelMessage::AckPerturbable {
                 journey_id,
-                perturbation_id: claimed.id,
+                perturbation_id,
             },
             done_tx,
         ))

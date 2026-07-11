@@ -2390,8 +2390,9 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                             let _ = guard.update_node_state(node.node_id, RuntimeState::Failed);
                         }
                     },
-                    RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
-                    }
+                    RunnerUpdateOut::SleepScheduled { .. }
+                    | RunnerUpdateOut::SleepFired { .. }
+                    | RunnerUpdateOut::PerturbationApplied { .. } => {}
                 }
             }
             ViewerEvent::Message(()) => {}

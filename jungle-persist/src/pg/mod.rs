@@ -335,8 +335,7 @@ impl JungleStore for PgStore {
                 kind,
                 node_id,
                 CASE
-                    WHEN kind IN (3, 4) THEN data
-                    WHEN kind = 5 THEN data
+                    WHEN kind IN (3, 4, 5, 6) THEN data
                     WHEN kind IN (0, 1, 2) AND node_id IS NULL THEN data
                     ELSE NULL
                 END AS data
@@ -601,7 +600,7 @@ impl JungleStore for PgStore {
                 "perturbation id exceeds i64 range for postgres: {perturbation_id}"
             ))
         })?;
-        let result = sqlx::query!(
+        sqlx::query!(
             r#"
             DELETE FROM animal_perturbations
             WHERE journey_id = $1 AND sequence_id = $2
@@ -612,12 +611,6 @@ impl JungleStore for PgStore {
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
-
-        if result.rows_affected() == 0 {
-            return Err(crate::PersistenceError::Message(format!(
-                "animal perturbation not found for ack: {journey_id}:{perturbation_id}"
-            )));
-        }
 
         Ok(())
     }
@@ -1007,6 +1000,20 @@ impl JungleStore for PgStore {
                 })
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
             ),
+            RunnerOut::PerturbationApplied {
+                uuid,
+                perturbation_id,
+                data,
+            } => (
+                uuid,
+                6_i16,
+                None,
+                postcard::to_allocvec(&PerturbationAppliedEvent {
+                    perturbation_id,
+                    data,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
             RunnerOut::Appearance { .. } => {
                 return Err(crate::PersistenceError::Message(
                     "appearance snapshots are not history events in postgres".to_string(),
@@ -1231,6 +1238,12 @@ struct SleepFiredEvent {
     fired_at_unix_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PerturbationAppliedEvent {
+    perturbation_id: u64,
+    data: Vec<u8>,
+}
+
 const ACTION_EVENT_ENVELOPE_V1: u8 = 0xA1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1306,6 +1319,15 @@ fn decode_history_row(journey_id: Uuid, kind: i16, data: Vec<u8>) -> Result<Runn
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
             event.uuid = journey_id;
             Ok(RunnerOut::NodeLifecycle(event))
+        }
+        6 => {
+            let event: PerturbationAppliedEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id: event.perturbation_id,
+                data: event.data,
+            })
         }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in postgres: {other}"
@@ -1390,6 +1412,19 @@ fn decode_journey_update_row(
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
             event.uuid = journey_id;
             Ok(RunnerUpdateOut::NodeLifecycle(event))
+        }
+        6 => {
+            let perturbation_data = data.ok_or_else(|| {
+                crate::PersistenceError::Message(
+                    "missing perturbation payload in postgres events".to_string(),
+                )
+            })?;
+            let event: PerturbationAppliedEvent = postcard::from_bytes(&perturbation_data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id: event.perturbation_id,
+            })
         }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in postgres: {other}"

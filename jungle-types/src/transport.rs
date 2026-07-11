@@ -55,6 +55,11 @@ pub enum RunnerOut {
         timer_id: Uuid,
         fired_at_unix_ms: i64,
     },
+    PerturbationApplied {
+        uuid: Uuid,
+        perturbation_id: u64,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +102,10 @@ pub enum RunnerUpdateOut {
         uuid: Uuid,
         timer_id: Uuid,
         fired_at_unix_ms: i64,
+    },
+    PerturbationApplied {
+        uuid: Uuid,
+        perturbation_id: u64,
     },
 }
 

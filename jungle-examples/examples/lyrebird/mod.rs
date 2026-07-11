@@ -3240,6 +3240,18 @@ mod tests {
                                 fired_at_unix_ms,
                             },
                         },
+                        RunnerOut::PerturbationApplied {
+                            uuid,
+                            perturbation_id,
+                            ..
+                        } => JourneyUpdateEvent {
+                            sequence_id,
+                            event_unix_ms: sequence_id as i64,
+                            event: RunnerUpdateOut::PerturbationApplied {
+                                uuid,
+                                perturbation_id,
+                            },
+                        },
                         RunnerOut::Appearance { .. } => {
                             sequence_id = sequence_id.saturating_add(1);
                             continue;
@@ -3290,7 +3302,8 @@ mod tests {
                             })
                         }
                         RunnerUpdateOut::SleepScheduled { .. }
-                        | RunnerUpdateOut::SleepFired { .. } => None,
+                        | RunnerUpdateOut::SleepFired { .. }
+                        | RunnerUpdateOut::PerturbationApplied { .. } => None,
                     }
                     .filter(|line| {
                         line.contains("BeginIteration")

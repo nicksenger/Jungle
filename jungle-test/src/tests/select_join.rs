@@ -1454,7 +1454,8 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
                 | RunnerUpdateOut::EffectFailureOutput { uuid, .. } => (uuid, true),
                 RunnerUpdateOut::NodeLifecycle(node) => (node.uuid, false),
                 RunnerUpdateOut::SleepScheduled { uuid, .. }
-                | RunnerUpdateOut::SleepFired { uuid, .. } => (uuid, false),
+                | RunnerUpdateOut::SleepFired { uuid, .. }
+                | RunnerUpdateOut::PerturbationApplied { uuid, .. } => (uuid, false),
             };
             assert_eq!(
                 update_journey_id, journey_id,

@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 #[cfg(feature = "fjall")]
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -25,8 +26,8 @@ const DEFAULT_CIRCADIAN_INTERVAL: &str = "1h";
 const CONNECT_RETRY_ATTEMPTS: u32 = 20;
 const CONNECT_RETRY_DELAY_MS: u64 = 100;
 const CONNECT_TIMEOUT_MS: u64 = 250;
-const PERTURB_CONNECT_TIMEOUT_MS: u64 = 2_000;
-const PERTURB_REQUEST_TIMEOUT_MS: u64 = 2_000;
+const WORKER_RECONNECT_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
+const WORKER_RECONNECT_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
 const CIRCADIAN_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
 const CIRCADIAN_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
 const CIRCADIAN_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
@@ -119,8 +120,6 @@ impl Perturb for Rooster {
 pub struct CircadianState {
     rooster_journey_id: Uuid,
     interval_secs: u64,
-    roost_addr: SocketAddr,
-    server_name: String,
 }
 
 impl Default for CircadianState {
@@ -128,10 +127,6 @@ impl Default for CircadianState {
         Self {
             rooster_journey_id: Uuid::nil(),
             interval_secs: 60 * 60,
-            roost_addr: DEFAULT_SERVER_ADDR
-                .parse()
-                .expect("default rooster server address is valid"),
-            server_name: DEFAULT_SERVER_NAME.to_owned(),
         }
     }
 }
@@ -147,8 +142,21 @@ impl Animal for Circadian {
 #[derive(Animals)]
 pub struct RoosterAnimals(Rooster, Circadian);
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct RoosterEcosystem;
+#[derive(Clone)]
+pub struct RoosterEcosystem {
+    client: Arc<dyn JungleClient>,
+}
+
+impl RoosterEcosystem {
+    fn new<C>(client: C) -> Self
+    where
+        C: JungleClient + 'static,
+    {
+        Self {
+            client: Arc::new(client),
+        }
+    }
+}
 
 impl Ecosystem for RoosterEcosystem {
     const NAME: &'static str = "rooster-ecosystem";
@@ -253,53 +261,38 @@ impl Tool for CockadoodledooTool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerturbRoosterInput {
     rooster_journey_id: Uuid,
-    roost_addr: SocketAddr,
-    server_name: String,
     prompt: String,
 }
 
 pub struct PerturbRoosterEffect;
+impl EffectSchema<()> for PerturbRoosterEffect {
+    type Id = <Self as EffectSchema<RoosterEcosystem>>::Id;
+    type In = <Self as EffectSchema<RoosterEcosystem>>::In;
+    type Out = <Self as EffectSchema<RoosterEcosystem>>::Out;
+    type Err = <Self as EffectSchema<RoosterEcosystem>>::Err;
+}
+
 #[jungle::effect(id = 702)]
-impl<J> Effect<J> for PerturbRoosterEffect {
+impl Effect<RoosterEcosystem> for PerturbRoosterEffect {
     type In = PerturbRoosterInput;
     type Out = ();
     type Err = String;
 
-    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(
+        jungle: &RoosterEcosystem,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        let client = Arc::clone(&jungle.client);
         async move {
-            let client = tokio::time::timeout(
-                Duration::from_millis(PERTURB_CONNECT_TIMEOUT_MS),
-                Client::builder()
-                    .namespace(RoosterEcosystem::NAME)
-                    .remote(input.roost_addr)
-                    .server_name(input.server_name)
-                    .build(),
-            )
-            .await
-            .map_err(|_| {
-                format!(
-                    "timed out connecting circadian perturb client after {}ms",
-                    PERTURB_CONNECT_TIMEOUT_MS
-                )
-            })?
-            .map_err(|err| format!("failed to connect circadian perturb client: {err}"))?;
             let perturbation = AgentInput {
                 prompt: input.prompt,
             };
             let payload = postcard::to_allocvec(&perturbation)
                 .map_err(|err| format!("failed to encode rooster perturbation: {err}"))?;
-            tokio::time::timeout(
-                Duration::from_millis(PERTURB_REQUEST_TIMEOUT_MS),
-                client.perturb_animal(input.rooster_journey_id, payload),
-            )
-            .await
-            .map_err(|_| {
-                format!(
-                    "timed out perturbing rooster journey after {}ms",
-                    PERTURB_REQUEST_TIMEOUT_MS
-                )
-            })?
-            .map_err(|err| format!("failed to perturb rooster journey: {err}"))?;
+            client
+                .perturb_animal(input.rooster_journey_id, payload)
+                .await
+                .map_err(|err| format!("failed to perturb rooster journey: {err}"))?;
             Ok(())
         }
     }
@@ -338,8 +331,6 @@ impl Action for PrepareCircadianPerturbBackoffInput {
             (),
             PerturbRoosterInput {
                 rooster_journey_id: state.rooster_journey_id,
-                roost_addr: state.roost_addr,
-                server_name: state.server_name.clone(),
                 prompt: CIRCADIAN_PROMPT.to_owned(),
             },
         )
@@ -679,14 +670,7 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
     );
     let client = connect_client_with_retry(&args).await?;
     info!("connected rooster spawn client");
-    let worker_client = client.clone();
-    let worker_ecosystem = RoosterEcosystem;
-    let worker_handle = tokio::spawn(async move {
-        let worker = JungleWorker::new(worker_ecosystem, worker_client);
-        if let Err(err) = worker.spawn().await {
-            warn!(error = %err, "rooster worker exited");
-        }
-    });
+    let worker_handle = tokio::spawn(supervise_rooster_worker(args.clone(), client.clone()));
 
     let openai_api_key = args
         .openai_api_key
@@ -706,8 +690,6 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
     let circadian_seed = CircadianState {
         rooster_journey_id,
         interval_secs: args.circadian_interval_secs,
-        roost_addr: args.roost_addr,
-        server_name: args.server_name.clone(),
     };
     info!("spawning circadian journey");
     let circadian_journey_id = client.spawn::<Circadian>(&circadian_seed).await?.journey_id;
@@ -765,6 +747,65 @@ fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn supervise_rooster_worker(args: SpawnArgs, mut client: Client) {
+    loop {
+        let worker = JungleWorker::new(RoosterEcosystem::new(client.clone()), client.clone());
+        match worker.spawn().await {
+            Ok(()) => warn!("rooster worker exited unexpectedly; reconnecting"),
+            Err(err) => warn!(error = %err, "rooster worker connection failed; reconnecting"),
+        }
+
+        tokio::time::sleep(Duration::from_millis(
+            WORKER_RECONNECT_BACKOFF_INITIAL_DELAY_MS,
+        ))
+        .await;
+        client = reconnect_rooster_worker(&args).await;
+    }
+}
+
+async fn reconnect_rooster_worker(args: &SpawnArgs) -> Client {
+    let mut attempts = 0_u32;
+    loop {
+        attempts = attempts.saturating_add(1);
+        match build_client(args).await {
+            Ok(client) => {
+                info!(attempt = attempts, "reconnected rooster worker");
+                return client;
+            }
+            Err(err) => {
+                let delay = worker_reconnect_delay(attempts);
+                warn!(
+                    attempt = attempts,
+                    delay_ms = delay.as_millis(),
+                    error = %err,
+                    "failed to reconnect rooster worker; retrying"
+                );
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
+}
+
+fn worker_reconnect_delay(attempt: u32) -> Duration {
+    let exponent = attempt.saturating_sub(1).min(63);
+    let multiplier = 1_u64.checked_shl(exponent).unwrap_or(u64::MAX);
+    Duration::from_millis(
+        WORKER_RECONNECT_BACKOFF_INITIAL_DELAY_MS
+            .saturating_mul(multiplier)
+            .min(WORKER_RECONNECT_BACKOFF_MAX_DELAY_MS),
+    )
+}
+
+fn build_client(
+    args: &SpawnArgs,
+) -> impl Future<Output = jungle_sdk::client::ClientResult<Client>> {
+    Client::builder()
+        .namespace(RoosterEcosystem::NAME)
+        .remote(args.roost_addr)
+        .server_name(args.server_name.clone())
+        .build()
+}
+
 async fn connect_client_with_retry(args: &SpawnArgs) -> Result<Client, Box<dyn std::error::Error>> {
     let mut attempts = 0_u32;
     loop {
@@ -776,11 +817,7 @@ async fn connect_client_with_retry(args: &SpawnArgs) -> Result<Client, Box<dyn s
             "attempting rooster client connection"
         );
 
-        let connect = Client::builder()
-            .namespace(RoosterEcosystem::NAME)
-            .remote(args.roost_addr)
-            .server_name(args.server_name.clone())
-            .build();
+        let connect = build_client(args);
 
         match tokio::time::timeout(Duration::from_millis(CONNECT_TIMEOUT_MS), connect).await {
             Ok(Ok(client)) => {
@@ -878,7 +915,9 @@ fn init_tracing() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_circadian_interval_secs;
+    use super::*;
+    use jungle_sdk::MockClient;
+    use std::sync::Mutex;
 
     #[test]
     fn parses_supported_circadian_units() {
@@ -892,5 +931,57 @@ mod tests {
         assert!(parse_circadian_interval_secs("9d").is_err());
         assert!(parse_circadian_interval_secs("0m").is_err());
         assert!(parse_circadian_interval_secs("abc").is_err());
+    }
+
+    #[test]
+    fn caps_worker_reconnect_backoff() {
+        assert_eq!(worker_reconnect_delay(1), Duration::from_millis(250));
+        assert_eq!(worker_reconnect_delay(2), Duration::from_millis(500));
+        assert_eq!(worker_reconnect_delay(3), Duration::from_millis(1_000));
+        assert_eq!(worker_reconnect_delay(u32::MAX), Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn perturb_rooster_uses_worker_client() {
+        let observed = Arc::new(Mutex::new(None));
+        let observed_for_client = Arc::clone(&observed);
+        let client = MockClient::builder()
+            .on_perturb_animal(move |journey_id, payload| {
+                let observed = Arc::clone(&observed_for_client);
+                async move {
+                    let input = postcard::from_bytes::<AgentInput>(&payload)
+                        .expect("perturbation should contain an AgentInput");
+                    *observed
+                        .lock()
+                        .expect("observed perturbation mutex should not be poisoned") =
+                        Some((journey_id, input));
+                    Ok(())
+                }
+            })
+            .build();
+        let ecosystem = RoosterEcosystem::new(client);
+        let journey_id = Uuid::new_v4();
+
+        PerturbRoosterEffect::effect(
+            &ecosystem,
+            PerturbRoosterInput {
+                rooster_journey_id: journey_id,
+                prompt: "wake up".to_owned(),
+            },
+        )
+        .await
+        .expect("perturbation should use the worker client");
+
+        assert_eq!(
+            *observed
+                .lock()
+                .expect("observed perturbation mutex should not be poisoned"),
+            Some((
+                journey_id,
+                AgentInput {
+                    prompt: "wake up".to_owned(),
+                },
+            ))
+        );
     }
 }

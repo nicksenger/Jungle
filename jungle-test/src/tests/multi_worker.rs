@@ -488,7 +488,9 @@ async fn consume_journey_updates(
                     "lifecycle must match subscribed journey"
                 );
             }
-            RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
+            RunnerUpdateOut::SleepScheduled { .. }
+            | RunnerUpdateOut::SleepFired { .. }
+            | RunnerUpdateOut::PerturbationApplied { .. } => {}
         }
     }
 

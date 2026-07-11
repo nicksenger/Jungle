@@ -345,7 +345,9 @@ impl JungleClient for MockClient {
                 uuid,
             } => self.effect_failure_output(uuid, node_id, data).await,
             RunnerOut::Appearance { data, uuid } => self.animal_appearance_update(uuid, data).await,
-            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => Ok(()),
+            RunnerOut::SleepScheduled { .. }
+            | RunnerOut::SleepFired { .. }
+            | RunnerOut::PerturbationApplied { .. } => Ok(()),
         }
     }
 }

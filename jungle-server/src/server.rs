@@ -660,7 +660,8 @@ impl JungleServer for Server {
                         | jungle_types::RunnerOut::EffectFailureOutput { uuid, .. }
                         | jungle_types::RunnerOut::Appearance { uuid, .. }
                         | jungle_types::RunnerOut::SleepScheduled { uuid, .. }
-                        | jungle_types::RunnerOut::SleepFired { uuid, .. } => *uuid,
+                        | jungle_types::RunnerOut::SleepFired { uuid, .. }
+                        | jungle_types::RunnerOut::PerturbationApplied { uuid, .. } => *uuid,
                     };
                     self.store
                         .journey_alive_if_created(journey_id)

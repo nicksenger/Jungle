@@ -262,6 +262,7 @@ const EVENT_KIND_ACTION_FAILURE_OUTPUT: u8 = 2;
 const EVENT_KIND_SLEEP_SCHEDULED: u8 = 3;
 const EVENT_KIND_SLEEP_FIRED: u8 = 4;
 const EVENT_KIND_NODE_LIFECYCLE: u8 = 5;
+const EVENT_KIND_PERTURBATION_APPLIED: u8 = 6;
 const FJALL_UPDATES_LOG_INTERVAL: usize = 256;
 const FJALL_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
 const FJALL_STALE_EVENT_WARN_MS: i64 = 1_000;
@@ -1088,16 +1089,11 @@ impl JungleStore for FjallStore {
                 ))
                     })?;
             let key = encode_event_key(journey_id, perturbation_id);
-            let removed = perturbations.remove(key.as_slice()).map_err(|err| {
+            perturbations.remove(key.as_slice()).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "fjall ack_animal_perturbation remove failed: {err}"
                 ))
             })?;
-            if removed.is_none() {
-                return Err(crate::PersistenceError::Message(format!(
-                    "animal perturbation not found for ack: {journey_id}:{perturbation_id}"
-                )));
-            }
         }
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
@@ -1510,6 +1506,19 @@ impl JungleStore for FjallStore {
                 postcard::to_allocvec(&SleepFiredEvent {
                     timer_id,
                     fired_at_unix_ms,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
+            RunnerOut::PerturbationApplied {
+                uuid,
+                perturbation_id,
+                data,
+            } => (
+                uuid,
+                EVENT_KIND_PERTURBATION_APPLIED,
+                postcard::to_allocvec(&PerturbationAppliedEvent {
+                    perturbation_id,
+                    data,
                 })
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
             ),
@@ -2062,6 +2071,12 @@ struct SleepFiredEvent {
     fired_at_unix_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PerturbationAppliedEvent {
+    perturbation_id: u64,
+    data: Vec<u8>,
+}
+
 #[derive(Debug)]
 struct TimerTaskRow {
     journey_id: Uuid,
@@ -2584,6 +2599,15 @@ fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<Runner
             event.uuid = journey_id;
             Ok(RunnerOut::NodeLifecycle(event))
         }
+        EVENT_KIND_PERTURBATION_APPLIED => {
+            let event: PerturbationAppliedEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id: event.perturbation_id,
+                data: event.data,
+            })
+        }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in fjall: {other}"
         ))),
@@ -2636,6 +2660,14 @@ fn decode_runner_update_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
             event.uuid = journey_id;
             Ok(RunnerUpdateOut::NodeLifecycle(event))
+        }
+        EVENT_KIND_PERTURBATION_APPLIED => {
+            let event: PerturbationAppliedEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id: event.perturbation_id,
+            })
         }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in fjall: {other}"
