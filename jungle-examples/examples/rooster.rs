@@ -515,13 +515,15 @@ mod vision_ui {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
     match cli.command {
-        Command::Roost(args) => run_roost(args).await?,
-        Command::Spawn(args) => run_spawn(args).await?,
+        Command::Roost(args) => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(run_roost(args))?;
+        }
+        Command::Spawn(args) => run_spawn(args)?,
     }
     Ok(())
 }
@@ -551,7 +553,17 @@ async fn run_roost(args: RoostArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
+struct SpawnSession {
+    #[cfg(feature = "viewer")]
+    client: Client,
+    #[cfg(feature = "viewer")]
+    rooster_journey_id: Uuid,
+    #[cfg(feature = "viewer")]
+    circadian_journey_id: Uuid,
+    worker_handle: tokio::task::JoinHandle<()>,
+}
+
+async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn std::error::Error>> {
     let client = connect_client_with_retry(&args).await?;
     let worker_client = client.clone();
     let worker_ecosystem = RoosterEcosystem;
@@ -564,6 +576,7 @@ async fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let openai_api_key = args
         .openai_api_key
+        .clone()
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
     let rooster_seed = RoosterSeed {
         model_config: AgentModelConfig {
@@ -592,24 +605,43 @@ async fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
     println!("spawned rooster journey: {rooster_journey_id}");
     println!("spawned circadian journey: {circadian_journey_id}");
 
+    Ok(SpawnSession {
+        #[cfg(feature = "viewer")]
+        client,
+        #[cfg(feature = "viewer")]
+        rooster_journey_id,
+        #[cfg(feature = "viewer")]
+        circadian_journey_id,
+        worker_handle,
+    })
+}
+
+fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let session = runtime.block_on(setup_spawn_session(&args))?;
+
     #[cfg(feature = "viewer")]
     {
         println!("launching rooster vision UI (close the window to stop)");
-        tokio::task::block_in_place(|| {
-            vision_ui::run_ui(client.clone(), rooster_journey_id, circadian_journey_id)
-        })?;
+        vision_ui::run_ui(
+            session.client.clone(),
+            session.rooster_journey_id,
+            session.circadian_journey_id,
+        )?;
         info!("rooster vision closed; shutting down worker");
     }
 
     #[cfg(not(feature = "viewer"))]
     {
         println!("press ctrl-c to stop this worker");
-        tokio::signal::ctrl_c().await?;
+        runtime.block_on(tokio::signal::ctrl_c())?;
         info!("received ctrl-c; shutting down rooster worker");
     }
 
-    worker_handle.abort();
-    let _ = worker_handle.await;
+    runtime.block_on(async move {
+        session.worker_handle.abort();
+        let _ = session.worker_handle.await;
+    });
     Ok(())
 }
 
