@@ -188,10 +188,21 @@ impl PulseCodePurgatory {
         let tag = type_name::<Tag>();
         let (mut tree_state, mut nodes) = load_mcts_tree(&mut write_tx, &self.db, tag)?;
         if tree_state.pending_session_id.as_deref() != Some(self.runtime_session_id.as_str()) {
-            return Err(PulseCodePurgatoryError::MctsProtocol(format!(
-                "{} tree pending selection does not belong to this runtime; select must precede submit",
-                instrument.slug()
-            )));
+            if tree_state.pending_selected_node_id.is_some() {
+                warn!(
+                    instrument = instrument.slug(),
+                    pending_selected_node_id = tree_state.pending_selected_node_id,
+                    pending_session_id = tree_state.pending_session_id.as_deref().unwrap_or("unknown"),
+                    runtime_session_id = %self.runtime_session_id,
+                    "recovering stale lyrebird mcts selection for submit replay from a previous runtime"
+                );
+                tree_state.pending_session_id = Some(self.runtime_session_id.clone());
+            } else {
+                return Err(PulseCodePurgatoryError::MctsProtocol(format!(
+                    "{} tree pending selection does not belong to this runtime; select must precede submit",
+                    instrument.slug()
+                )));
+            }
         }
         let selected_node_id = tree_state.pending_selected_node_id.take().ok_or_else(|| {
             PulseCodePurgatoryError::MctsProtocol(format!(
@@ -807,6 +818,38 @@ mod tests {
         let recovered = select_for_instrument(&second, LyrebirdInstrument::Bass).unwrap();
 
         assert_eq!(recovered, vec![initial.into()]);
+    }
+
+    #[test]
+    fn submit_recovers_stale_pending_selection_after_restart() {
+        let db_path = temp_db_path("stale-pending-submit");
+        let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
+        let initial = dsp_code("initial", Some(0.2));
+
+        let first = PulseCodePurgatory::new(tokens_url.clone(), None, Some(db_path.clone()))
+            .unwrap()
+            .with_mcts_config([(LyrebirdInstrument::Bass, initial.clone())], 8);
+        let selected = select_for_instrument(&first, LyrebirdInstrument::Bass).unwrap();
+        assert_eq!(selected, vec![initial.clone().into()]);
+        drop(first);
+
+        let second = PulseCodePurgatory::new(tokens_url, None, Some(db_path))
+            .unwrap()
+            .with_mcts_config([(LyrebirdInstrument::Bass, initial.clone())], 8);
+        submit_for_instrument(
+            &second,
+            LyrebirdInstrument::Bass,
+            vec![submission("00000001", 0.75)],
+        )
+        .unwrap();
+
+        let (tree, nodes) = load_tree_for_instrument(&second, LyrebirdInstrument::Bass).unwrap();
+        let root = nodes.get(&ROOT_NODE_ID).unwrap();
+
+        assert_eq!(tree.pending_selected_node_id, None);
+        assert_eq!(root.children, vec![1]);
+        assert_eq!(root.visits, 1);
+        assert!((root.total_score - 0.75).abs() < 1e-6);
     }
 
     #[test]
