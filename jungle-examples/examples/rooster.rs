@@ -3,6 +3,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::Client;
 use jungle_zoo::agent::{Agent, AgentInput, AgentModelConfig, AgentSettings, AgentState, Tool};
+use jungle_zoo::backoff::Backoff;
 use jungle_zoo::predicate::Always;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -24,6 +25,9 @@ const DEFAULT_CIRCADIAN_INTERVAL: &str = "1h";
 const CONNECT_RETRY_ATTEMPTS: u32 = 20;
 const CONNECT_RETRY_DELAY_MS: u64 = 100;
 const CONNECT_TIMEOUT_MS: u64 = 250;
+const CIRCADIAN_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
+const CIRCADIAN_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
+const CIRCADIAN_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
 const CIRCADIAN_PROMPT: &str =
     "You are a rooster. Use the 'Cockadoodledoo' and 'Cluck' tools to make sounds if you want.";
 
@@ -302,20 +306,44 @@ impl Action for CircadianSleep {
     }
 }
 
-pub struct CircadianPerturbRooster;
+pub struct PrepareCircadianPerturbBackoffInput;
 #[jungle::action]
-impl Action for CircadianPerturbRooster {
-    type Effect = PerturbRoosterEffect;
+impl Action for PrepareCircadianPerturbBackoffInput {
+    type Effect = NoEffect;
     type Input = ();
+    type Output = PerturbRoosterInput;
+    type Carry = PerturbRoosterInput;
+
+    fn emit(state: &CircadianState, _input: Self::Input) -> ((), PerturbRoosterInput) {
+        (
+            (),
+            PerturbRoosterInput {
+                rooster_journey_id: state.rooster_journey_id,
+                roost_addr: state.roost_addr,
+                server_name: state.server_name.clone(),
+                prompt: CIRCADIAN_PROMPT.to_owned(),
+            },
+        )
+    }
+
+    fn absorb(
+        _state: &mut CircadianState,
+        _output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        Ok(carry)
+    }
+}
+
+pub struct CircadianPerturbRoosterAttempt;
+#[jungle::action]
+impl Action for CircadianPerturbRoosterAttempt {
+    type Effect = PerturbRoosterEffect;
+    type Input = PerturbRoosterInput;
     type Output = ();
 
-    fn emit(state: &CircadianState, _input: Self::Input) -> PerturbRoosterInput {
-        PerturbRoosterInput {
-            rooster_journey_id: state.rooster_journey_id,
-            roost_addr: state.roost_addr,
-            server_name: state.server_name.clone(),
-            prompt: CIRCADIAN_PROMPT.to_owned(),
-        }
+    fn emit(_state: &CircadianState, input: Self::Input) -> PerturbRoosterInput {
+        input
     }
 
     fn absorb(
@@ -323,14 +351,53 @@ impl Action for CircadianPerturbRooster {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         if let Err(err) = output {
-            warn!(
-                error = %err,
-                "circadian perturb failed; keeping journey alive and retrying next cycle"
-            );
+            warn!(error = %err, "circadian perturb attempt failed; retrying with backoff");
+            return Err(Failure::Message(err));
         }
         Ok(())
     }
 }
+
+pub struct ExtractCircadianPerturbBackoffResult;
+#[jungle::action(carry = (u32, (PerturbRoosterInput, Result<(), Failure>)))]
+impl Action for ExtractCircadianPerturbBackoffResult {
+    type Effect = NoEffect;
+    type Input = (u32, (PerturbRoosterInput, Result<(), Failure>));
+    type Output = ();
+
+    fn emit(
+        _state: &CircadianState,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut CircadianState,
+        _output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        carry.1 .1
+    }
+}
+
+#[derive(Flow)]
+pub struct CircadianPerturbBackoff(
+    Step<PrepareCircadianPerturbBackoffInput>,
+    Backoff<
+        CircadianState,
+        PerturbRoosterInput,
+        (),
+        Step<CircadianPerturbRoosterAttempt>,
+        CIRCADIAN_PERTURB_BACKOFF_INITIAL_DELAY_MS,
+        CIRCADIAN_PERTURB_BACKOFF_MAX_DELAY_MS,
+        CIRCADIAN_PERTURB_BACKOFF_MULTIPLIER,
+    >,
+    Step<ExtractCircadianPerturbBackoffResult>,
+);
+
+#[derive(Flow)]
+pub struct CircadianBody(CircadianPerturbBackoff, Step<CircadianSleep>);
 
 pub struct SeedState<Seed, State>(std::marker::PhantomData<fn() -> (Seed, State)>);
 #[jungle::action(carry = Seed)]
@@ -361,9 +428,6 @@ pub struct RoosterFlow(
     Step<SeedState<RoosterSeed, AgentState<RoosterInnerState, RoosterTools>>>,
     Agent<RoosterInnerState, RoosterTools>,
 );
-
-#[derive(Flow)]
-pub struct CircadianBody(Step<CircadianPerturbRooster>, Step<CircadianSleep>);
 
 #[derive(Flow)]
 pub struct CircadianFlow(
@@ -458,7 +522,9 @@ mod vision_ui {
                 self.panel(
                     "Rooster",
                     self.rooster_journey_id,
-                    self.rooster_viewer.view().map(|event| Message::Viewer(Panel::Rooster, event)),
+                    self.rooster_viewer
+                        .view()
+                        .map(|event| Message::Viewer(Panel::Rooster, event)),
                 ),
                 self.panel(
                     "Circadian",

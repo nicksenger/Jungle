@@ -1,3 +1,4 @@
+use crate::backoff::Backoff;
 use crate::condition::FlattenEither;
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::collections::list;
@@ -14,6 +15,9 @@ use tracing::debug;
 const DEFAULT_IDLE_POLL_MS: u64 = 250;
 const DEFAULT_MAX_ROUNDS_PER_TURN: u32 = 16;
 const DEFAULT_MAX_TOOL_CALLS_PER_ROUND: u32 = 32;
+const MODEL_TURN_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
+const MODEL_TURN_BACKOFF_MULTIPLIER: u8 = 2;
+const MODEL_TURN_BACKOFF_MAX_DELAY_MS: u64 = 8_000;
 
 pub trait Tool {
     const NAME: &'static str;
@@ -720,59 +724,120 @@ impl<St, Tools> Action for EnsureActiveInput<St, Tools> {
     }
 }
 
-pub struct RequestModelTurn<St, Tools>(PhantomData<fn() -> (St, Tools)>);
+pub struct PrepareModelTurnRequest<St, Tools>(PhantomData<fn() -> (St, Tools)>);
 #[jungle::action]
-impl<St, Tools> Action for RequestModelTurn<St, Tools>
+impl<St, Tools> Action for PrepareModelTurnRequest<St, Tools>
 where
     Tools: ToolList,
 {
-    type Effect = RequestAgentModelTurnEffect;
+    type Effect = NoEffect;
     type Input = ();
-    type Output = ();
+    type Output = AgentModelRequest;
+    type Carry = AgentModelRequest;
 
-    fn emit(state: &AgentState<St, Tools>, _input: Self::Input) -> AgentModelRequest {
-        AgentModelRequest {
-            model_config: state.model_config.clone(),
-            transcript: state.transcript.clone(),
-            tools: Tools::definitions(),
-        }
+    fn emit(
+        state: &AgentState<St, Tools>,
+        _input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (
+            (),
+            AgentModelRequest {
+                model_config: state.model_config.clone(),
+                transcript: state.transcript.clone(),
+                tools: Tools::definitions(),
+            },
+        )
+    }
+
+    fn absorb(
+        _state: &mut AgentState<St, Tools>,
+        _output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        Ok(carry)
+    }
+}
+
+pub struct RequestModelTurnAttempt<St, Tools>(PhantomData<fn() -> (St, Tools)>);
+#[jungle::action]
+impl<St, Tools> Action for RequestModelTurnAttempt<St, Tools> {
+    type Effect = RequestAgentModelTurnEffect;
+    type Input = AgentModelRequest;
+    type Output = AgentModelTurn;
+
+    fn emit(_state: &AgentState<St, Tools>, input: Self::Input) -> AgentModelRequest {
+        input
+    }
+
+    fn absorb(
+        _state: &mut AgentState<St, Tools>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(Failure::Message)
+    }
+}
+
+pub struct ExtractModelTurnBackoffResult<St, Tools>(PhantomData<fn() -> (St, Tools)>);
+#[jungle::action(carry = (u32, (AgentModelRequest, Result<AgentModelTurn, Failure>)))]
+impl<St, Tools> Action for ExtractModelTurnBackoffResult<St, Tools> {
+    type Effect = NoEffect;
+    type Input = (u32, (AgentModelRequest, Result<AgentModelTurn, Failure>));
+    type Output = AgentModelTurn;
+
+    fn emit(
+        _state: &AgentState<St, Tools>,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut AgentState<St, Tools>,
+        _output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        carry.1 .1
+    }
+}
+
+pub struct AbsorbModelTurn<St, Tools>(PhantomData<fn() -> (St, Tools)>);
+#[jungle::action]
+impl<St, Tools> Action for AbsorbModelTurn<St, Tools> {
+    type Effect = NoEffect;
+    type Input = AgentModelTurn;
+    type Output = ();
+    type Carry = AgentModelTurn;
+
+    fn emit(_state: &AgentState<St, Tools>, input: Self::Input) -> ((), AgentModelTurn) {
+        ((), input)
     }
 
     fn absorb(
         state: &mut AgentState<St, Tools>,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
+        turn: Self::Carry,
     ) -> Result<Self::Output, Failure> {
-        match output {
-            Ok(turn) => {
-                state.transcript.push(TranscriptEntry::Assistant {
-                    content: turn.assistant_content.clone(),
-                    tool_calls: turn.tool_calls.clone(),
-                });
-                if turn.tool_calls.is_empty() {
-                    state.turn_complete = true;
-                    state.awaiting_model_turn = false;
-                } else {
-                    state.turn_round_index = state.turn_round_index.saturating_add(1);
-                    state.tool_calls_in_round = 0;
-                    state.pending_tool_calls = turn.tool_calls.into();
-                    state.awaiting_model_turn = false;
+        state.transcript.push(TranscriptEntry::Assistant {
+            content: turn.assistant_content.clone(),
+            tool_calls: turn.tool_calls.clone(),
+        });
+        if turn.tool_calls.is_empty() {
+            state.turn_complete = true;
+            state.awaiting_model_turn = false;
+        } else {
+            state.turn_round_index = state.turn_round_index.saturating_add(1);
+            state.tool_calls_in_round = 0;
+            state.pending_tool_calls = turn.tool_calls.into();
+            state.awaiting_model_turn = false;
 
-                    if state.settings.max_rounds_per_turn > 0
-                        && state.turn_round_index > state.settings.max_rounds_per_turn
-                    {
-                        state.last_error = Some(format!(
-                            "agent turn hit max rounds ({})",
-                            state.settings.max_rounds_per_turn
-                        ));
-                        state.turn_complete = true;
-                        state.pending_tool_calls.clear();
-                    }
-                }
-            }
-            Err(err) => {
-                state.last_error = Some(err);
+            if state.settings.max_rounds_per_turn > 0
+                && state.turn_round_index > state.settings.max_rounds_per_turn
+            {
+                state.last_error = Some(format!(
+                    "agent turn hit max rounds ({})",
+                    state.settings.max_rounds_per_turn
+                ));
                 state.turn_complete = true;
-                state.awaiting_model_turn = false;
                 state.pending_tool_calls.clear();
             }
         }
@@ -1048,7 +1113,20 @@ pub struct ExecuteOneToolCall<St, Tools: DispatchableTools<St>>(
 );
 
 #[derive(Flow)]
-pub struct AgentModelBranch<St, Tools: ToolList>(Step<RequestModelTurn<St, Tools>>);
+pub struct AgentModelBranch<St, Tools: ToolList>(
+    Step<PrepareModelTurnRequest<St, Tools>>,
+    Backoff<
+        AgentState<St, Tools>,
+        AgentModelRequest,
+        AgentModelTurn,
+        Step<RequestModelTurnAttempt<St, Tools>>,
+        MODEL_TURN_BACKOFF_INITIAL_DELAY_MS,
+        MODEL_TURN_BACKOFF_MAX_DELAY_MS,
+        MODEL_TURN_BACKOFF_MULTIPLIER,
+    >,
+    Step<ExtractModelTurnBackoffResult<St, Tools>>,
+    Step<AbsorbModelTurn<St, Tools>>,
+);
 
 #[derive(Flow)]
 pub struct AgentToolBranch<St, Tools: DispatchableTools<St>>(
