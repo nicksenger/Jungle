@@ -571,6 +571,106 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 }
 
 #[tokio::test]
+async fn poll_owner_wake_reclaims_stale_wake_as_resume_work() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.fjall");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .fjall_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let journey_id = client
+        .spawn::<ConnectionAnimal7>(&())
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    let first_work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
+    assert!(
+        matches!(first_work, Some(Work::StartJourney { .. })),
+        "expected start journey work item first"
+    );
+
+    let old_owner = Uuid::new_v4();
+    client
+        .heartbeat_journey_lease(journey_id, old_owner, 150)
+        .await
+        .expect("heartbeat_journey_lease should succeed for old owner");
+
+    let timer_id = Uuid::new_v4();
+    let wake_at = chrono::Utc::now().timestamp_millis() - 10;
+    client
+        .schedule_sleep_timer(journey_id, timer_id, wake_at)
+        .await
+        .expect("schedule_sleep_timer should succeed");
+    let _ = client
+        .poll_timers()
+        .await
+        .expect("poll_timers should succeed");
+
+    let new_owner = Uuid::new_v4();
+    let before_expiry = client
+        .poll_owner_wake(new_owner)
+        .await
+        .expect("poll_owner_wake should succeed before lease expiry");
+    assert!(
+        before_expiry.is_none(),
+        "new owner should not directly claim old-owner wake"
+    );
+
+    tokio::time::sleep(Duration::from_millis(250)).await;
+
+    let after_expiry = client
+        .poll_owner_wake(new_owner)
+        .await
+        .expect("poll_owner_wake should reclaim stale wake");
+    assert!(
+        after_expiry.is_none(),
+        "stale wake should be reclaimed into resume work instead of direct owner wake"
+    );
+
+    let resume_work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed after stale wake reclaim");
+    match resume_work {
+        Some(Work::ResumeJourney {
+            journey_id: resumed,
+            animal_id,
+            generation,
+            seed,
+        }) => {
+            assert_eq!(resumed, journey_id);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
+            assert_eq!(
+                seed,
+                postcard::to_allocvec(&()).expect("unit seed should serialize")
+            );
+        }
+        Some(Work::StartJourney { .. }) => {
+            panic!("expected resume journey work item, got start journey");
+        }
+        None => panic!("expected resume journey work item"),
+    }
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn client_handles_animal_appearance_round_trip() {
     let journey_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
     let appearance_bytes = vec![42_u8, 99_u8];

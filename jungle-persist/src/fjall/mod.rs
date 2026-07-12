@@ -1146,11 +1146,21 @@ impl JungleStore for FjallStore {
         let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("fjall claim_owner_wake begin failed: {err}"))
         })?;
+        let now_millis = now_unix_ms();
+        let now = Utc::now();
 
         let mut selected_key: Option<Vec<u8>> = None;
         let mut selected_value: Option<Vec<u8>> = None;
+        let mut stale_wake: Option<(Vec<u8>, OwnerWake)> = None;
 
         {
+            let journey_leases = write_tx
+                .open_keyspace(JOURNEY_LEASES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake open journey_leases keyspace failed: {err}"
+                    ))
+                })?;
             let mut owner_wakes = write_tx
                 .open_keyspace(OWNER_WAKES_KEYSPACE)
                 .map_err(|err| {
@@ -1172,10 +1182,34 @@ impl JungleStore for FjallStore {
                 })?;
                 let (entry_owner_id, _, _) =
                     decode_owner_wake_key(key.value(), "fjall claim_owner_wake decode key")?;
-                if entry_owner_id == owner_id {
+                let wake =
+                    decode_owner_wake_value(value.value(), "fjall claim_owner_wake decode value")?;
+                let active_owner = journey_leases
+                    .get(&wake.journey_id.as_bytes()[..])
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall claim_owner_wake read journey lease failed: {err}"
+                        ))
+                    })?
+                    .map(|raw| {
+                        decode_journey_lease(raw.value(), "fjall claim_owner_wake decode lease")
+                    })
+                    .transpose()?
+                    .and_then(|lease| {
+                        if lease.lease_until_unix_ms > now_millis {
+                            Some(lease.owner_id)
+                        } else {
+                            None
+                        }
+                    });
+
+                if entry_owner_id == owner_id || active_owner == Some(owner_id) {
                     selected_key = Some(key.value().to_vec());
                     selected_value = Some(value.value().to_vec());
                     break;
+                }
+                if active_owner.is_none() && stale_wake.is_none() {
+                    stale_wake = Some((key.value().to_vec(), wake));
                 }
             }
 
@@ -1185,6 +1219,31 @@ impl JungleStore for FjallStore {
                         "fjall claim_owner_wake remove wake failed: {err}"
                     ))
                 })?;
+            } else if let Some((stale_key, stale_wake)) = stale_wake.as_ref() {
+                owner_wakes.remove(stale_key.as_slice()).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake remove stale wake failed: {err}"
+                    ))
+                })?;
+                let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake open work_items keyspace failed: {err}"
+                    ))
+                })?;
+                let work_item_id = Uuid::new_v4();
+                let value = encode_work_item(
+                    stale_wake.journey_id,
+                    StepKind::ResumeJourney,
+                    StepStatus::Available,
+                    now,
+                );
+                work_items
+                    .insert(&work_item_id.as_bytes()[..], value.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall claim_owner_wake enqueue reclaimed resume work item failed: {err}"
+                        ))
+                    })?;
             }
         }
 
