@@ -642,18 +642,13 @@ impl JungleStore for PgStore {
     }
 
     async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
-        let wake = sqlx::query(
+        let wake = sqlx::query!(
             r#"
             WITH next_wake AS (
-                SELECT ow.id
-                FROM owner_wakes ow
-                LEFT JOIN journey_leases jl
-                    ON jl.journey_id = ow.journey_id
-                   AND jl.lease_until > NOW()
-                WHERE ow.owner_id = $1
-                   OR jl.owner_id = $1
-                   OR jl.owner_id IS NULL
-                ORDER BY ow.created_at, ow.id
+                SELECT id
+                FROM owner_wakes
+                WHERE owner_id = $1
+                ORDER BY created_at, id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
@@ -662,15 +657,15 @@ impl JungleStore for PgStore {
             WHERE ow.id = nw.id
             RETURNING ow.journey_id, ow.timer_id
             "#,
+            owner_id
         )
-        .bind(owner_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
         Ok(wake.map(|row| OwnerWake {
-            journey_id: row.get("journey_id"),
-            timer_id: row.get("timer_id"),
+            journey_id: row.journey_id,
+            timer_id: row.timer_id,
         }))
     }
 
