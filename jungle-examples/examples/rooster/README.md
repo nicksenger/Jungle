@@ -10,7 +10,7 @@ The `roost` command runs a long-lived server, and `spawn` starts a worker that s
 ## Run the Server
 
 ```bash
-cargo run --release --example rooster --features fjall -- roost --fjall-path ~/.rooster
+cargo run --release --example rooster --features fjall -- roost --fjall-path ~/.rooster/db
 ```
 
 ## Run the Worker

@@ -615,7 +615,7 @@ mod vision_ui {
     where
         C: jungle_sdk::JungleClient + Clone + 'static,
     {
-        let title = "Rooster Vision";
+        let title = "Rooster";
         iced::application(
             move || RoosterVisionUi::new(client.clone(), rooster_journey_id, trigger_journey_id),
             RoosterVisionUi::update,
