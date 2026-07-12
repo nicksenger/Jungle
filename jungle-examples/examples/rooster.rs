@@ -22,16 +22,16 @@ const DEFAULT_LOG_FILTER: &str = "warn,rooster=info";
 const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";
-const DEFAULT_CIRCADIAN_INTERVAL: &str = "1h";
+const DEFAULT_TRIGGER_INTERVAL: &str = "1h";
 const CONNECT_RETRY_ATTEMPTS: u32 = 20;
 const CONNECT_RETRY_DELAY_MS: u64 = 100;
 const CONNECT_TIMEOUT_MS: u64 = 250;
 const WORKER_RECONNECT_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
 const WORKER_RECONNECT_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
-const CIRCADIAN_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
-const CIRCADIAN_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
-const CIRCADIAN_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
-const CIRCADIAN_PROMPT: &str =
+const TRIGGER_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
+const TRIGGER_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
+const TRIGGER_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
+const TRIGGER_PROMPT: &str =
     "You are a rooster. Use the 'Cockadoodledoo' and 'Cluck' tools to make sounds if you want.";
 
 #[derive(Debug, Parser)]
@@ -45,7 +45,7 @@ struct Cli {
 enum Command {
     /// Start a long-lived Jungle server for rooster workers.
     Roost(RoostArgs),
-    /// Start a rooster worker and spawn rooster + circadian journeys.
+    /// Start a rooster worker and spawn rooster + trigger journeys.
     Spawn(SpawnArgs),
 }
 
@@ -77,11 +77,11 @@ struct SpawnArgs {
     #[arg(long = "openai-api-key")]
     openai_api_key: Option<String>,
     #[arg(
-        long = "circadian-interval",
-        default_value = DEFAULT_CIRCADIAN_INTERVAL,
-        value_parser = parse_circadian_interval_secs
+        long = "trigger-interval",
+        default_value = DEFAULT_TRIGGER_INTERVAL,
+        value_parser = parse_trigger_interval_secs
     )]
-    circadian_interval_secs: u64,
+    trigger_interval_secs: u64,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -117,12 +117,12 @@ impl Perturb for Rooster {
 }
 
 #[derive(Optic, Clone, Debug, Serialize, Deserialize)]
-pub struct CircadianState {
+pub struct TriggerState {
     rooster_journey_id: Uuid,
     interval_secs: u64,
 }
 
-impl Default for CircadianState {
+impl Default for TriggerState {
     fn default() -> Self {
         Self {
             rooster_journey_id: Uuid::nil(),
@@ -131,16 +131,16 @@ impl Default for CircadianState {
     }
 }
 
-pub struct Circadian;
+pub struct Trigger;
 #[jungle::animal(id = 35, generation = 0)]
-impl Animal for Circadian {
-    type State = CircadianState;
-    type Seed = CircadianState;
-    type Flow = CircadianFlow;
+impl Animal for Trigger {
+    type State = TriggerState;
+    type Seed = TriggerState;
+    type Flow = TriggerFlow;
 }
 
 #[derive(Animals)]
-pub struct RoosterAnimals(Rooster, Circadian);
+pub struct RoosterAnimals(Rooster, Trigger);
 
 #[derive(Clone)]
 pub struct RoosterEcosystem {
@@ -298,19 +298,19 @@ impl Effect<RoosterEcosystem> for PerturbRoosterEffect {
     }
 }
 
-pub struct CircadianSleep;
+pub struct TriggerSleep;
 #[jungle::action]
-impl Action for CircadianSleep {
+impl Action for TriggerSleep {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &CircadianState, _input: Self::Input) -> Duration {
+    fn emit(state: &TriggerState, _input: Self::Input) -> Duration {
         Duration::from_secs(state.interval_secs.max(1))
     }
 
     fn absorb(
-        _state: &mut CircadianState,
+        _state: &mut TriggerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(|err| Failure::Message(err.message))?;
@@ -318,26 +318,26 @@ impl Action for CircadianSleep {
     }
 }
 
-pub struct PrepareCircadianPerturbBackoffInput;
+pub struct PrepareTriggerPerturbBackoffInput;
 #[jungle::action]
-impl Action for PrepareCircadianPerturbBackoffInput {
+impl Action for PrepareTriggerPerturbBackoffInput {
     type Effect = NoEffect;
     type Input = ();
     type Output = PerturbRoosterInput;
     type Carry = PerturbRoosterInput;
 
-    fn emit(state: &CircadianState, _input: Self::Input) -> ((), PerturbRoosterInput) {
+    fn emit(state: &TriggerState, _input: Self::Input) -> ((), PerturbRoosterInput) {
         (
             (),
             PerturbRoosterInput {
                 rooster_journey_id: state.rooster_journey_id,
-                prompt: CIRCADIAN_PROMPT.to_owned(),
+                prompt: TRIGGER_PROMPT.to_owned(),
             },
         )
     }
 
     fn absorb(
-        _state: &mut CircadianState,
+        _state: &mut TriggerState,
         _output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
@@ -345,45 +345,45 @@ impl Action for PrepareCircadianPerturbBackoffInput {
     }
 }
 
-pub struct CircadianPerturbRoosterAttempt;
+pub struct TriggerPerturbRoosterAttempt;
 #[jungle::action]
-impl Action for CircadianPerturbRoosterAttempt {
+impl Action for TriggerPerturbRoosterAttempt {
     type Effect = PerturbRoosterEffect;
     type Input = PerturbRoosterInput;
     type Output = ();
 
-    fn emit(_state: &CircadianState, input: Self::Input) -> PerturbRoosterInput {
+    fn emit(_state: &TriggerState, input: Self::Input) -> PerturbRoosterInput {
         input
     }
 
     fn absorb(
-        _state: &mut CircadianState,
+        _state: &mut TriggerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         if let Err(err) = output {
-            warn!(error = %err, "circadian perturb attempt failed; retrying with backoff");
+            warn!(error = %err, "trigger perturb attempt failed; retrying with backoff");
             return Err(Failure::Message(err));
         }
         Ok(())
     }
 }
 
-pub struct ExtractCircadianPerturbBackoffResult;
+pub struct ExtractTriggerPerturbBackoffResult;
 #[jungle::action(carry = (u32, (PerturbRoosterInput, Result<(), Failure>)))]
-impl Action for ExtractCircadianPerturbBackoffResult {
+impl Action for ExtractTriggerPerturbBackoffResult {
     type Effect = NoEffect;
     type Input = (u32, (PerturbRoosterInput, Result<(), Failure>));
     type Output = ();
 
     fn emit(
-        _state: &CircadianState,
+        _state: &TriggerState,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
         ((), input)
     }
 
     fn absorb(
-        _state: &mut CircadianState,
+        _state: &mut TriggerState,
         _output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
@@ -392,22 +392,22 @@ impl Action for ExtractCircadianPerturbBackoffResult {
 }
 
 #[derive(Flow)]
-pub struct CircadianPerturbBackoff(
-    Step<PrepareCircadianPerturbBackoffInput>,
+pub struct TriggerPerturbBackoff(
+    Step<PrepareTriggerPerturbBackoffInput>,
     Backoff<
-        CircadianState,
+        TriggerState,
         PerturbRoosterInput,
         (),
-        Step<CircadianPerturbRoosterAttempt>,
-        CIRCADIAN_PERTURB_BACKOFF_INITIAL_DELAY_MS,
-        CIRCADIAN_PERTURB_BACKOFF_MAX_DELAY_MS,
-        CIRCADIAN_PERTURB_BACKOFF_MULTIPLIER,
+        Step<TriggerPerturbRoosterAttempt>,
+        TRIGGER_PERTURB_BACKOFF_INITIAL_DELAY_MS,
+        TRIGGER_PERTURB_BACKOFF_MAX_DELAY_MS,
+        TRIGGER_PERTURB_BACKOFF_MULTIPLIER,
     >,
-    Step<ExtractCircadianPerturbBackoffResult>,
+    Step<ExtractTriggerPerturbBackoffResult>,
 );
 
 #[derive(Flow)]
-pub struct CircadianBody(CircadianPerturbBackoff, Step<CircadianSleep>);
+pub struct TriggerBody(TriggerPerturbBackoff, Step<TriggerSleep>);
 
 pub struct SeedState<Seed, State>(std::marker::PhantomData<fn() -> (Seed, State)>);
 #[jungle::action(carry = Seed)]
@@ -440,14 +440,14 @@ pub struct RoosterFlow(
 );
 
 #[derive(Flow)]
-pub struct CircadianFlow(
-    Step<SeedState<CircadianState, CircadianState>>,
-    While<Always<CircadianState, ()>, CircadianBody>,
+pub struct TriggerFlow(
+    Step<SeedState<TriggerState, TriggerState>>,
+    While<Always<TriggerState, ()>, TriggerBody>,
 );
 
 #[cfg(feature = "viewer")]
 mod vision_ui {
-    use super::{Circadian, Rooster};
+    use super::{Rooster, Trigger};
     use directories_next::BaseDirs;
     use iced::widget::{column, container, row, stack, text};
     use iced::{Element, Font, Length, Subscription, Task};
@@ -462,7 +462,7 @@ mod vision_ui {
     #[derive(Debug, Clone, Copy)]
     enum Panel {
         Rooster,
-        Circadian,
+        Trigger,
     }
 
     #[derive(Debug, Clone)]
@@ -473,10 +473,10 @@ mod vision_ui {
 
     struct RoosterVisionUi {
         rooster_journey_id: Uuid,
-        circadian_journey_id: Uuid,
+        trigger_journey_id: Uuid,
         rooster_viewer:
             jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
-        circadian_viewer:
+        trigger_viewer:
             jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
         video_overlay: Option<iced_av1::widget::State>,
     }
@@ -485,7 +485,7 @@ mod vision_ui {
         fn new<C>(
             client: C,
             rooster_journey_id: Uuid,
-            circadian_journey_id: Uuid,
+            trigger_journey_id: Uuid,
         ) -> (Self, Task<Message>)
         where
             C: jungle_sdk::JungleClient + Clone + 'static,
@@ -493,15 +493,15 @@ mod vision_ui {
             let rooster_viewer = jungle_vision::JungleViewerBuilder::new()
                 .title("Rooster Agent Flow")
                 .eject_live_animal::<Rooster, _>(client.clone(), rooster_journey_id);
-            let circadian_viewer = jungle_vision::JungleViewerBuilder::new()
-                .title("Circadian Flow")
-                .eject_live_animal::<Circadian, _>(client, circadian_journey_id);
+            let trigger_viewer = jungle_vision::JungleViewerBuilder::new()
+                .title("Trigger Flow")
+                .eject_live_animal::<Trigger, _>(client, trigger_journey_id);
             (
                 Self {
                     rooster_journey_id,
-                    circadian_journey_id,
+                    trigger_journey_id,
                     rooster_viewer,
-                    circadian_viewer,
+                    trigger_viewer,
                     video_overlay: load_video_overlay(),
                 },
                 Task::none(),
@@ -515,10 +515,10 @@ mod vision_ui {
                         .rooster_viewer
                         .update(event)
                         .map(|next| Message::Viewer(Panel::Rooster, next)),
-                    Panel::Circadian => self
-                        .circadian_viewer
+                    Panel::Trigger => self
+                        .trigger_viewer
                         .update(event)
-                        .map(|next| Message::Viewer(Panel::Circadian, next)),
+                        .map(|next| Message::Viewer(Panel::Trigger, next)),
                 },
                 Message::Video(event) => {
                     if let Some(video_overlay) = self.video_overlay.as_mut() {
@@ -534,9 +534,9 @@ mod vision_ui {
                 self.rooster_viewer
                     .subscription()
                     .map(|event| Message::Viewer(Panel::Rooster, event)),
-                self.circadian_viewer
+                self.trigger_viewer
                     .subscription()
-                    .map(|event| Message::Viewer(Panel::Circadian, event)),
+                    .map(|event| Message::Viewer(Panel::Trigger, event)),
             ];
             if let Some(video_overlay) = self.video_overlay.as_ref() {
                 subscriptions.push(video_overlay.subscription(map_video_message));
@@ -554,11 +554,11 @@ mod vision_ui {
                         .map(|event| Message::Viewer(Panel::Rooster, event)),
                 ),
                 self.panel(
-                    "Circadian",
-                    self.circadian_journey_id,
-                    self.circadian_viewer
+                    "Trigger",
+                    self.trigger_journey_id,
+                    self.trigger_viewer
                         .view()
-                        .map(|event| Message::Viewer(Panel::Circadian, event)),
+                        .map(|event| Message::Viewer(Panel::Trigger, event)),
                 ),
             ]
             .spacing(12)
@@ -609,14 +609,14 @@ mod vision_ui {
     pub fn run_ui<C>(
         client: C,
         rooster_journey_id: Uuid,
-        circadian_journey_id: Uuid,
+        trigger_journey_id: Uuid,
     ) -> Result<(), iced::Error>
     where
         C: jungle_sdk::JungleClient + Clone + 'static,
     {
         let title = "Rooster Vision";
         iced::application(
-            move || RoosterVisionUi::new(client.clone(), rooster_journey_id, circadian_journey_id),
+            move || RoosterVisionUi::new(client.clone(), rooster_journey_id, trigger_journey_id),
             RoosterVisionUi::update,
             RoosterVisionUi::view,
         )
@@ -722,7 +722,7 @@ struct SpawnSession {
     #[cfg(feature = "viewer")]
     rooster_journey_id: Uuid,
     #[cfg(feature = "viewer")]
-    circadian_journey_id: Uuid,
+    trigger_journey_id: Uuid,
     worker_handle: tokio::task::JoinHandle<()>,
 }
 
@@ -751,21 +751,21 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
     info!("spawning rooster journey");
     let rooster_journey_id = client.spawn::<Rooster>(&rooster_seed).await?.journey_id;
 
-    let circadian_seed = CircadianState {
+    let trigger_seed = TriggerState {
         rooster_journey_id,
-        interval_secs: args.circadian_interval_secs,
+        interval_secs: args.trigger_interval_secs,
     };
-    info!("spawning circadian journey");
-    let circadian_journey_id = client.spawn::<Circadian>(&circadian_seed).await?.journey_id;
+    info!("spawning trigger journey");
+    let trigger_journey_id = client.spawn::<Trigger>(&trigger_seed).await?.journey_id;
 
     info!(
         %rooster_journey_id,
-        %circadian_journey_id,
-        circadian_interval_secs = args.circadian_interval_secs,
+        %trigger_journey_id,
+        trigger_interval_secs = args.trigger_interval_secs,
         "rooster spawn active"
     );
     println!("spawned rooster journey: {rooster_journey_id}");
-    println!("spawned circadian journey: {circadian_journey_id}");
+    println!("spawned trigger journey: {trigger_journey_id}");
 
     Ok(SpawnSession {
         #[cfg(feature = "viewer")]
@@ -773,7 +773,7 @@ async fn setup_spawn_session(args: &SpawnArgs) -> Result<SpawnSession, Box<dyn s
         #[cfg(feature = "viewer")]
         rooster_journey_id,
         #[cfg(feature = "viewer")]
-        circadian_journey_id,
+        trigger_journey_id,
         worker_handle,
     })
 }
@@ -792,7 +792,7 @@ fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
         vision_ui::run_ui(
             session.client.clone(),
             session.rooster_journey_id,
-            session.circadian_journey_id,
+            session.trigger_journey_id,
         )?;
         info!("rooster vision closed; shutting down worker");
     }
@@ -920,7 +920,7 @@ async fn connect_client_with_retry(args: &SpawnArgs) -> Result<Client, Box<dyn s
     }
 }
 
-fn parse_circadian_interval_secs(value: &str) -> Result<u64, String> {
+fn parse_trigger_interval_secs(value: &str) -> Result<u64, String> {
     let trimmed = value.trim();
     if trimmed.len() < 2 {
         return Err(format!(
@@ -937,7 +937,7 @@ fn parse_circadian_interval_secs(value: &str) -> Result<u64, String> {
         .parse::<u64>()
         .map_err(|_| format!("invalid interval amount in `{value}`"))?;
     if amount == 0 {
-        return Err("circadian interval must be greater than zero".to_owned());
+        return Err("trigger interval must be greater than zero".to_owned());
     }
 
     let secs = match unit.to_ascii_lowercase() {
@@ -984,17 +984,17 @@ mod tests {
     use std::sync::Mutex;
 
     #[test]
-    fn parses_supported_circadian_units() {
-        assert_eq!(parse_circadian_interval_secs("1s").unwrap(), 1);
-        assert_eq!(parse_circadian_interval_secs("5m").unwrap(), 300);
-        assert_eq!(parse_circadian_interval_secs("12h").unwrap(), 43_200);
+    fn parses_supported_trigger_units() {
+        assert_eq!(parse_trigger_interval_secs("1s").unwrap(), 1);
+        assert_eq!(parse_trigger_interval_secs("5m").unwrap(), 300);
+        assert_eq!(parse_trigger_interval_secs("12h").unwrap(), 43_200);
     }
 
     #[test]
-    fn rejects_invalid_circadian_units() {
-        assert!(parse_circadian_interval_secs("9d").is_err());
-        assert!(parse_circadian_interval_secs("0m").is_err());
-        assert!(parse_circadian_interval_secs("abc").is_err());
+    fn rejects_invalid_trigger_units() {
+        assert!(parse_trigger_interval_secs("9d").is_err());
+        assert!(parse_trigger_interval_secs("0m").is_err());
+        assert!(parse_trigger_interval_secs("abc").is_err());
     }
 
     #[test]
