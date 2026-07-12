@@ -7,7 +7,7 @@ edition = "2021"
 default = []
 image = ["dep:spectrs", "dep:image", "dep:zensim"]
 reqwest = ["dep:reqwest", "dep:base64"]
-viewer = ["dep:jungle-vision", "dep:iced", "dep:rodio", "dep:image"]
+viewer = ["dep:jungle-vision", "dep:iced", "dep:iced-av1", "dep:rodio", "dep:image", "dep:directories-next"]
 video = ["dep:welcome-video"]
 audio = ["dep:welcome-audio"]
 fjall = ["dep:fjall", "dep:directories-next"]
@@ -26,6 +26,7 @@ jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["fjal
 jungle_zoo = { package = "jungle-zoo", path = "../jungle-zoo" }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
+iced-av1 = { git = "https://github.com/nicksenger/iced-av1.git", branch = "jungle", optional = true }
 rodio = { version = "0.20", optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }
 welcome-video = { path = "examples/welcome/video", optional = true }

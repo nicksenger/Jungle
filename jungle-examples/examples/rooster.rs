@@ -448,12 +448,16 @@ pub struct CircadianFlow(
 #[cfg(feature = "viewer")]
 mod vision_ui {
     use super::{Circadian, Rooster};
-    use iced::widget::{column, container, row, text};
+    use directories_next::BaseDirs;
+    use iced::widget::{column, container, row, stack, text};
     use iced::{Element, Font, Length, Subscription, Task};
+    use std::path::PathBuf;
+    use tracing::{info, warn};
     use uuid::Uuid;
 
     const WINDOW_WIDTH: f32 = 1600.0;
     const WINDOW_HEIGHT: f32 = 920.0;
+    const ROOSTER_VIDEO_OPACITY: f32 = 0.5;
 
     #[derive(Debug, Clone, Copy)]
     enum Panel {
@@ -464,6 +468,7 @@ mod vision_ui {
     #[derive(Debug, Clone)]
     enum Message {
         Viewer(Panel, jungle_vision::EjectedViewerMessage),
+        Video(iced_av1::widget::Message),
     }
 
     struct RoosterVisionUi {
@@ -473,6 +478,7 @@ mod vision_ui {
             jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
         circadian_viewer:
             jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
+        video_overlay: Option<iced_av1::widget::State>,
     }
 
     impl RoosterVisionUi {
@@ -496,6 +502,7 @@ mod vision_ui {
                     circadian_journey_id,
                     rooster_viewer,
                     circadian_viewer,
+                    video_overlay: load_video_overlay(),
                 },
                 Task::none(),
             )
@@ -513,22 +520,32 @@ mod vision_ui {
                         .update(event)
                         .map(|next| Message::Viewer(Panel::Circadian, next)),
                 },
+                Message::Video(event) => {
+                    if let Some(video_overlay) = self.video_overlay.as_mut() {
+                        video_overlay.update(event);
+                    }
+                    Task::none()
+                }
             }
         }
 
         fn subscription(&self) -> Subscription<Message> {
-            Subscription::batch([
+            let mut subscriptions = vec![
                 self.rooster_viewer
                     .subscription()
                     .map(|event| Message::Viewer(Panel::Rooster, event)),
                 self.circadian_viewer
                     .subscription()
                     .map(|event| Message::Viewer(Panel::Circadian, event)),
-            ])
+            ];
+            if let Some(video_overlay) = self.video_overlay.as_ref() {
+                subscriptions.push(video_overlay.subscription(map_video_message));
+            }
+            Subscription::batch(subscriptions)
         }
 
         fn view(&self) -> Element<'_, Message> {
-            row![
+            let app: Element<'_, Message> = row![
                 self.panel(
                     "Rooster",
                     self.rooster_journey_id,
@@ -548,7 +565,20 @@ mod vision_ui {
             .padding(12)
             .width(Length::Fill)
             .height(Length::Fill)
-            .into()
+            .into();
+
+            if let Some(video_overlay) = self
+                .video_overlay
+                .as_ref()
+                .and_then(|video| video.overlay_view(map_video_message))
+            {
+                return stack([app, video_overlay])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+            }
+
+            app
         }
 
         fn panel<'a>(
@@ -596,6 +626,40 @@ mod vision_ui {
         .default_font(Font::with_name("Iosevka"))
         .antialiasing(true)
         .run()
+    }
+
+    fn load_video_overlay() -> Option<iced_av1::widget::State> {
+        let path = rooster_video_path()?;
+        let opacity = iced_av1::OpacityOptions {
+            opacity: ROOSTER_VIDEO_OPACITY,
+            ..Default::default()
+        };
+        match iced_av1::widget::State::new_with_media_source_and_opacity_options(
+            iced_av1::MediaSource::File(path.clone()),
+            iced_av1::PlaybackOptions::default(),
+            opacity,
+        ) {
+            Ok(video) => {
+                info!(path = %path.display(), opacity = ROOSTER_VIDEO_OPACITY, "loaded rooster video overlay");
+                Some(video)
+            }
+            Err(error) => {
+                warn!(path = %path.display(), %error, "failed to load rooster video overlay");
+                None
+            }
+        }
+    }
+
+    fn rooster_video_path() -> Option<PathBuf> {
+        let path = BaseDirs::new()?
+            .home_dir()
+            .join(".rooster")
+            .join("rooster.mkv");
+        path.is_file().then_some(path)
+    }
+
+    fn map_video_message(message: iced_av1::widget::Message) -> Message {
+        Message::Video(message)
     }
 }
 

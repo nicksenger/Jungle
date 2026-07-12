@@ -3263,6 +3263,7 @@ dependencies = [
  "fjall",
  "futures",
  "iced",
+ "iced-av1",
  "image",
  "jungle-sdk",
  "jungle-vision",
