@@ -77,7 +77,8 @@ struct SpawnArgs {
     #[arg(long = "openai-api-key")]
     openai_api_key: Option<String>,
     #[arg(
-        long = "trigger-interval",
+        long = "circadian-interval",
+        visible_alias = "trigger-interval",
         default_value = DEFAULT_TRIGGER_INTERVAL,
         value_parser = parse_trigger_interval_secs
     )]

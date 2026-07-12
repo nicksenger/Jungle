@@ -85,7 +85,7 @@ required-features = ["image", "reqwest", "fjall"]
 
 [[example]]
 name = "rooster"
-path = "examples/rooster.rs"
+path = "examples/rooster/mod.rs"
 
 [lints]
 workspace = true
