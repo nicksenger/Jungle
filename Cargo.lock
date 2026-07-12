@@ -2637,7 +2637,7 @@ dependencies = [
 [[package]]
 name = "iced-av1"
 version = "0.1.0"
-source = "git+https://github.com/nicksenger/iced-av1.git?branch=jungle#6fe3f424206c56c8b4672cc31eeb122c93d88692"
+source = "git+https://github.com/nicksenger/iced-av1.git?branch=jungle#bde951e2c7ce4b3e9f8e36ddb06171250e60c695"
 dependencies = [
  "bytemuck",
  "futures-lite",
@@ -2646,7 +2646,10 @@ dependencies = [
  "iced_futures",
  "itertools 0.14.0",
  "matroska-demuxer",
+ "opus-decoder",
  "re_rav1d",
+ "rodio 0.22.2",
+ "symphonia",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3270,7 +3273,7 @@ dependencies = [
  "jungle-zoo",
  "postcard",
  "reqwest",
- "rodio",
+ "rodio 0.20.1",
  "rustfft",
  "serde",
  "serde_json",
@@ -4666,6 +4669,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "opus-decoder"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15ae32c275dabb0cd2c863460bf349e9abc3568ba2abf0f9eb7b7d2edeeed07e"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "orbclient"
 version = "0.3.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5685,6 +5697,18 @@ dependencies = [
  "hound",
  "lewton",
  "symphonia",
+]
+
+[[package]]
+name = "rodio"
+version = "0.22.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a536bb79db59098ef71a4dd4246c02eb87b316deceb1b68e0cde7167ec01eb"
+dependencies = [
+ "cpal 0.17.1",
+ "dasp_sample",
+ "num-rational",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

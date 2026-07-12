@@ -26,7 +26,7 @@ jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["fjal
 jungle_zoo = { package = "jungle-zoo", path = "../jungle-zoo" }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
-iced-av1 = { git = "https://github.com/nicksenger/iced-av1.git", branch = "jungle", optional = true }
+iced-av1 = { git = "https://github.com/nicksenger/iced-av1.git", branch = "jungle", features = ["opus"], optional = true }
 rodio = { version = "0.20", optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }
 welcome-video = { path = "examples/welcome/video", optional = true }

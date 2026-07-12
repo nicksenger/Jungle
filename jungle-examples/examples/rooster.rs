@@ -457,7 +457,7 @@ mod vision_ui {
 
     const WINDOW_WIDTH: f32 = 1600.0;
     const WINDOW_HEIGHT: f32 = 920.0;
-    const ROOSTER_VIDEO_OPACITY: f32 = 0.5;
+    const ROOSTER_VIDEO_OPACITY: f32 = 0.35;
 
     #[derive(Debug, Clone, Copy)]
     enum Panel {
