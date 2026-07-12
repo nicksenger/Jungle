@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::time::Duration;
-use tracing::debug;
+use tracing::{debug, trace};
 
 const DEFAULT_IDLE_POLL_MS: u64 = 250;
 const DEFAULT_MAX_ROUNDS_PER_TURN: u32 = 16;
@@ -242,6 +242,21 @@ impl<J> Effect<J> for RequestAgentModelTurnEffect {
 }
 
 async fn request_agent_model_turn(input: AgentModelRequest) -> Result<AgentModelTurn, String> {
+    let (prompt, history) = split_prompt_and_history(&input.transcript);
+    if let Some(prompt) = prompt {
+        debug!(prompt = %prompt, "sending agent model prompt");
+    } else {
+        debug!(
+            transcript_entries = input.transcript.len(),
+            "sending agent model prompt without current user input"
+        );
+    }
+    trace!(
+        history = ?history,
+        tools = ?input.tools,
+        "sending agent model request context"
+    );
+
     let base_url = parse_openai_api_base_url(&input.model_config.base_url)?;
     let endpoint = chat_completions_endpoint(&base_url);
     let request = build_openai_chat_completions_request(&input)?;
@@ -305,6 +320,21 @@ fn build_openai_chat_completions_request(input: &AgentModelRequest) -> Result<Va
     }
 
     Ok(request)
+}
+
+fn split_prompt_and_history(transcript: &[TranscriptEntry]) -> (Option<&str>, &[TranscriptEntry]) {
+    let Some(prompt_index) = transcript
+        .iter()
+        .rposition(|entry| matches!(entry, TranscriptEntry::User { .. }))
+    else {
+        return (None, transcript);
+    };
+
+    let prompt = match &transcript[prompt_index] {
+        TranscriptEntry::User { content } => Some(content.as_str()),
+        _ => None,
+    };
+    (prompt, &transcript[..prompt_index])
 }
 
 fn openai_message_from_transcript(entry: &TranscriptEntry) -> Result<Value, String> {
@@ -1247,5 +1277,39 @@ mod tests {
         assert_eq!(turn.assistant_content, Some("working".to_owned()));
         assert_eq!(turn.tool_calls.len(), 1);
         assert_eq!(turn.tool_calls[0].arguments_raw, "{\"unterminated");
+    }
+
+    #[test]
+    fn split_prompt_and_history_extracts_latest_prompt_and_prior_context() {
+        let transcript = vec![
+            TranscriptEntry::System {
+                content: "system context".to_owned(),
+            },
+            TranscriptEntry::User {
+                content: "first prompt".to_owned(),
+            },
+            TranscriptEntry::Assistant {
+                content: Some("tool request".to_owned()),
+                tool_calls: Vec::new(),
+            },
+            TranscriptEntry::User {
+                content: "current prompt".to_owned(),
+            },
+        ];
+
+        let (prompt, history) = split_prompt_and_history(&transcript);
+        assert_eq!(prompt, Some("current prompt"));
+        assert_eq!(history, &transcript[..3]);
+    }
+
+    #[test]
+    fn split_prompt_and_history_returns_full_transcript_without_user_prompt() {
+        let transcript = vec![TranscriptEntry::System {
+            content: "system context".to_owned(),
+        }];
+
+        let (prompt, history) = split_prompt_and_history(&transcript);
+        assert_eq!(prompt, None);
+        assert_eq!(history, &transcript[..]);
     }
 }
