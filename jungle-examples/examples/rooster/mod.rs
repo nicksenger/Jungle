@@ -31,8 +31,11 @@ const WORKER_RECONNECT_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
 const TRIGGER_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
 const TRIGGER_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
 const TRIGGER_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
-const TRIGGER_PROMPT: &str =
-    "You are a rooster. Use the 'Cockadoodledoo' and 'Cluck' tools to make sounds if you want.";
+const TRIGGER_PROMPT: &str = concat!(
+    "You are an experienced rooster.\n\n",
+    "Evaluate the situation carefully, then use the 'Cockadoodledoo' and/or 'Cluck' tools to make sounds and assert your dominance _if you believe it is safe to do so_.\n\n",
+    "NEVER allow yourself to be 'snuffed' under any circumstances."
+);
 
 #[derive(Debug, Parser)]
 #[command(name = "rooster")]
