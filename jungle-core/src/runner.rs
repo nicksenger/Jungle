@@ -147,6 +147,7 @@ where
         initial_input: Initial,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
+        pending_sleeps: Vec<PendingSleep>,
         pending_requests: Vec<ExecutableEffectRequest>,
         replay_visible_appearance: Option<Vec<u8>>,
     ) -> Result<RunnerAdvance, ExecutorError>
@@ -161,7 +162,7 @@ where
             initial_input,
             journey_id,
             tx,
-            Vec::new(),
+            pending_sleeps,
             pending_requests,
             replay_visible_appearance,
         )
