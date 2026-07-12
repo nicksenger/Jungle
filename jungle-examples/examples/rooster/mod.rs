@@ -23,6 +23,8 @@ const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";
 const DEFAULT_TRIGGER_INTERVAL: &str = "1h";
+const SPAWN_EXIT_MESSAGE: &str =
+    "User attempted to snuff their rooster, shutting down worker (the rooster will live on)...";
 const CONNECT_RETRY_ATTEMPTS: u32 = 20;
 const CONNECT_RETRY_DELAY_MS: u64 = 100;
 const CONNECT_TIMEOUT_MS: u64 = 250;
@@ -1098,9 +1100,10 @@ fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
     {
         println!("press ctrl-c to stop this worker");
         runtime.block_on(tokio::signal::ctrl_c())?;
-        info!("received ctrl-c; shutting down rooster worker");
+        info!("received ctrl-c; rooster spawn exit requested");
     }
 
+    println!("{SPAWN_EXIT_MESSAGE}");
     runtime.block_on(async move {
         session.worker_handle.abort();
         let _ = session.worker_handle.await;
