@@ -244,7 +244,7 @@ impl<J> Effect<J> for RequestAgentModelTurnEffect {
 async fn request_agent_model_turn(input: AgentModelRequest) -> Result<AgentModelTurn, String> {
     let (prompt, history) = split_prompt_and_history(&input.transcript);
     if let Some(prompt) = prompt {
-        debug!(prompt = %prompt, "sending agent model prompt");
+        trace!(prompt = %prompt, "sending agent model prompt");
     } else {
         debug!(
             transcript_entries = input.transcript.len(),
