@@ -12,6 +12,8 @@ use std::net::SocketAddr;
 use std::path::Path;
 #[cfg(feature = "fjall")]
 use std::path::PathBuf;
+#[cfg(feature = "viewer")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -751,12 +753,16 @@ mod vision_ui {
     use iced::widget::{column, container, row, stack, text};
     use iced::{Element, Font, Length, Subscription, Task};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
     use tracing::{info, warn};
     use uuid::Uuid;
 
     const WINDOW_WIDTH: f32 = 1600.0;
     const WINDOW_HEIGHT: f32 = 920.0;
     const ROOSTER_VIDEO_OPACITY: f32 = 0.35;
+    const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
     #[derive(Debug, Clone, Copy)]
     enum Panel {
@@ -766,6 +772,7 @@ mod vision_ui {
 
     #[derive(Debug, Clone)]
     enum Message {
+        Tick,
         Viewer(Panel, jungle_vision::EjectedViewerMessage),
         Video(iced_av1::widget::Message),
     }
@@ -778,6 +785,7 @@ mod vision_ui {
         trigger_viewer:
             jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
         video_overlay: Option<iced_av1::widget::State>,
+        shutdown_requested: Arc<AtomicBool>,
     }
 
     impl RoosterVisionUi {
@@ -785,6 +793,7 @@ mod vision_ui {
             client: C,
             rooster_journey_id: Uuid,
             trigger_journey_id: Uuid,
+            shutdown_requested: Arc<AtomicBool>,
         ) -> (Self, Task<Message>)
         where
             C: jungle_sdk::JungleClient + Clone + 'static,
@@ -802,6 +811,7 @@ mod vision_ui {
                     rooster_viewer,
                     trigger_viewer,
                     video_overlay: load_video_overlay(),
+                    shutdown_requested,
                 },
                 Task::none(),
             )
@@ -809,6 +819,12 @@ mod vision_ui {
 
         fn update(&mut self, message: Message) -> Task<Message> {
             match message {
+                Message::Tick => {
+                    if self.shutdown_requested.load(Ordering::Relaxed) {
+                        return iced::exit();
+                    }
+                    Task::none()
+                }
                 Message::Viewer(panel, event) => match panel {
                     Panel::Rooster => self
                         .rooster_viewer
@@ -830,6 +846,7 @@ mod vision_ui {
 
         fn subscription(&self) -> Subscription<Message> {
             let mut subscriptions = vec![
+                iced::time::every(SHUTDOWN_POLL_INTERVAL).map(|_| Message::Tick),
                 self.rooster_viewer
                     .subscription()
                     .map(|event| Message::Viewer(Panel::Rooster, event)),
@@ -909,13 +926,21 @@ mod vision_ui {
         client: C,
         rooster_journey_id: Uuid,
         trigger_journey_id: Uuid,
+        shutdown_requested: Arc<AtomicBool>,
     ) -> Result<(), iced::Error>
     where
         C: jungle_sdk::JungleClient + Clone + 'static,
     {
         let title = "Rooster";
         iced::application(
-            move || RoosterVisionUi::new(client.clone(), rooster_journey_id, trigger_journey_id),
+            move || {
+                RoosterVisionUi::new(
+                    client.clone(),
+                    rooster_journey_id,
+                    trigger_journey_id,
+                    shutdown_requested.clone(),
+                )
+            },
             RoosterVisionUi::update,
             RoosterVisionUi::view,
         )
@@ -1088,12 +1113,28 @@ fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
     {
         println!("launching rooster vision UI (close the window to stop)");
         info!("launching rooster vision UI");
-        vision_ui::run_ui(
+        let viewer_shutdown_requested = Arc::new(AtomicBool::new(false));
+        let ctrl_c_shutdown_requested = Arc::clone(&viewer_shutdown_requested);
+        let ctrl_c_listener = runtime.spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                ctrl_c_shutdown_requested.store(true, Ordering::Relaxed);
+            }
+        });
+        let ui_result = vision_ui::run_ui(
             session.client.clone(),
             session.rooster_journey_id,
             session.trigger_journey_id,
-        )?;
-        info!("rooster vision closed; shutting down worker");
+            Arc::clone(&viewer_shutdown_requested),
+        );
+        let ctrl_c_requested = viewer_shutdown_requested.load(Ordering::Relaxed);
+        ctrl_c_listener.abort();
+        let _ = runtime.block_on(ctrl_c_listener);
+        ui_result?;
+        if ctrl_c_requested {
+            info!("received ctrl-c; rooster spawn exit requested");
+        } else {
+            info!("rooster vision closed; shutting down worker");
+        }
     }
 
     #[cfg(not(feature = "viewer"))]
@@ -1106,8 +1147,14 @@ fn run_spawn(args: SpawnArgs) -> Result<(), Box<dyn std::error::Error>> {
     println!("{SPAWN_EXIT_MESSAGE}");
     runtime.block_on(async move {
         session.worker_handle.abort();
-        let _ = session.worker_handle.await;
+        if tokio::time::timeout(Duration::from_secs(2), session.worker_handle)
+            .await
+            .is_err()
+        {
+            warn!("timed out waiting for rooster worker task to stop");
+        }
     });
+    runtime.shutdown_timeout(Duration::from_millis(250));
     Ok(())
 }
 
