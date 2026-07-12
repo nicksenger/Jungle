@@ -3261,6 +3261,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "cpal 0.15.3",
  "cron",
  "directories-next",
  "fjall",

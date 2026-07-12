@@ -9,7 +9,7 @@ image = ["dep:spectrs", "dep:image", "dep:zensim"]
 reqwest = ["dep:reqwest", "dep:base64"]
 viewer = ["dep:jungle-vision", "dep:iced", "dep:iced-av1", "dep:rodio", "dep:image", "dep:directories-next"]
 video = ["dep:welcome-video"]
-audio = ["dep:welcome-audio"]
+audio = ["dep:welcome-audio", "dep:cpal"]
 fjall = ["dep:fjall", "dep:directories-next"]
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
@@ -53,6 +53,7 @@ rustfft = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 base64 = { version = "0.22", optional = true }
 fjall = { workspace = true, optional = true }
+cpal = { version = "0.15.3", optional = true }
 
 [[example]]
 name = "welcome"

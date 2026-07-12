@@ -178,6 +178,297 @@ pub struct RoosterSoundOutput {
     amplitude: u8,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum RoosterVocalization {
+    Cluck,
+    Cockadoodledoo,
+}
+
+fn maybe_emit_rooster_sound(vocalization: RoosterVocalization, amplitude: u8) {
+    #[cfg(feature = "audio")]
+    {
+        if let Err(error) = rooster_audio::play(vocalization, amplitude) {
+            warn!(error = %error, ?vocalization, "failed to play rooster audio");
+        }
+    }
+    #[cfg(not(feature = "audio"))]
+    {
+        let _ = vocalization;
+        let _ = amplitude;
+    }
+}
+
+#[cfg(feature = "audio")]
+mod rooster_audio {
+    use super::RoosterVocalization;
+    use cpal::{
+        traits::{DeviceTrait, HostTrait, StreamTrait},
+        SampleFormat, Stream,
+    };
+    use std::cell::RefCell;
+    use std::f32::consts::TAU;
+    use std::sync::mpsc::{self, Receiver, Sender};
+    use tracing::warn;
+
+    thread_local! {
+        static AUDIO_RUNTIME: RefCell<Option<Result<AudioRuntime, String>>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn play(vocalization: RoosterVocalization, amplitude: u8) -> Result<(), String> {
+        AUDIO_RUNTIME.with(|runtime_cell| {
+            let mut runtime = runtime_cell.borrow_mut();
+            if runtime.is_none() {
+                *runtime = Some(AudioRuntime::new());
+            }
+            let runtime = runtime
+                .as_ref()
+                .expect("audio runtime should be initialized")
+                .as_ref()
+                .map_err(|error| error.clone())?;
+            let samples = synthesize(vocalization, amplitude, runtime.sample_rate_hz);
+            runtime
+                .sender
+                .send(samples)
+                .map_err(|_| "rooster audio stream is unavailable".to_owned())
+        })
+    }
+
+    struct AudioRuntime {
+        sender: Sender<Vec<f32>>,
+        sample_rate_hz: u32,
+        _stream: Stream,
+    }
+
+    impl AudioRuntime {
+        fn new() -> Result<Self, String> {
+            let host = cpal::default_host();
+            let device = host
+                .default_output_device()
+                .ok_or_else(|| "no default output audio device was found".to_owned())?;
+            let supported_config = device
+                .default_output_config()
+                .map_err(|err| format!("failed to read default output config: {err}"))?;
+            let stream_config: cpal::StreamConfig = supported_config.config();
+            let channels = usize::from(stream_config.channels);
+            let sample_rate_hz = stream_config.sample_rate.0;
+            let (sender, receiver) = mpsc::channel::<Vec<f32>>();
+
+            let stream = match supported_config.sample_format() {
+                SampleFormat::F32 => {
+                    build_output_stream_f32(&device, &stream_config, channels, receiver)
+                }
+                SampleFormat::I16 => {
+                    build_output_stream_i16(&device, &stream_config, channels, receiver)
+                }
+                SampleFormat::U16 => {
+                    build_output_stream_u16(&device, &stream_config, channels, receiver)
+                }
+                sample_format => Err(format!(
+                    "unsupported output sample format: {sample_format:?}"
+                )),
+            }?;
+
+            stream
+                .play()
+                .map_err(|err| format!("failed to start output stream: {err}"))?;
+
+            Ok(Self {
+                sender,
+                sample_rate_hz,
+                _stream: stream,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct PlaybackState {
+        current_buffer: Vec<f32>,
+        next_sample_index: usize,
+    }
+
+    impl PlaybackState {
+        fn next_sample(&mut self, receiver: &Receiver<Vec<f32>>) -> f32 {
+            loop {
+                if self.next_sample_index < self.current_buffer.len() {
+                    let sample = self.current_buffer[self.next_sample_index];
+                    self.next_sample_index += 1;
+                    return sample;
+                }
+
+                match receiver.try_recv() {
+                    Ok(buffer) => {
+                        self.current_buffer = buffer;
+                        self.next_sample_index = 0;
+                    }
+                    Err(mpsc::TryRecvError::Empty | mpsc::TryRecvError::Disconnected) => {
+                        return 0.0;
+                    }
+                }
+            }
+        }
+    }
+
+    fn build_output_stream_f32(
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        channels: usize,
+        receiver: Receiver<Vec<f32>>,
+    ) -> Result<Stream, String> {
+        let mut playback = PlaybackState::default();
+        let error_callback = |err: cpal::StreamError| {
+            warn!(error = %err, "rooster audio stream error");
+        };
+
+        device
+            .build_output_stream(
+                config,
+                move |data: &mut [f32], _| {
+                    for frame in data.chunks_mut(channels) {
+                        let sample = playback.next_sample(&receiver);
+                        for output in frame {
+                            *output = sample;
+                        }
+                    }
+                },
+                error_callback,
+                None,
+            )
+            .map_err(|err| format!("failed to build output stream: {err}"))
+    }
+
+    fn build_output_stream_i16(
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        channels: usize,
+        receiver: Receiver<Vec<f32>>,
+    ) -> Result<Stream, String> {
+        let mut playback = PlaybackState::default();
+        let error_callback = |err: cpal::StreamError| {
+            warn!(error = %err, "rooster audio stream error");
+        };
+
+        device
+            .build_output_stream(
+                config,
+                move |data: &mut [i16], _| {
+                    for frame in data.chunks_mut(channels) {
+                        let sample = playback.next_sample(&receiver).clamp(-1.0, 1.0);
+                        let value = (sample * i16::MAX as f32) as i16;
+                        for output in frame {
+                            *output = value;
+                        }
+                    }
+                },
+                error_callback,
+                None,
+            )
+            .map_err(|err| format!("failed to build output stream: {err}"))
+    }
+
+    fn build_output_stream_u16(
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        channels: usize,
+        receiver: Receiver<Vec<f32>>,
+    ) -> Result<Stream, String> {
+        let mut playback = PlaybackState::default();
+        let error_callback = |err: cpal::StreamError| {
+            warn!(error = %err, "rooster audio stream error");
+        };
+
+        device
+            .build_output_stream(
+                config,
+                move |data: &mut [u16], _| {
+                    for frame in data.chunks_mut(channels) {
+                        let sample = playback.next_sample(&receiver).clamp(-1.0, 1.0);
+                        let value = (((sample + 1.0) * 0.5) * u16::MAX as f32) as u16;
+                        for output in frame {
+                            *output = value;
+                        }
+                    }
+                },
+                error_callback,
+                None,
+            )
+            .map_err(|err| format!("failed to build output stream: {err}"))
+    }
+
+    fn synthesize(
+        vocalization: RoosterVocalization,
+        amplitude: u8,
+        sample_rate_hz: u32,
+    ) -> Vec<f32> {
+        match vocalization {
+            RoosterVocalization::Cluck => synthesize_cluck(amplitude, sample_rate_hz),
+            RoosterVocalization::Cockadoodledoo => {
+                synthesize_cockadoodledoo(amplitude, sample_rate_hz)
+            }
+        }
+    }
+
+    fn synthesize_cluck(amplitude: u8, sample_rate_hz: u32) -> Vec<f32> {
+        let duration_secs = 0.22_f32;
+        let total_samples = (duration_secs * sample_rate_hz as f32).max(1.0) as usize;
+        let amplitude_gain = amplitude_gain(amplitude);
+        let mut phase = 0.0_f32;
+        let mut samples = Vec::with_capacity(total_samples);
+
+        for index in 0..total_samples {
+            let progress = index as f32 / total_samples as f32;
+            let frequency_hz = 760.0 - 420.0 * progress;
+            phase += TAU * frequency_hz / sample_rate_hz as f32;
+            let envelope = (1.0 - progress).max(0.0).powf(2.2);
+            let noise = pseudo_noise(index as u32);
+            let sample = (phase.sin() * 0.75 + noise * 0.25) * envelope * amplitude_gain;
+            samples.push(sample.clamp(-1.0, 1.0));
+        }
+
+        samples
+    }
+
+    fn synthesize_cockadoodledoo(amplitude: u8, sample_rate_hz: u32) -> Vec<f32> {
+        let duration_secs = 1.2_f32;
+        let total_samples = (duration_secs * sample_rate_hz as f32).max(1.0) as usize;
+        let amplitude_gain = amplitude_gain(amplitude);
+        let mut phase = 0.0_f32;
+        let mut samples = Vec::with_capacity(total_samples);
+
+        for index in 0..total_samples {
+            let progress = index as f32 / total_samples as f32;
+            let frequency_hz = if progress < 0.22 {
+                380.0 + (progress / 0.22) * 520.0
+            } else if progress < 0.57 {
+                900.0 - ((progress - 0.22) / 0.35) * 320.0
+            } else if progress < 0.8 {
+                600.0 + ((progress - 0.57) / 0.23) * 170.0
+            } else {
+                770.0 - ((progress - 0.8) / 0.2) * 330.0
+            };
+            phase += TAU * frequency_hz / sample_rate_hz as f32;
+
+            let attack = (progress / 0.03).min(1.0);
+            let release = ((1.0 - progress) / 0.18).min(1.0);
+            let envelope = attack * release;
+            let vibrato = 1.0 + 0.04 * (TAU * 6.5 * index as f32 / sample_rate_hz as f32).sin();
+            let harmonic = phase.sin() * 0.78 + (phase * 2.0).sin() * 0.22;
+            let sample = harmonic * envelope * vibrato * amplitude_gain;
+            samples.push(sample.clamp(-1.0, 1.0));
+        }
+
+        samples
+    }
+
+    fn amplitude_gain(amplitude: u8) -> f32 {
+        (amplitude as f32 / 255.0).powf(1.2) * 0.9
+    }
+
+    fn pseudo_noise(seed: u32) -> f32 {
+        let value = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (value as f32 / u32::MAX as f32) * 2.0 - 1.0
+    }
+}
+
 pub struct CluckEffect;
 #[jungle::effect(id = 700)]
 impl<J> Effect<J> for CluckEffect {
@@ -187,6 +478,7 @@ impl<J> Effect<J> for CluckEffect {
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
+            maybe_emit_rooster_sound(RoosterVocalization::Cluck, input.amplitude);
             println!("A rooster clucked.");
             Ok(RoosterSoundOutput {
                 sound: "cluck".to_owned(),
@@ -205,6 +497,7 @@ impl<J> Effect<J> for CockadoodledooEffect {
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
+            maybe_emit_rooster_sound(RoosterVocalization::Cockadoodledoo, input.amplitude);
             println!("A rooster cock-a-doodle-dooed.");
             Ok(RoosterSoundOutput {
                 sound: "cockadoodledoo".to_owned(),
