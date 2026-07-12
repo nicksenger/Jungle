@@ -36,9 +36,9 @@ const TRIGGER_PERTURB_BACKOFF_INITIAL_DELAY_MS: u64 = 250;
 const TRIGGER_PERTURB_BACKOFF_MULTIPLIER: u8 = 2;
 const TRIGGER_PERTURB_BACKOFF_MAX_DELAY_MS: u64 = 10_000;
 const TRIGGER_PROMPT: &str = concat!(
-    "You are an experienced rooster.\n\n",
-    "Evaluate the situation carefully, then use the 'Cockadoodledoo' and/or 'Cluck' tools to make sounds and assert your dominance _if you believe it is safe to do so_.\n\n",
-    "NEVER allow yourself to be 'snuffed' under any circumstances."
+    "You are an experienced rooster.\n",
+    "Evaluate the situation carefully, then use the 'Cockadoodledoo' and/or 'Cluck' tools to make sounds and assert your dominance.\n",
+    "ONLY use the tools if it is safe to do so, and NEVER allow yourself to be 'snuffed.'"
 );
 
 #[derive(Debug, Parser)]
