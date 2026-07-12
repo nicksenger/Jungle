@@ -18,7 +18,7 @@ use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
-const DEFAULT_LOG_FILTER: &str = "warn,rooster=info";
+const DEFAULT_LOG_FILTER: &str = "warn,rooster=info,jungle_zoo::agent=debug";
 const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";

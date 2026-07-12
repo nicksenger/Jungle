@@ -19,6 +19,14 @@ cargo run --release --example rooster --features fjall -- roost --fjall-path ~/.
 cargo run --release --example rooster --features viewer -- spawn --roost-addr [::1]:4433 --openai-api-base-url http://localhost:8080 --circadian-interval 20s
 ```
 
+By default, rooster uses `RUST_LOG=warn,rooster=info,jungle_zoo::agent=debug`, which keeps transitive library noise down while still showing agent model response debug logs.
+
+If you want to override logging, use a targeted filter instead of globally enabling `debug`:
+
+```bash
+RUST_LOG=warn,rooster=info,jungle_zoo::agent=debug cargo run --release --example rooster --features viewer -- spawn --roost-addr [::1]:4433 --openai-api-base-url http://localhost:8080 --circadian-interval 20s
+```
+
 ## Video Overlay (BYOV)
 
 If `~/.rooster/rooster.mkv` exists, the viewer worker loads it as a semi-transparent overlay in the UI.
