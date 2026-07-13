@@ -1442,6 +1442,26 @@ async fn reconcile_replay_effect_input(
     {
         let _ = replay.discard_front().await?;
     }
+    // Reconnect recovery can append synthesized EffectInput events after the original
+    // cursor position. On later replays these become stale orphan entries that should
+    // not abort reconciliation for the next executable request.
+    loop {
+        let Some(RunnerOut::EffectInput {
+            node_id,
+            data,
+            uuid,
+        }) = replay.peek().await?
+        else {
+            break;
+        };
+        if uuid != journey_id {
+            break;
+        }
+        if node_id == request_node_id && data.as_slice() == expected_input {
+            break;
+        }
+        let _ = replay.discard_front().await?;
+    }
 
     let current_event = replay.peek().await?;
     let matched_effect_input = matches!(

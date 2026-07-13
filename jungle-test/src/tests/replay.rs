@@ -1356,6 +1356,177 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
 }
 
 #[tokio::test]
+async fn replay_recovery_with_synthesized_effect_inputs_survives_third_reconnect() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.fjall");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .fjall_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client = DropHistoryEventsClient::new(
+        connect_client_with_retry(listen_addr).await,
+        PRE_STEPS,
+        0,
+        0,
+    );
+    let worker_two_client = connect_client_with_retry(listen_addr).await;
+
+    let pre_counter = Arc::new(AtomicUsize::new(0));
+    let post_counter = Arc::new(AtomicUsize::new(0));
+    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+    let gate = Arc::new(Semaphore::new(0));
+
+    let worker_one = tokio::spawn({
+        let client = worker_one_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    let journey_id = control_client
+        .spawn::<ReplayGateAnimal>(&ReplayGateState { phase: 0 })
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+        .await
+        .expect("first gate notification should arrive")
+        .expect("first gate notification channel should remain open");
+
+    worker_one.abort();
+    let _ = worker_one.await;
+
+    let worker_two = tokio::spawn({
+        let client = worker_two_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client)
+                .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
+                .with_replay_page_size(1);
+            worker.spawn().await
+        }
+    });
+    let second_reached_gate = tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if worker_two.is_finished() {
+                break false;
+            }
+            if reached_rx.try_recv().is_ok() {
+                break true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("second gate notification should arrive");
+    if !second_reached_gate {
+        let worker_result = worker_two.await.expect("second worker join should succeed");
+        panic!("second worker exited early: {worker_result:?}");
+    }
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "second replay should not rerun pre-gate side effects"
+    );
+    worker_two.abort();
+    let _ = worker_two.await;
+
+    let worker_three = tokio::spawn({
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx,
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let client = connect_client_with_retry(listen_addr).await;
+            let worker = JungleWorker::new(zoo, client)
+                .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
+                .with_replay_page_size(1);
+            worker.spawn().await
+        }
+    });
+    let third_reached_gate = tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if worker_three.is_finished() {
+                break false;
+            }
+            if reached_rx.try_recv().is_ok() {
+                break true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("third gate notification should arrive");
+    if !third_reached_gate {
+        let worker_result = worker_three.await.expect("third worker join should succeed");
+        panic!("third worker exited early: {worker_result:?}");
+    }
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "third replay should still avoid rerunning pre-gate side effects"
+    );
+
+    gate.add_permits(1);
+    wait_for_completed(listen_addr, journey_id, Duration::from_secs(20)).await;
+
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "recovery across multiple reconnects should keep pre-gate effects single-shot"
+    );
+    assert_eq!(
+        post_counter.load(Ordering::SeqCst),
+        POST_STEPS,
+        "post-gate effects should still run exactly once"
+    );
+
+    let history_client = connect_client_with_retry(listen_addr).await;
+    let history = history_client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed after third reconnect");
+    let effect_input_count = history
+        .iter()
+        .filter(|event| matches!(event, RunnerOut::EffectInput { .. }))
+        .count();
+    assert!(
+        effect_input_count >= PRE_STEPS + POST_STEPS + 1,
+        "history should retain at least one effect input per completed step after multi-replay"
+    );
+
+    worker_three.abort();
+    let _ = worker_three.await;
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn replay_recovery_synthesizes_missing_effect_success_outputs_once() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.fjall");
