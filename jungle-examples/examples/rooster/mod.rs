@@ -412,19 +412,36 @@ mod rooster_audio {
     }
 
     fn synthesize_cluck(amplitude: u8, sample_rate_hz: u32) -> Vec<f32> {
-        let duration_secs = 0.22_f32;
+        let duration_secs = 0.27_f32;
         let total_samples = (duration_secs * sample_rate_hz as f32).max(1.0) as usize;
         let amplitude_gain = amplitude_gain(amplitude);
         let mut phase = 0.0_f32;
         let mut samples = Vec::with_capacity(total_samples);
+        let sample_rate = sample_rate_hz as f32;
 
         for index in 0..total_samples {
+            let time_secs = index as f32 / sample_rate;
             let progress = index as f32 / total_samples as f32;
-            let frequency_hz = 760.0 - 420.0 * progress;
-            phase += TAU * frequency_hz / sample_rate_hz as f32;
-            let envelope = (1.0 - progress).max(0.0).powf(2.2);
-            let noise = pseudo_noise(index as u32);
-            let sample = (phase.sin() * 0.75 + noise * 0.25) * envelope * amplitude_gain;
+            let pitch_glide = smoothstep01(progress.powf(0.72));
+            let frequency_hz = 960.0 - 500.0 * pitch_glide;
+            let pitch_jitter = 1.0
+                + 0.03 * (TAU * 22.0 * time_secs).sin()
+                + 0.01 * pseudo_noise((index as u32).wrapping_add(97));
+            phase += TAU * frequency_hz * pitch_jitter / sample_rate;
+
+            let body = ad_envelope(time_secs, 0.006, 0.11);
+            let tail = ad_envelope((time_secs - 0.06).max(0.0), 0.004, 0.08) * 0.6;
+            let beak_click = burst_envelope(time_secs, 0.0, 0.02);
+            let throat_burst = burst_envelope(time_secs, 0.065, 0.045);
+            let envelope = (body + tail).clamp(0.0, 1.0);
+
+            let voiced = phase.sin() * 0.62
+                + (phase * 2.01 + 0.2).sin() * 0.24
+                + (phase * 3.03 + 0.34).sin() * 0.1;
+            let noise = pseudo_noise((index as u32).wrapping_mul(17).wrapping_add(11));
+            let aspiration = noise * (envelope * 0.2 + beak_click * 0.85 + throat_burst * 0.3);
+            let sample =
+                (voiced * envelope + aspiration * 0.45) * amplitude_gain * (0.97 - progress * 0.07);
             samples.push(sample.clamp(-1.0, 1.0));
         }
 
@@ -432,35 +449,168 @@ mod rooster_audio {
     }
 
     fn synthesize_cockadoodledoo(amplitude: u8, sample_rate_hz: u32) -> Vec<f32> {
-        let duration_secs = 1.2_f32;
+        #[derive(Clone, Copy)]
+        struct Syllable {
+            start_secs: f32,
+            duration_secs: f32,
+            f0_start_hz: f32,
+            f0_end_hz: f32,
+            gain: f32,
+            brightness: f32,
+            noise_mix: f32,
+            vibrato_hz: f32,
+            vibrato_depth: f32,
+        }
+
+        let syllables = [
+            Syllable {
+                start_secs: 0.00,
+                duration_secs: 0.19,
+                f0_start_hz: 430.0,
+                f0_end_hz: 670.0,
+                gain: 1.0,
+                brightness: 0.95,
+                noise_mix: 0.24,
+                vibrato_hz: 7.0,
+                vibrato_depth: 0.015,
+            },
+            Syllable {
+                start_secs: 0.16,
+                duration_secs: 0.16,
+                f0_start_hz: 690.0,
+                f0_end_hz: 860.0,
+                gain: 0.78,
+                brightness: 0.9,
+                noise_mix: 0.16,
+                vibrato_hz: 7.4,
+                vibrato_depth: 0.018,
+            },
+            Syllable {
+                start_secs: 0.33,
+                duration_secs: 0.31,
+                f0_start_hz: 800.0,
+                f0_end_hz: 560.0,
+                gain: 0.9,
+                brightness: 0.84,
+                noise_mix: 0.13,
+                vibrato_hz: 6.7,
+                vibrato_depth: 0.025,
+            },
+            Syllable {
+                start_secs: 0.66,
+                duration_secs: 0.24,
+                f0_start_hz: 610.0,
+                f0_end_hz: 760.0,
+                gain: 0.82,
+                brightness: 0.77,
+                noise_mix: 0.1,
+                vibrato_hz: 6.4,
+                vibrato_depth: 0.028,
+            },
+            Syllable {
+                start_secs: 0.88,
+                duration_secs: 0.4,
+                f0_start_hz: 750.0,
+                f0_end_hz: 470.0,
+                gain: 0.96,
+                brightness: 0.7,
+                noise_mix: 0.13,
+                vibrato_hz: 6.1,
+                vibrato_depth: 0.031,
+            },
+        ];
+
+        let duration_secs = syllables
+            .iter()
+            .map(|syllable| syllable.start_secs + syllable.duration_secs)
+            .fold(0.0_f32, f32::max)
+            + 0.04;
         let total_samples = (duration_secs * sample_rate_hz as f32).max(1.0) as usize;
         let amplitude_gain = amplitude_gain(amplitude);
-        let mut phase = 0.0_f32;
+        let sample_rate = sample_rate_hz as f32;
+        let mut phases = [0.0_f32; 5];
         let mut samples = Vec::with_capacity(total_samples);
 
         for index in 0..total_samples {
-            let progress = index as f32 / total_samples as f32;
-            let frequency_hz = if progress < 0.22 {
-                380.0 + (progress / 0.22) * 520.0
-            } else if progress < 0.57 {
-                900.0 - ((progress - 0.22) / 0.35) * 320.0
-            } else if progress < 0.8 {
-                600.0 + ((progress - 0.57) / 0.23) * 170.0
-            } else {
-                770.0 - ((progress - 0.8) / 0.2) * 330.0
-            };
-            phase += TAU * frequency_hz / sample_rate_hz as f32;
+            let time_secs = index as f32 / sample_rate;
+            let mut voiced = 0.0_f32;
+            let mut breath = 0.0_f32;
 
-            let attack = (progress / 0.03).min(1.0);
-            let release = ((1.0 - progress) / 0.18).min(1.0);
-            let envelope = attack * release;
-            let vibrato = 1.0 + 0.04 * (TAU * 6.5 * index as f32 / sample_rate_hz as f32).sin();
-            let harmonic = phase.sin() * 0.78 + (phase * 2.0).sin() * 0.22;
-            let sample = harmonic * envelope * vibrato * amplitude_gain;
+            for (syllable_idx, syllable) in syllables.iter().enumerate() {
+                let local_time = time_secs - syllable.start_secs;
+                if !(0.0..=syllable.duration_secs).contains(&local_time) {
+                    continue;
+                }
+
+                let progress = (local_time / syllable.duration_secs).clamp(0.0, 1.0);
+                let envelope = syllable_envelope(progress) * syllable.gain;
+                let onset = burst_envelope(local_time, 0.0, syllable.duration_secs * 0.2);
+                let glide = smoothstep01(progress);
+                let base_f0 = syllable.f0_start_hz + (syllable.f0_end_hz - syllable.f0_start_hz) * glide;
+                let vibrato =
+                    1.0 + syllable.vibrato_depth * (TAU * syllable.vibrato_hz * local_time).sin();
+                let f0 = base_f0 * vibrato;
+                phases[syllable_idx] += TAU * f0 / sample_rate;
+
+                let harmonic = harmonic_stack(phases[syllable_idx], syllable.brightness);
+                voiced += harmonic * envelope;
+
+                let seed = (index as u32)
+                    .wrapping_mul(37)
+                    .wrapping_add((syllable_idx as u32).wrapping_mul(271));
+                breath += pseudo_noise(seed) * syllable.noise_mix * (envelope * 0.55 + onset * 0.45);
+            }
+
+            let sample = (voiced * 0.83 + breath * 0.38) * amplitude_gain;
             samples.push(sample.clamp(-1.0, 1.0));
         }
 
         samples
+    }
+
+    fn harmonic_stack(phase: f32, brightness: f32) -> f32 {
+        let b = brightness.clamp(0.0, 1.0);
+        phase.sin() * 0.72
+            + (phase * 2.0 + 0.2).sin() * (0.52 * b)
+            + (phase * 3.0 + 0.35).sin() * (0.29 * b * b)
+            + (phase * 4.0 + 0.45).sin() * (0.15 * b * b * b)
+    }
+
+    fn syllable_envelope(progress: f32) -> f32 {
+        let clamped = progress.clamp(0.0, 1.0);
+        let attack = (clamped / 0.09).min(1.0);
+        let body = 1.0 - 0.28 * clamped;
+        let release = ((1.0 - clamped) / 0.24).min(1.0);
+        (attack * body.max(0.0) * release).clamp(0.0, 1.0)
+    }
+
+    fn ad_envelope(time_secs: f32, attack_secs: f32, decay_secs: f32) -> f32 {
+        let attack = if attack_secs <= f32::EPSILON {
+            1.0
+        } else {
+            (time_secs / attack_secs).clamp(0.0, 1.0)
+        };
+        let decay = (-time_secs.max(0.0) / decay_secs.max(f32::EPSILON)).exp();
+        (attack * decay).clamp(0.0, 1.0)
+    }
+
+    fn burst_envelope(time_secs: f32, start_secs: f32, duration_secs: f32) -> f32 {
+        if duration_secs <= f32::EPSILON {
+            return 0.0;
+        }
+        let local_time = time_secs - start_secs;
+        if !(0.0..=duration_secs).contains(&local_time) {
+            return 0.0;
+        }
+        let progress = (local_time / duration_secs).clamp(0.0, 1.0);
+        let attack = (progress / 0.2).min(1.0);
+        let release = ((1.0 - progress) / 0.8).min(1.0);
+        (attack * release).powf(1.2)
+    }
+
+    fn smoothstep01(value: f32) -> f32 {
+        let clamped = value.clamp(0.0, 1.0);
+        clamped * clamped * (3.0 - 2.0 * clamped)
     }
 
     fn amplitude_gain(amplitude: u8) -> f32 {

@@ -9,7 +9,7 @@ It's a CLI with 2 commands:
 2. `spawn`: this starts a jungle-worker and spawns 2 animal journeys to the provided backend:
     - the `Rooster`: when perturbed with a prompt, the `Rooster` forwards that prompt to an LLM (with tool descriptions, accumulated history, etc) over the given OpenAI compatible API and parses these tool calls from the response:
         1. `Cluck`: prints that a rooster clucked and, if the audio feature is enabled, plays a short waveform through cpal
-        2. `Cockadoodledoo`: prints that a rooster cockadoodledood and plays an _annoying_ waveform through cpal
+        2. `Cockadoodledoo`: prints that a rooster cockadoodledood and, if audio is enabled, plays a longer cock-a-doodle-doo waveform through cpal
     - the `Trigger`: this just alternates sleeping for the provided duration (e.g. 1s, 5m, 1h, etc), and perturbing the associated `Rooster` with the following prompt:
 
 > You are an experienced rooster.
