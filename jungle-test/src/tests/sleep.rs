@@ -544,6 +544,124 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
 }
 
 #[tokio::test]
+async fn worker_ignores_stale_owner_wake_and_continues_on_matching_timer() {
+    use jungle_sdk::{MockClient, OwnerWake, Work};
+    use std::sync::Mutex;
+    use uuid::Uuid;
+
+    let journey_id = Uuid::from_u128(0x51ee_0000_0000_0000_0000_0000_0000_0001);
+    let stale_timer_id = Uuid::from_u128(0x51ee_0000_0000_0000_0000_0000_0000_0002);
+    let seed = SleepState {
+        counter: 0,
+        phase: 0,
+        sleep_for_ms: 60_000,
+    };
+    let encoded_seed = postcard::to_allocvec(&seed).expect("sleep seed should serialize");
+    let work_claimed = Arc::new(AtomicBool::new(false));
+    let scheduled_timer_id = Arc::new(Mutex::new(None::<Uuid>));
+    let wake_poll = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let completed = Arc::new(AtomicBool::new(false));
+
+    let client = MockClient::builder()
+        .on_poll_work({
+            let work_claimed = Arc::clone(&work_claimed);
+            move |_| {
+                let encoded_seed = encoded_seed.clone();
+                let should_claim = !work_claimed.swap(true, Ordering::SeqCst);
+                async move {
+                    Ok(should_claim.then_some(Work::StartJourney {
+                        journey_id,
+                        animal_id: 0,
+                        generation: 0,
+                        seed: encoded_seed,
+                    }))
+                }
+            }
+        })
+        .on_schedule_sleep_timer({
+            let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+            move |scheduled_journey_id, timer_id, _| {
+                let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+                async move {
+                    assert_eq!(scheduled_journey_id, journey_id);
+                    *scheduled_timer_id
+                        .lock()
+                        .expect("scheduled timer mutex should lock") = Some(timer_id);
+                    Ok(())
+                }
+            }
+        })
+        .on_poll_owner_wake({
+            let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+            let wake_poll = Arc::clone(&wake_poll);
+            move |_| {
+                let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+                let wake_poll = Arc::clone(&wake_poll);
+                async move {
+                    let Some(timer_id) = *scheduled_timer_id
+                        .lock()
+                        .expect("scheduled timer mutex should lock")
+                    else {
+                        return Ok(None);
+                    };
+                    let wake = match wake_poll.fetch_add(1, Ordering::SeqCst) {
+                        0 => Some(OwnerWake {
+                            journey_id,
+                            timer_id: stale_timer_id,
+                        }),
+                        1 => Some(OwnerWake {
+                            journey_id,
+                            timer_id,
+                        }),
+                        _ => None,
+                    };
+                    Ok(wake)
+                }
+            }
+        })
+        .on_flow_complete({
+            let completed = Arc::clone(&completed);
+            move |completed_journey_id| {
+                let completed = Arc::clone(&completed);
+                async move {
+                    assert_eq!(completed_journey_id, journey_id);
+                    completed.store(true, Ordering::SeqCst);
+                    Ok(())
+                }
+            }
+        })
+        .build();
+
+    let worker_handle =
+        tokio::spawn(async move { JungleWorker::new(SleepZoo, client).spawn().await });
+    let completed_before_worker_exit = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if completed.load(Ordering::SeqCst) {
+                break true;
+            }
+            if worker_handle.is_finished() {
+                break false;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("worker should handle stale and current wakes before timeout");
+
+    if !completed_before_worker_exit {
+        let worker_result = worker_handle.await.expect("worker join should succeed");
+        panic!("worker exited on a stale owner wake: {worker_result:?}");
+    }
+    assert!(
+        wake_poll.load(Ordering::SeqCst) >= 2,
+        "worker should continue polling until the matching timer wake arrives"
+    );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[tokio::test]
 async fn focused_join_sleep_suspends_until_backend_wake() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.fjall");

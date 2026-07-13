@@ -728,16 +728,26 @@ where
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>> {
         Box::pin(async move {
-            let sleep_index = self
+            let Some(sleep_index) = self
                 .pending_sleeps
                 .iter()
                 .position(|scheduled| scheduled.timer_id == timer_id)
-                .ok_or_else(|| {
-                    ExecutorError::ClientTransport(format!(
-                        "unknown sleep wake timer for journey {}: {timer_id}",
-                        self.journey_id
-                    ))
-                })?;
+            else {
+                // A timer can fire while this worker is rebuilding the journey from
+                // durable history. Replay consumes SleepFired and advances the
+                // executor, but the corresponding owner wake can still be queued.
+                // The wake is only an activation signal, so it is safe to discard
+                // once its timer is no longer among the replay-recovered sleeps.
+                debug!(
+                    journey_id = %self.journey_id,
+                    timer_id = %timer_id,
+                    pending_sleep_count = self.pending_sleeps.len(),
+                    "ignoring stale sleep wake already consumed by replay"
+                );
+                return Ok(SuspendedOutcome::Sleeping {
+                    new_sleeps: Vec::new(),
+                });
+            };
             let scheduled = self.pending_sleeps.remove(sleep_index);
             let pending_sleeps = self
                 .pending_sleeps
