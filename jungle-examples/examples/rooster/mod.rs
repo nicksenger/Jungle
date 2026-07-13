@@ -290,6 +290,12 @@ mod rooster_audio {
         next_sample_index: usize,
     }
 
+    #[derive(Clone, Copy, Default)]
+    struct ResonatorState {
+        y1: f32,
+        y2: f32,
+    }
+
     impl PlaybackState {
         fn next_sample(&mut self, receiver: &Receiver<Vec<f32>>) -> f32 {
             loop {
@@ -458,29 +464,30 @@ mod rooster_audio {
         // "cock": sharp accented attack
         let cock = Segment {
             start_secs: 0.00,
-            duration_secs: 0.11,
+            duration_secs: 0.12,
         };
         // "a": quick dip to reset breath pressure
         let a = Segment {
-            start_secs: 0.095,
-            duration_secs: 0.07,
+            start_secs: 0.105,
+            duration_secs: 0.08,
         };
         // "doodle": loud apex with sustained vibrato
         let doodle = Segment {
-            start_secs: 0.15,
-            duration_secs: 0.36,
+            start_secs: 0.18,
+            duration_secs: 0.46,
         };
         // "doo": long descending gliss into a choked fade
         let doo = Segment {
-            start_secs: 0.44,
-            duration_secs: 0.84,
+            start_secs: 0.58,
+            duration_secs: 1.05,
         };
 
-        let duration_secs = doo.start_secs + doo.duration_secs + 0.08;
+        let duration_secs = doo.start_secs + doo.duration_secs + 0.1;
         let total_samples = (duration_secs * sample_rate_hz as f32).max(1.0) as usize;
         let amplitude_gain = amplitude_gain(amplitude);
         let sample_rate = sample_rate_hz as f32;
         let mut phases = [0.0_f32; 4];
+        let mut resonators = [ResonatorState::default(); 3];
         let mut samples = Vec::with_capacity(total_samples);
 
         let segment_progress =
@@ -497,91 +504,179 @@ mod rooster_audio {
 
         for index in 0..total_samples {
             let time_secs = index as f32 / sample_rate;
-            let mut voiced = 0.0_f32;
+            let mut source = 0.0_f32;
             let mut breath = 0.0_f32;
+            let mut formant_weight = 0.0_f32;
+            let mut formant1_sum = 0.0_f32;
+            let mut formant2_sum = 0.0_f32;
+            let mut formant3_sum = 0.0_f32;
 
             if let Some((progress, local_time)) =
                 segment_progress(time_secs, cock.start_secs, cock.duration_secs)
             {
-                let envelope = staccato_envelope(progress) * 1.06;
-                let glide = smoothstep01(progress.powf(0.62));
-                let base_f0 = 760.0 - 84.0 * glide;
-                let f0 = base_f0 * (1.0 + 0.016 * (TAU * 8.3 * local_time).sin());
+                let envelope = staccato_envelope(progress).powf(0.82) * 1.08;
+                let glide = smoothstep01(progress.powf(0.58));
+                let base_f0 = 742.0 - 82.0 * glide;
+                let f0 = base_f0 * (1.0 + 0.013 * (TAU * 8.7 * local_time).sin());
                 phases[0] += TAU * f0 / sample_rate;
 
-                let harmonic = harmonic_stack(phases[0], 0.97);
+                let harmonic = harmonic_stack(phases[0], 0.96);
                 let beak_click = burst_envelope(local_time, 0.0, 0.024);
-                voiced += harmonic * envelope * 0.97;
+                source += harmonic * envelope * 1.02;
 
                 let seed = (index as u32).wrapping_mul(31).wrapping_add(7);
-                breath += pseudo_noise(seed) * (envelope * 0.18 + beak_click * 0.9) * 0.42;
+                breath += pseudo_noise(seed) * (envelope * 0.2 + beak_click * 0.94) * 0.48;
+
+                let tract = envelope * 1.02;
+                formant_weight += tract;
+                formant1_sum += tract * (710.0 - 70.0 * glide);
+                formant2_sum += tract * (1_330.0 - 120.0 * glide);
+                formant3_sum += tract * (2_420.0 - 180.0 * glide);
             }
 
             if let Some((progress, local_time)) =
                 segment_progress(time_secs, a.start_secs, a.duration_secs)
             {
-                let envelope = syllable_envelope(progress) * 0.56;
+                let envelope = syllable_envelope(progress) * 0.44;
                 let glide = smoothstep01(progress);
-                let base_f0 = 665.0 - 90.0 * glide;
-                let f0 = base_f0 * (1.0 + 0.012 * (TAU * 6.4 * local_time).sin());
+                let base_f0 = 640.0 - 72.0 * glide;
+                let f0 = base_f0 * (1.0 + 0.01 * (TAU * 6.1 * local_time).sin());
                 phases[1] += TAU * f0 / sample_rate;
 
-                let harmonic = harmonic_stack(phases[1], 0.86);
-                let onset = burst_envelope(local_time, 0.0, a.duration_secs * 0.55);
-                voiced += harmonic * envelope * 0.52;
+                let harmonic = harmonic_stack(phases[1], 0.83);
+                let onset = burst_envelope(local_time, 0.0, a.duration_secs * 0.5);
+                source += harmonic * envelope * 0.48;
 
                 let seed = (index as u32).wrapping_mul(41).wrapping_add(101);
-                breath += pseudo_noise(seed) * (envelope * 0.35 + onset * 0.65) * 0.22;
+                breath += pseudo_noise(seed) * (envelope * 0.33 + onset * 0.67) * 0.2;
+
+                let tract = envelope * 0.9;
+                formant_weight += tract;
+                formant1_sum += tract * (620.0 - 46.0 * glide);
+                formant2_sum += tract * (1_180.0 - 90.0 * glide);
+                formant3_sum += tract * (2_100.0 - 180.0 * glide);
             }
 
             if let Some((progress, local_time)) =
                 segment_progress(time_secs, doodle.start_secs, doodle.duration_secs)
             {
-                let envelope = sustain_envelope(progress) * 1.09;
-                let leap = smoothstep01((progress / 0.28).clamp(0.0, 1.0));
-                let settle = smoothstep01(((progress - 0.28) / 0.72).clamp(0.0, 1.0));
-                let base_f0 = 646.0 + 335.0 * leap - 56.0 * settle;
-                let vibrato_depth = 0.048 + 0.018 * smoothstep01(progress);
-                let vibrato = (TAU * 6.7 * local_time).sin();
+                let envelope = sustain_envelope(progress) * 1.14;
+                let leap = smoothstep01((progress / 0.22).clamp(0.0, 1.0));
+                let settle = smoothstep01(((progress - 0.22) / 0.78).clamp(0.0, 1.0));
+                let base_f0 = 614.0 + 372.0 * leap - 22.0 * settle;
+                let vibrato_depth = 0.045 + 0.023 * smoothstep01(progress);
+                let vibrato = (TAU * 6.35 * local_time).sin();
                 let f0 = base_f0 * (1.0 + vibrato_depth * vibrato);
                 phases[2] += TAU * f0 / sample_rate;
 
-                let harmonic = harmonic_stack(phases[2], 0.93);
-                let onset = burst_envelope(local_time, 0.0, doodle.duration_secs * 0.16);
-                voiced += harmonic * envelope * 1.23;
+                let harmonic = harmonic_stack(phases[2], 0.95);
+                let onset = burst_envelope(local_time, 0.0, doodle.duration_secs * 0.14);
+                source += harmonic * envelope * 1.2;
 
                 let seed = (index as u32).wrapping_mul(53).wrapping_add(211);
-                breath += pseudo_noise(seed) * (envelope * 0.3 + onset * 0.7) * 0.18;
+                breath += pseudo_noise(seed) * (envelope * 0.27 + onset * 0.73) * 0.17;
+
+                let tract = envelope * 1.08;
+                formant_weight += tract;
+                formant1_sum += tract * (648.0 + 32.0 * leap - 14.0 * settle);
+                formant2_sum += tract * (1_240.0 + 122.0 * leap - 40.0 * settle);
+                formant3_sum += tract * (2_130.0 + 210.0 * leap - 85.0 * settle);
             }
 
             if let Some((progress, local_time)) =
                 segment_progress(time_secs, doo.start_secs, doo.duration_secs)
             {
                 let envelope = decay_glide_envelope(progress);
-                let glide = smoothstep01(progress.powf(0.78));
-                let base_f0 = 972.0 - 575.0 * glide;
+                let glide = smoothstep01(progress.powf(0.84));
+                let base_f0 = 972.0 - 454.0 * glide;
                 let tail_instability = smoothstep01(((progress - 0.68) / 0.32).clamp(0.0, 1.0));
                 let wobble = (TAU * (5.7 + 1.8 * progress) * local_time).sin();
-                let vibrato_depth = 0.038 + 0.016 * (1.0 - progress);
+                let vibrato_depth = 0.034 + 0.02 * (1.0 - progress);
                 let seed = (index as u32).wrapping_mul(59).wrapping_add(313);
-                let jitter = 1.0 + 0.012 * wobble + 0.022 * tail_instability * pseudo_noise(seed);
-                let f0 = (base_f0 * (1.0 + vibrato_depth * wobble) * jitter).max(120.0);
+                let jitter = 1.0 + 0.011 * wobble + 0.026 * tail_instability * pseudo_noise(seed);
+                let f0 = (base_f0 * (1.0 + vibrato_depth * wobble) * jitter).max(140.0);
                 phases[3] += TAU * f0 / sample_rate;
 
-                let brightness = 0.82 - 0.34 * glide;
+                let brightness = 0.86 - 0.36 * glide;
                 let harmonic = harmonic_stack(phases[3], brightness);
-                let rasp = 0.11 + 0.34 * tail_instability;
-                voiced += harmonic * envelope * 0.95;
+                let rasp = 0.14 + 0.33 * tail_instability;
+                source += harmonic * envelope * 0.94;
                 breath += pseudo_noise(seed.wrapping_add(19))
-                    * (envelope * 0.55 + tail_instability * 0.35 + 0.08)
+                    * (envelope * 0.52 + tail_instability * 0.38 + 0.08)
                     * rasp;
+
+                let tract = envelope * (0.95 - 0.18 * glide);
+                formant_weight += tract;
+                formant1_sum += tract * (674.0 - 150.0 * glide);
+                formant2_sum += tract * (1_278.0 - 254.0 * glide);
+                formant3_sum += tract * (2_210.0 - 420.0 * glide);
             }
 
-            let sample = ((voiced * 0.8 + breath * 0.42) * amplitude_gain * 1.16).tanh() * 0.92;
+            let formant1_hz = if formant_weight > f32::EPSILON {
+                formant1_sum / formant_weight
+            } else {
+                640.0
+            };
+            let formant2_hz = if formant_weight > f32::EPSILON {
+                formant2_sum / formant_weight
+            } else {
+                1_230.0
+            };
+            let formant3_hz = if formant_weight > f32::EPSILON {
+                formant3_sum / formant_weight
+            } else {
+                2_150.0
+            };
+
+            let excitation = (source * 0.88 + breath * 0.5).tanh();
+            let ring1 = resonator_step(
+                &mut resonators[0],
+                excitation,
+                formant1_hz,
+                130.0,
+                sample_rate,
+            );
+            let ring2 = resonator_step(
+                &mut resonators[1],
+                excitation,
+                formant2_hz,
+                210.0,
+                sample_rate,
+            );
+            let ring3 = resonator_step(
+                &mut resonators[2],
+                excitation,
+                formant3_hz,
+                330.0,
+                sample_rate,
+            );
+            let sample = ((ring1 * 0.82 + ring2 * 0.58 + ring3 * 0.26 + excitation * 0.25)
+                * amplitude_gain
+                * 1.07)
+                .tanh()
+                * 0.92;
             samples.push(sample.clamp(-1.0, 1.0));
         }
 
         samples
+    }
+
+    fn resonator_step(
+        state: &mut ResonatorState,
+        input: f32,
+        center_hz: f32,
+        bandwidth_hz: f32,
+        sample_rate: f32,
+    ) -> f32 {
+        let clamped_center = center_hz.clamp(80.0, sample_rate * 0.45);
+        let clamped_bandwidth = bandwidth_hz.max(1.0);
+        let damping = (-std::f32::consts::PI * clamped_bandwidth / sample_rate).exp();
+        let angular = TAU * clamped_center / sample_rate;
+        let feedback = 2.0 * damping * angular.cos();
+        let output = (1.0 - damping) * input + feedback * state.y1 - (damping * damping) * state.y2;
+        state.y2 = state.y1;
+        state.y1 = output;
+        output
     }
 
     fn harmonic_stack(phase: f32, brightness: f32) -> f32 {
