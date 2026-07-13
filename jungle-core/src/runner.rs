@@ -202,7 +202,9 @@ where
             }
 
             if replay_pending_in_flight > 0 && in_flight.is_empty() {
-                if let Some(request) = replay_pending_queue.pop_back() {
+                // Replay pending requests in their original emission order so completions
+                // apply to the same executor cursor positions that produced them.
+                if let Some(request) = replay_pending_queue.pop_front() {
                     in_flight.push(run_request_task(tx.clone(), request));
                 }
             }
