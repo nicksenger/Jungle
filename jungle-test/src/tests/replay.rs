@@ -1453,6 +1453,23 @@ async fn replay_recovery_with_synthesized_effect_inputs_survives_third_reconnect
     );
     worker_two.abort();
     let _ = worker_two.await;
+    let inject_client = connect_client_with_retry(listen_addr).await;
+    inject_client
+        .submit_history_event(RunnerOut::EffectSuccessOutput {
+            node_id: u32::MAX - 1,
+            data: vec![0xAA],
+            uuid: journey_id,
+        })
+        .await
+        .expect("injecting orphaned success output should succeed");
+    inject_client
+        .submit_history_event(RunnerOut::EffectFailureOutput {
+            node_id: u32::MAX - 2,
+            data: vec![0xBB],
+            uuid: journey_id,
+        })
+        .await
+        .expect("injecting orphaned failure output should succeed");
 
     let worker_three = tokio::spawn({
         let zoo = ReplayGateZoo {

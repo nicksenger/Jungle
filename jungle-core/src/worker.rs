@@ -1442,25 +1442,33 @@ async fn reconcile_replay_effect_input(
     {
         let _ = replay.discard_front().await?;
     }
-    // Reconnect recovery can append synthesized EffectInput events after the original
-    // cursor position. On later replays these become stale orphan entries that should
-    // not abort reconciliation for the next executable request.
+    // Reconnect recovery can append synthesized replay events after the original
+    // cursor position. On later replays these can become stale orphan entries that
+    // should not abort reconciliation for the next executable request.
     loop {
-        let Some(RunnerOut::EffectInput {
-            node_id,
-            data,
-            uuid,
-        }) = replay.peek().await?
-        else {
-            break;
-        };
-        if uuid != journey_id {
-            break;
+        match replay.peek().await? {
+            Some(RunnerOut::EffectInput {
+                node_id,
+                data,
+                uuid,
+            }) if uuid == journey_id => {
+                if node_id == request_node_id && data.as_slice() == expected_input {
+                    break;
+                }
+                let _ = replay.discard_front().await?;
+            }
+            Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+                if uuid == journey_id && node_id != request_node_id =>
+            {
+                let _ = replay.discard_front().await?;
+            }
+            Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
+                if uuid == journey_id && node_id != request_node_id =>
+            {
+                let _ = replay.discard_front().await?;
+            }
+            _ => break,
         }
-        if node_id == request_node_id && data.as_slice() == expected_input {
-            break;
-        }
-        let _ = replay.discard_front().await?;
     }
 
     let current_event = replay.peek().await?;
@@ -1560,10 +1568,15 @@ async fn resolve_next_replay_completion(
                 timer_id,
                 wake_at_unix_ms,
             } if uuid == journey_id => {
-                pending_sleep_schedules.push_back(ReplaySleepSchedule {
-                    timer_id,
-                    wake_at_unix_ms,
-                });
+                if pending
+                    .values()
+                    .any(|request| request.effect_type == sleep_effect_type)
+                {
+                    pending_sleep_schedules.push_back(ReplaySleepSchedule {
+                        timer_id,
+                        wake_at_unix_ms,
+                    });
+                }
                 let _ = replay.discard_front().await?;
             }
             RunnerOut::SleepFired { uuid, timer_id, .. } if uuid == journey_id => {
@@ -1602,6 +1615,15 @@ async fn resolve_next_replay_completion(
                 let sleep_out = postcard::to_allocvec(&())
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
                 return Ok(Some((node_id, Ok(sleep_out), false)));
+            }
+            RunnerOut::EffectInput { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
+            }
+            RunnerOut::EffectSuccessOutput { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
+            }
+            RunnerOut::EffectFailureOutput { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
             }
             history
                 if pending.values().any(|request| request.has_live_history)
