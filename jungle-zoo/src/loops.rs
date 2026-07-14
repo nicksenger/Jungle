@@ -58,12 +58,12 @@ where
     type Input = (u32, In);
     type Output = (u32, In);
 
-    fn emit(_state: &(), input: Self::Input) -> ((), (u32, In)) {
+    fn emit(_state: &St, input: Self::Input) -> ((), (u32, In)) {
         ((), input)
     }
 
     fn absorb(
-        _state: &mut (),
+        _state: &mut St,
         _output: EffectCompletion<Self::Effect>,
         carry: (u32, In),
     ) -> Result<Self::Output, Failure> {

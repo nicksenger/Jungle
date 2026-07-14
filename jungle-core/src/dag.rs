@@ -364,7 +364,9 @@ impl LiveDagState {
                 self.runtime_activation_paths
                     .insert(node.node_id, node.activation_path);
             }
-            RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
+            RunnerUpdateOut::SleepScheduled { .. }
+            | RunnerUpdateOut::SleepFired { .. }
+            | RunnerUpdateOut::PerturbationApplied { .. } => {}
         }
         highlight_changed
     }

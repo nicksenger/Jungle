@@ -723,11 +723,19 @@ type ReplayGateJourney = ReplayGateTemplate;
 
 pub struct ReplayGateAnimal;
 
-#[jungle::animal(id = 0, generation = 0)]
+#[jungle::animal(perturb, id = 0, generation = 0)]
 impl Animal for ReplayGateAnimal {
     type State = ReplayGateState;
     type Seed = ReplayGateState;
     type Flow = ReplayGateJourney;
+}
+
+impl Perturb for ReplayGateAnimal {
+    type Stimulus = u8;
+
+    fn perturb(state: &mut Self::State, stimulus: Self::Stimulus) {
+        state.phase = state.phase.saturating_add(stimulus);
+    }
 }
 
 #[derive(Animals)]
@@ -907,7 +915,7 @@ impl From<ReplayJoinState> for () {
 }
 
 #[tokio::test]
-async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
+async fn replay_after_worker_crash_reapplies_perturbation_without_repeating_side_effects() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.fjall");
     let listen_addr = super::reserve_local_addr();
@@ -931,6 +939,19 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
     let post_counter = Arc::new(AtomicUsize::new(0));
     let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
     let gate = Arc::new(Semaphore::new(0));
+    let seed = ReplayGateState { phase: 0 };
+    let journey_id = control_client
+        .spawn::<ReplayGateAnimal>(&seed)
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+    control_client
+        .perturb_animal(
+            journey_id,
+            postcard::to_allocvec(&1_u8).expect("perturbation should serialize"),
+        )
+        .await
+        .expect("perturbation should enqueue before the worker starts");
 
     let worker_one = tokio::spawn({
         let client = worker_one_client.clone();
@@ -948,13 +969,6 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
         }
     });
 
-    let seed = ReplayGateState { phase: 0 };
-    let journey_id = control_client
-        .spawn::<ReplayGateAnimal>(&seed)
-        .await
-        .expect("spawn should succeed")
-        .journey_id;
-
     tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
         .await
         .expect("first gate notification should arrive")
@@ -962,10 +976,19 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 
     assert_eq!(
         pre_counter.load(Ordering::SeqCst),
-        PRE_STEPS,
-        "pre-gate side effects should run exactly once before crash"
+        PRE_STEPS - 1,
+        "the perturbation should skip one pre-gate step before the crash"
     );
     assert_eq!(post_counter.load(Ordering::SeqCst), 0);
+    assert!(
+        control_client
+            .journey_history(journey_id)
+            .await
+            .expect("journey history should be readable")
+            .iter()
+            .any(|event| matches!(event, RunnerOut::PerturbationApplied { .. })),
+        "the applied perturbation should be durable before its queue entry is acknowledged"
+    );
 
     worker_one.abort();
     let _ = worker_one.await;
@@ -1001,8 +1024,8 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 
     assert_eq!(
         pre_counter.load(Ordering::SeqCst),
-        PRE_STEPS,
-        "replay should not rerun pre-gate side effects"
+        PRE_STEPS - 1,
+        "replay should restore the perturbation and not rerun the skipped pre-gate step"
     );
     assert_eq!(post_counter.load(Ordering::SeqCst), 0);
 
@@ -1010,7 +1033,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 
     wait_for_completed(listen_addr, journey_id, Duration::from_secs(10)).await;
 
-    assert_eq!(pre_counter.load(Ordering::SeqCst), PRE_STEPS);
+    assert_eq!(pre_counter.load(Ordering::SeqCst), PRE_STEPS - 1);
     assert_eq!(post_counter.load(Ordering::SeqCst), POST_STEPS);
 
     worker_two.abort();
@@ -1328,6 +1351,194 @@ async fn replay_recovery_synthesizes_missing_effect_inputs_without_reading_its_o
 
     worker_two.abort();
     let _ = worker_two.await;
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn replay_recovery_with_synthesized_effect_inputs_survives_third_reconnect() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.fjall");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .fjall_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client = DropHistoryEventsClient::new(
+        connect_client_with_retry(listen_addr).await,
+        PRE_STEPS,
+        0,
+        0,
+    );
+    let worker_two_client = connect_client_with_retry(listen_addr).await;
+
+    let pre_counter = Arc::new(AtomicUsize::new(0));
+    let post_counter = Arc::new(AtomicUsize::new(0));
+    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+    let gate = Arc::new(Semaphore::new(0));
+
+    let worker_one = tokio::spawn({
+        let client = worker_one_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client).with_replay_page_size(1);
+            let _ = worker.spawn().await;
+        }
+    });
+
+    let journey_id = control_client
+        .spawn::<ReplayGateAnimal>(&ReplayGateState { phase: 0 })
+        .await
+        .expect("spawn should succeed")
+        .journey_id;
+
+    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+        .await
+        .expect("first gate notification should arrive")
+        .expect("first gate notification channel should remain open");
+
+    worker_one.abort();
+    let _ = worker_one.await;
+
+    let worker_two = tokio::spawn({
+        let client = worker_two_client.clone();
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx: reached_tx.clone(),
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let worker = JungleWorker::new(zoo, client)
+                .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
+                .with_replay_page_size(1);
+            worker.spawn().await
+        }
+    });
+    let second_reached_gate = tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if worker_two.is_finished() {
+                break false;
+            }
+            if reached_rx.try_recv().is_ok() {
+                break true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("second gate notification should arrive");
+    if !second_reached_gate {
+        let worker_result = worker_two.await.expect("second worker join should succeed");
+        panic!("second worker exited early: {worker_result:?}");
+    }
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "second replay should not rerun pre-gate side effects"
+    );
+    worker_two.abort();
+    let _ = worker_two.await;
+    let inject_client = connect_client_with_retry(listen_addr).await;
+    inject_client
+        .submit_history_event(RunnerOut::EffectSuccessOutput {
+            node_id: u32::MAX - 1,
+            data: vec![0xAA],
+            uuid: journey_id,
+        })
+        .await
+        .expect("injecting orphaned success output should succeed");
+    inject_client
+        .submit_history_event(RunnerOut::EffectFailureOutput {
+            node_id: u32::MAX - 2,
+            data: vec![0xBB],
+            uuid: journey_id,
+        })
+        .await
+        .expect("injecting orphaned failure output should succeed");
+
+    let worker_three = tokio::spawn({
+        let zoo = ReplayGateZoo {
+            pre_counter: Arc::clone(&pre_counter),
+            post_counter: Arc::clone(&post_counter),
+            reached_tx,
+            gate: Arc::clone(&gate),
+        };
+        async move {
+            let client = connect_client_with_retry(listen_addr).await;
+            let worker = JungleWorker::new(zoo, client)
+                .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS)
+                .with_replay_page_size(1);
+            worker.spawn().await
+        }
+    });
+    let third_reached_gate = tokio::time::timeout(Duration::from_secs(45), async {
+        loop {
+            if worker_three.is_finished() {
+                break false;
+            }
+            if reached_rx.try_recv().is_ok() {
+                break true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("third gate notification should arrive");
+    if !third_reached_gate {
+        let worker_result = worker_three.await.expect("third worker join should succeed");
+        panic!("third worker exited early: {worker_result:?}");
+    }
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "third replay should still avoid rerunning pre-gate side effects"
+    );
+
+    gate.add_permits(1);
+    wait_for_completed(listen_addr, journey_id, Duration::from_secs(20)).await;
+
+    assert_eq!(
+        pre_counter.load(Ordering::SeqCst),
+        PRE_STEPS,
+        "recovery across multiple reconnects should keep pre-gate effects single-shot"
+    );
+    assert_eq!(
+        post_counter.load(Ordering::SeqCst),
+        POST_STEPS,
+        "post-gate effects should still run exactly once"
+    );
+
+    let history_client = connect_client_with_retry(listen_addr).await;
+    let history = history_client
+        .journey_history(journey_id)
+        .await
+        .expect("journey_history should succeed after third reconnect");
+    let effect_input_count = history
+        .iter()
+        .filter(|event| matches!(event, RunnerOut::EffectInput { .. }))
+        .count();
+    assert!(
+        effect_input_count >= PRE_STEPS + POST_STEPS + 1,
+        "history should retain at least one effect input per completed step after multi-replay"
+    );
+
+    worker_three.abort();
+    let _ = worker_three.await;
     server_task.abort();
     let _ = server_task.await;
 }

@@ -147,6 +147,7 @@ where
         initial_input: Initial,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
+        pending_sleeps: Vec<PendingSleep>,
         pending_requests: Vec<ExecutableEffectRequest>,
         replay_visible_appearance: Option<Vec<u8>>,
     ) -> Result<RunnerAdvance, ExecutorError>
@@ -161,7 +162,7 @@ where
             initial_input,
             journey_id,
             tx,
-            Vec::new(),
+            pending_sleeps,
             pending_requests,
             replay_visible_appearance,
         )
@@ -201,7 +202,9 @@ where
             }
 
             if replay_pending_in_flight > 0 && in_flight.is_empty() {
-                if let Some(request) = replay_pending_queue.pop_back() {
+                // Replay pending requests in their original emission order so completions
+                // apply to the same executor cursor positions that produced them.
+                if let Some(request) = replay_pending_queue.pop_front() {
                     in_flight.push(run_request_task(tx.clone(), request));
                 }
             }
@@ -556,23 +559,32 @@ where
         let Some(claimed) = claimed else {
             break;
         };
+        let perturbation_id = claimed.id;
+        let data = claimed.data;
 
         {
             let state = executor.state_mut();
-            let applied = <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(
-                state,
-                &claimed.data,
-            )?;
+            let applied =
+                <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(state, &data)?;
             if !applied {
                 break;
             }
         }
+        send_history(
+            tx,
+            RunnerOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id,
+                data,
+            },
+        )
+        .await?;
 
         let (done_tx, done_rx) = oneshot::channel();
         tx.send((
             RunnerChannelMessage::AckPerturbable {
                 journey_id,
-                perturbation_id: claimed.id,
+                perturbation_id,
             },
             done_tx,
         ))

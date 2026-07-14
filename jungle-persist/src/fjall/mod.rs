@@ -262,6 +262,7 @@ const EVENT_KIND_ACTION_FAILURE_OUTPUT: u8 = 2;
 const EVENT_KIND_SLEEP_SCHEDULED: u8 = 3;
 const EVENT_KIND_SLEEP_FIRED: u8 = 4;
 const EVENT_KIND_NODE_LIFECYCLE: u8 = 5;
+const EVENT_KIND_PERTURBATION_APPLIED: u8 = 6;
 const FJALL_UPDATES_LOG_INTERVAL: usize = 256;
 const FJALL_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
 const FJALL_STALE_EVENT_WARN_MS: i64 = 1_000;
@@ -1088,16 +1089,11 @@ impl JungleStore for FjallStore {
                 ))
                     })?;
             let key = encode_event_key(journey_id, perturbation_id);
-            let removed = perturbations.remove(key.as_slice()).map_err(|err| {
+            perturbations.remove(key.as_slice()).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "fjall ack_animal_perturbation remove failed: {err}"
                 ))
             })?;
-            if removed.is_none() {
-                return Err(crate::PersistenceError::Message(format!(
-                    "animal perturbation not found for ack: {journey_id}:{perturbation_id}"
-                )));
-            }
         }
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
@@ -1150,11 +1146,21 @@ impl JungleStore for FjallStore {
         let write_tx = self.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("fjall claim_owner_wake begin failed: {err}"))
         })?;
+        let now_millis = now_unix_ms();
+        let now = Utc::now();
 
         let mut selected_key: Option<Vec<u8>> = None;
         let mut selected_value: Option<Vec<u8>> = None;
+        let mut stale_wake: Option<(Vec<u8>, OwnerWake)> = None;
 
         {
+            let journey_leases = write_tx
+                .open_keyspace(JOURNEY_LEASES_KEYSPACE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake open journey_leases keyspace failed: {err}"
+                    ))
+                })?;
             let mut owner_wakes = write_tx
                 .open_keyspace(OWNER_WAKES_KEYSPACE)
                 .map_err(|err| {
@@ -1176,10 +1182,34 @@ impl JungleStore for FjallStore {
                 })?;
                 let (entry_owner_id, _, _) =
                     decode_owner_wake_key(key.value(), "fjall claim_owner_wake decode key")?;
-                if entry_owner_id == owner_id {
+                let wake =
+                    decode_owner_wake_value(value.value(), "fjall claim_owner_wake decode value")?;
+                let active_owner = journey_leases
+                    .get(&wake.journey_id.as_bytes()[..])
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall claim_owner_wake read journey lease failed: {err}"
+                        ))
+                    })?
+                    .map(|raw| {
+                        decode_journey_lease(raw.value(), "fjall claim_owner_wake decode lease")
+                    })
+                    .transpose()?
+                    .and_then(|lease| {
+                        if lease.lease_until_unix_ms > now_millis {
+                            Some(lease.owner_id)
+                        } else {
+                            None
+                        }
+                    });
+
+                if entry_owner_id == owner_id || active_owner == Some(owner_id) {
                     selected_key = Some(key.value().to_vec());
                     selected_value = Some(value.value().to_vec());
                     break;
+                }
+                if active_owner.is_none() && stale_wake.is_none() {
+                    stale_wake = Some((key.value().to_vec(), wake));
                 }
             }
 
@@ -1189,6 +1219,31 @@ impl JungleStore for FjallStore {
                         "fjall claim_owner_wake remove wake failed: {err}"
                     ))
                 })?;
+            } else if let Some((stale_key, stale_wake)) = stale_wake.as_ref() {
+                owner_wakes.remove(stale_key.as_slice()).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake remove stale wake failed: {err}"
+                    ))
+                })?;
+                let mut work_items = write_tx.open_keyspace(STEPS_KEYSPACE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "fjall claim_owner_wake open work_items keyspace failed: {err}"
+                    ))
+                })?;
+                let work_item_id = Uuid::new_v4();
+                let value = encode_work_item(
+                    stale_wake.journey_id,
+                    StepKind::ResumeJourney,
+                    StepStatus::Available,
+                    now,
+                );
+                work_items
+                    .insert(&work_item_id.as_bytes()[..], value.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "fjall claim_owner_wake enqueue reclaimed resume work item failed: {err}"
+                        ))
+                    })?;
             }
         }
 
@@ -1510,6 +1565,19 @@ impl JungleStore for FjallStore {
                 postcard::to_allocvec(&SleepFiredEvent {
                     timer_id,
                     fired_at_unix_ms,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
+            RunnerOut::PerturbationApplied {
+                uuid,
+                perturbation_id,
+                data,
+            } => (
+                uuid,
+                EVENT_KIND_PERTURBATION_APPLIED,
+                postcard::to_allocvec(&PerturbationAppliedEvent {
+                    perturbation_id,
+                    data,
                 })
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
             ),
@@ -2062,6 +2130,12 @@ struct SleepFiredEvent {
     fired_at_unix_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PerturbationAppliedEvent {
+    perturbation_id: u64,
+    data: Vec<u8>,
+}
+
 #[derive(Debug)]
 struct TimerTaskRow {
     journey_id: Uuid,
@@ -2584,6 +2658,15 @@ fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<Runner
             event.uuid = journey_id;
             Ok(RunnerOut::NodeLifecycle(event))
         }
+        EVENT_KIND_PERTURBATION_APPLIED => {
+            let event: PerturbationAppliedEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id: event.perturbation_id,
+                data: event.data,
+            })
+        }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in fjall: {other}"
         ))),
@@ -2636,6 +2719,14 @@ fn decode_runner_update_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
             event.uuid = journey_id;
             Ok(RunnerUpdateOut::NodeLifecycle(event))
+        }
+        EVENT_KIND_PERTURBATION_APPLIED => {
+            let event: PerturbationAppliedEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::PerturbationApplied {
+                uuid: journey_id,
+                perturbation_id: event.perturbation_id,
+            })
         }
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported event kind in fjall: {other}"

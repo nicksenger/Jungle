@@ -10,8 +10,8 @@ use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutableEffectRequest,
     ExecutorError, Failure, JourneyEvent, JourneyStatus, NoEffect, NodeLifecycle, Observable,
-    ObservationBridge, OwnerWake, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
-    SupportedAnimal, Work,
+    ObservationBridge, OwnerWake, Perturbable, PerturbationBridge, RunnerOut, Sleep,
+    StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -413,6 +413,7 @@ fn runner_out_kind(history: &RunnerOut) -> &'static str {
         RunnerOut::Appearance { .. } => "appearance",
         RunnerOut::SleepScheduled { .. } => "sleep_scheduled",
         RunnerOut::SleepFired { .. } => "sleep_fired",
+        RunnerOut::PerturbationApplied { .. } => "perturbation_applied",
     }
 }
 
@@ -727,16 +728,26 @@ where
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>> {
         Box::pin(async move {
-            let sleep_index = self
+            let Some(sleep_index) = self
                 .pending_sleeps
                 .iter()
                 .position(|scheduled| scheduled.timer_id == timer_id)
-                .ok_or_else(|| {
-                    ExecutorError::ClientTransport(format!(
-                        "unknown sleep wake timer for journey {}: {timer_id}",
-                        self.journey_id
-                    ))
-                })?;
+            else {
+                // A timer can fire while this worker is rebuilding the journey from
+                // durable history. Replay consumes SleepFired and advances the
+                // executor, but the corresponding owner wake can still be queued.
+                // The wake is only an activation signal, so it is safe to discard
+                // once its timer is no longer among the replay-recovered sleeps.
+                debug!(
+                    journey_id = %self.journey_id,
+                    timer_id = %timer_id,
+                    pending_sleep_count = self.pending_sleeps.len(),
+                    "ignoring stale sleep wake already consumed by replay"
+                );
+                return Ok(SuspendedOutcome::Sleeping {
+                    new_sleeps: Vec::new(),
+                });
+            };
             let scheduled = self.pending_sleeps.remove(sleep_index);
             let pending_sleeps = self
                 .pending_sleeps
@@ -941,7 +952,7 @@ where
                 executor.set_journey_id(journey_id);
                 let mut replay_visible_appearance = client.animal_appearance(journey_id).await?;
                 let mut replay = ReplayCursor::new(client, journey_id, replay_page_size);
-                let replay_pending_requests = match replay_history::<T, Head, _>(
+                let replay_pending = match replay_history::<T, Head, _>(
                     &mut executor,
                     initial_input.clone(),
                     journey_id,
@@ -959,13 +970,21 @@ where
                         other => return Err(other),
                     },
                 };
+                let mut replay_pending_sleeps = replay_pending
+                    .scheduled_sleeps
+                    .iter()
+                    .map(|scheduled| scheduled.sleep.clone())
+                    .collect::<Vec<_>>();
+                replay_pending_sleeps.extend(replay_pending.unscheduled_sleeps.iter().cloned());
+                let replay_pending_sleeps_snapshot = replay_pending_sleeps.clone();
                 match runner
                     .drive_until_sleep_or_complete_with_replay_pending::<Head, _>(
                         &mut executor,
                         initial_input,
                         journey_id,
                         &mut tx,
-                        replay_pending_requests,
+                        replay_pending_sleeps,
+                        replay_pending.requests,
                         replay_visible_appearance,
                     )
                     .await?
@@ -975,13 +994,41 @@ where
                         Ok(JourneyStartOutcome::Failed { failure })
                     }
                     RunnerAdvance::SuspendedSleep { sleeps } => {
+                        let mut unmatched_pending = replay_pending_sleeps_snapshot;
+                        let mut scheduled_sleeps = replay_pending.scheduled_sleeps;
+                        let mut replayed_sleeps = Vec::new();
+                        let mut new_sleeps = Vec::new();
+                        for sleep in sleeps {
+                            if let Some(index) = unmatched_pending
+                                .iter()
+                                .position(|pending| *pending == sleep)
+                            {
+                                unmatched_pending.remove(index);
+                                if let Some(scheduled_index) = scheduled_sleeps
+                                    .iter()
+                                    .position(|scheduled| scheduled.sleep == sleep)
+                                {
+                                    replayed_sleeps.push(scheduled_sleeps.remove(scheduled_index));
+                                } else {
+                                    new_sleeps.push(sleep);
+                                }
+                            } else {
+                                new_sleeps.push(sleep);
+                            }
+                        }
+                        if !unmatched_pending.is_empty() {
+                            return Err(ExecutorError::ClientTransport(format!(
+                                "runner dropped replay-recovered pending sleeps for journey {}",
+                                journey_id
+                            )));
+                        }
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
-                            pending_sleeps: Vec::new(),
+                            pending_sleeps: replayed_sleeps,
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
-                            sleeps,
+                            sleeps: new_sleeps,
                             journey: Box::new(suspended),
                         })
                     }
@@ -1160,6 +1207,19 @@ impl ReplayCursor {
     }
 }
 
+#[derive(Default)]
+struct ReplayPendingRequests {
+    requests: Vec<ExecutableEffectRequest>,
+    scheduled_sleeps: Vec<ScheduledSleep>,
+    unscheduled_sleeps: Vec<PendingSleep>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReplaySleepSchedule {
+    timer_id: Uuid,
+    wake_at_unix_ms: i64,
+}
+
 async fn replay_history<T, A, Initial>(
     executor: &mut ContextExecutor<T, A>,
     initial_input: Initial,
@@ -1167,7 +1227,7 @@ async fn replay_history<T, A, Initial>(
     replay: &mut ReplayCursor,
     tx: &mut RunnerChannelTx,
     replay_visible_appearance: &mut Option<Vec<u8>>,
-) -> Result<Vec<ExecutableEffectRequest>, ExecutorError>
+) -> Result<ReplayPendingRequests, ExecutorError>
 where
     T: 'static,
     A: BoundAnimal + Observable + Perturbable,
@@ -1179,11 +1239,23 @@ where
     let sleep_effect_type = core::any::type_name::<Sleep>();
     let mut pending = HashMap::<u32, ReplayPendingRequest>::new();
     let mut pending_order = VecDeque::<u32>::new();
+    let mut pending_sleep_schedules = VecDeque::<ReplaySleepSchedule>::new();
     while !executor.is_complete() || !pending.is_empty() {
         if pending.is_empty() && replay.peek().await?.is_none() {
             break;
         }
         loop {
+            apply_replay_perturbations::<T, A>(executor, replay, tx, journey_id).await?;
+            let current_event = replay.peek().await?;
+            if replay_event_completes_pending_request(
+                current_event.as_ref(),
+                journey_id,
+                &pending,
+                sleep_effect_type,
+            ) {
+                break;
+            }
+
             let request = match executor.next_executable_request(initial_input.clone()) {
                 Ok(request) => request,
                 Err(ExecutorError::Complete) | Err(ExecutorError::AwaitingCompletion) => break,
@@ -1216,7 +1288,12 @@ where
         }
 
         if replay.peek().await?.is_none() {
-            return take_replay_pending_requests(pending, pending_order, sleep_effect_type);
+            return take_replay_pending_requests(
+                pending,
+                pending_order,
+                sleep_effect_type,
+                pending_sleep_schedules,
+            );
         }
 
         let Some((_, completion, recovered_live_completion)) = resolve_next_replay_completion(
@@ -1226,6 +1303,7 @@ where
             &mut pending,
             &mut pending_order,
             sleep_effect_type,
+            &mut pending_sleep_schedules,
         )
         .await?
         else {
@@ -1249,13 +1327,104 @@ where
         }
     }
 
-    Ok(Vec::new())
+    Ok(ReplayPendingRequests::default())
 }
 
 struct ReplayPendingRequest {
     request: ExecutableEffectRequest,
     effect_type: &'static str,
     has_live_history: bool,
+}
+
+async fn discard_replay_informational_events(
+    replay: &mut ReplayCursor,
+    journey_id: Uuid,
+) -> Result<(), ExecutorError> {
+    while is_informational_history_event(replay.peek().await?.as_ref(), journey_id) {
+        let _ = replay.discard_front().await?;
+    }
+    Ok(())
+}
+
+async fn apply_replay_perturbations<T, A>(
+    executor: &mut ContextExecutor<T, A>,
+    replay: &mut ReplayCursor,
+    tx: &mut RunnerChannelTx,
+    journey_id: Uuid,
+) -> Result<(), ExecutorError>
+where
+    T: 'static,
+    A: BoundAnimal + Perturbable,
+    BoundAnimalJourney<A>:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+{
+    loop {
+        discard_replay_informational_events(replay, journey_id).await?;
+        let Some(RunnerOut::PerturbationApplied {
+            uuid,
+            perturbation_id,
+            data,
+        }) = replay.peek().await?
+        else {
+            return Ok(());
+        };
+        if uuid != journey_id {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay found perturbation for another journey (journey={journey_id}, history_journey={uuid})"
+            )));
+        }
+
+        let applied = <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(
+            executor.state_mut(),
+            &data,
+        )?;
+        if !applied {
+            return Err(ExecutorError::ClientTransport(format!(
+                "history replay found perturbation for an animal that does not support perturbations (journey={journey_id}, perturbation_id={perturbation_id})"
+            )));
+        }
+        let _ = replay.discard_front().await?;
+
+        let (done_tx, done_rx) = oneshot::channel();
+        tx.send((
+            RunnerChannelMessage::AckPerturbable {
+                journey_id,
+                perturbation_id,
+            },
+            done_tx,
+        ))
+        .await
+        .map_err(|_| ExecutorError::ClientTransportClosed)?;
+        match done_rx
+            .await
+            .map_err(|_| ExecutorError::ClientTransportAckDropped)??
+        {
+            RunnerChannelResponse::Ack => {}
+            RunnerChannelResponse::ClaimedPerturbation(_) => {
+                return Err(ExecutorError::ClientTransport(
+                    "worker expected ack response for replayed perturbation".to_string(),
+                ));
+            }
+        }
+    }
+}
+
+fn replay_event_completes_pending_request(
+    event: Option<&RunnerOut>,
+    journey_id: Uuid,
+    pending: &HashMap<u32, ReplayPendingRequest>,
+    sleep_effect_type: &'static str,
+) -> bool {
+    match event {
+        Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+        | Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. }) => {
+            *uuid == journey_id && pending.contains_key(node_id)
+        }
+        Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id => pending
+            .values()
+            .any(|request| request.effect_type == sleep_effect_type),
+        _ => false,
+    }
 }
 
 async fn reconcile_replay_effect_input(
@@ -1282,6 +1451,34 @@ async fn reconcile_replay_effect_input(
         ))
     {
         let _ = replay.discard_front().await?;
+    }
+    // Reconnect recovery can append synthesized replay events after the original
+    // cursor position. On later replays these can become stale orphan entries that
+    // should not abort reconciliation for the next executable request.
+    loop {
+        match replay.peek().await? {
+            Some(RunnerOut::EffectInput {
+                node_id,
+                data,
+                uuid,
+            }) if uuid == journey_id => {
+                if node_id == request_node_id && data.as_slice() == expected_input {
+                    break;
+                }
+                let _ = replay.discard_front().await?;
+            }
+            Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+                if uuid == journey_id && node_id != request_node_id =>
+            {
+                let _ = replay.discard_front().await?;
+            }
+            Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
+                if uuid == journey_id && node_id != request_node_id =>
+            {
+                let _ = replay.discard_front().await?;
+            }
+            _ => break,
+        }
     }
 
     let current_event = replay.peek().await?;
@@ -1339,6 +1536,7 @@ async fn resolve_next_replay_completion(
     pending: &mut HashMap<u32, ReplayPendingRequest>,
     pending_order: &mut VecDeque<u32>,
     sleep_effect_type: &'static str,
+    pending_sleep_schedules: &mut VecDeque<ReplaySleepSchedule>,
 ) -> Result<Option<(u32, Result<Vec<u8>, Vec<u8>>, bool)>, ExecutorError> {
     loop {
         let Some(current_event) = replay.peek().await? else {
@@ -1375,16 +1573,37 @@ async fn resolve_next_replay_completion(
                 let _ = pending.remove(&node_id);
                 return Ok(Some((node_id, Err(data), false)));
             }
-            RunnerOut::SleepScheduled { uuid, .. } if uuid == journey_id => {
+            RunnerOut::SleepScheduled {
+                uuid,
+                timer_id,
+                wake_at_unix_ms,
+            } if uuid == journey_id => {
+                if pending
+                    .values()
+                    .any(|request| request.effect_type == sleep_effect_type)
+                {
+                    pending_sleep_schedules.push_back(ReplaySleepSchedule {
+                        timer_id,
+                        wake_at_unix_ms,
+                    });
+                }
                 let _ = replay.discard_front().await?;
             }
-            RunnerOut::SleepFired { uuid, .. } if uuid == journey_id => {
+            RunnerOut::SleepFired { uuid, timer_id, .. } if uuid == journey_id => {
                 let Some(node_id) =
                     take_pending_sleep_request_node(pending, pending_order, sleep_effect_type)
                 else {
                     let _ = replay.discard_front().await?;
                     continue;
                 };
+                if let Some(index) = pending_sleep_schedules
+                    .iter()
+                    .position(|scheduled| scheduled.timer_id == timer_id)
+                {
+                    let _ = pending_sleep_schedules.remove(index);
+                } else {
+                    let _ = pending_sleep_schedules.pop_front();
+                }
                 let _ = replay.discard_front().await?;
                 while matches!(
                     replay.peek().await?,
@@ -1406,6 +1625,15 @@ async fn resolve_next_replay_completion(
                 let sleep_out = postcard::to_allocvec(&())
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
                 return Ok(Some((node_id, Ok(sleep_out), false)));
+            }
+            RunnerOut::EffectInput { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
+            }
+            RunnerOut::EffectSuccessOutput { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
+            }
+            RunnerOut::EffectFailureOutput { uuid, .. } if uuid == journey_id => {
+                let _ = replay.discard_front().await?;
             }
             history
                 if pending.values().any(|request| request.has_live_history)
@@ -1504,21 +1732,25 @@ fn take_pending_sleep_request_node(
 
 async fn recover_oldest_replay_completion(
     tx: &mut RunnerChannelTx,
-    journey_id: Uuid,
+    _journey_id: Uuid,
     pending: &mut HashMap<u32, ReplayPendingRequest>,
     pending_order: &mut VecDeque<u32>,
 ) -> Result<Option<(u32, Result<Vec<u8>, Vec<u8>>)>, ExecutorError> {
-    while let Some(node_id) = pending_order.pop_front() {
+    let pending_len = pending_order.len();
+    for _ in 0..pending_len {
+        let Some(node_id) = pending_order.pop_front() else {
+            break;
+        };
         let Some(request) = pending.remove(&node_id) else {
             continue;
         };
         if request.effect_type == core::any::type_name::<Sleep>() {
-            return Err(ExecutorError::ClientTransport(format!(
-                "history replay reached Sleep without a backend wake event (journey={journey_id}, node_id={node_id})"
-            )));
+            pending.insert(node_id, request);
+            pending_order.push_back(node_id);
+            continue;
         }
         let completion = request.request.run().await?;
-        send_recovered_completion(tx, journey_id, node_id, &completion).await?;
+        send_recovered_completion(tx, _journey_id, node_id, &completion).await?;
         return Ok(Some((node_id, completion)));
     }
     Ok(None)
@@ -1536,21 +1768,78 @@ fn take_replay_pending_requests(
     mut pending: HashMap<u32, ReplayPendingRequest>,
     mut pending_order: VecDeque<u32>,
     sleep_effect_type: &'static str,
-) -> Result<Vec<ExecutableEffectRequest>, ExecutorError> {
+    mut pending_sleep_schedules: VecDeque<ReplaySleepSchedule>,
+) -> Result<ReplayPendingRequests, ExecutorError> {
     let mut requests = Vec::with_capacity(pending.len());
+    let mut scheduled_sleeps = Vec::new();
+    let mut unscheduled_sleeps = Vec::new();
     while let Some(node_id) = pending_order.pop_front() {
         let Some(request) = pending.remove(&node_id) else {
             continue;
         };
         if request.effect_type == sleep_effect_type {
-            return Err(ExecutorError::ClientTransport(format!(
-                "history replay reached Sleep without a backend wake event (node_id={node_id})"
-            )));
+            let schedule = pending_sleep_schedules.pop_front();
+            let sleep = recover_pending_sleep(request.request, schedule.as_ref())?;
+            if let Some(schedule) = schedule {
+                scheduled_sleeps.push(ScheduledSleep {
+                    timer_id: schedule.timer_id,
+                    sleep,
+                });
+            } else {
+                unscheduled_sleeps.push(sleep);
+            }
+            continue;
         }
         requests.push(request.request);
     }
-    requests.extend(pending.into_values().map(|request| request.request));
-    Ok(requests)
+    for request in pending.into_values().map(|request| request.request) {
+        if request.effect_type() == sleep_effect_type {
+            let schedule = pending_sleep_schedules.pop_front();
+            let sleep = recover_pending_sleep(request, schedule.as_ref())?;
+            if let Some(schedule) = schedule {
+                scheduled_sleeps.push(ScheduledSleep {
+                    timer_id: schedule.timer_id,
+                    sleep,
+                });
+            } else {
+                unscheduled_sleeps.push(sleep);
+            }
+            continue;
+        }
+        requests.push(request);
+    }
+    Ok(ReplayPendingRequests {
+        requests,
+        scheduled_sleeps,
+        unscheduled_sleeps,
+    })
+}
+
+fn recover_pending_sleep(
+    request: ExecutableEffectRequest,
+    schedule: Option<&ReplaySleepSchedule>,
+) -> Result<PendingSleep, ExecutorError> {
+    let node_id = request.node_id();
+    let duration: Duration = request.deserialize_request()?;
+    let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
+    let wake_at_unix_ms = schedule.map_or_else(
+        || {
+            chrono::Utc::now()
+                .timestamp_millis()
+                .saturating_add(duration_millis)
+        },
+        |scheduled| scheduled.wake_at_unix_ms,
+    );
+    let completion = match request.suspended_completion() {
+        Some(completion) => completion.clone(),
+        None => Ok(postcard::to_allocvec(&())
+            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
+    };
+    Ok(PendingSleep {
+        wake_at_unix_ms,
+        node_id,
+        completion,
+    })
 }
 
 async fn send_recovered_completion(

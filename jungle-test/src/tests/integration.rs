@@ -956,9 +956,9 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
                     );
                     continue;
                 }
-                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
-                    continue;
-                }
+                RunnerUpdateOut::SleepScheduled { .. }
+                | RunnerUpdateOut::SleepFired { .. }
+                | RunnerUpdateOut::PerturbationApplied { .. } => continue,
             };
             total_step_updates += 1;
 

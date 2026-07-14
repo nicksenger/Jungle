@@ -7,9 +7,9 @@ edition = "2021"
 default = []
 image = ["dep:spectrs", "dep:image", "dep:zensim"]
 reqwest = ["dep:reqwest", "dep:base64"]
-viewer = ["dep:jungle-vision", "dep:iced", "dep:rodio", "dep:image"]
+viewer = ["dep:jungle-vision", "dep:iced", "dep:iced-av1", "dep:rodio", "dep:image", "dep:directories-next"]
 video = ["dep:welcome-video"]
-audio = ["dep:welcome-audio"]
+audio = ["dep:welcome-audio", "dep:cpal"]
 fjall = ["dep:fjall", "dep:directories-next"]
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
@@ -26,6 +26,7 @@ jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["fjal
 jungle_zoo = { package = "jungle-zoo", path = "../jungle-zoo" }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
+iced-av1 = { git = "https://github.com/nicksenger/iced-av1.git", branch = "jungle", features = ["opus"], optional = true }
 rodio = { version = "0.20", optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }
 welcome-video = { path = "examples/welcome/video", optional = true }
@@ -52,6 +53,7 @@ rustfft = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 base64 = { version = "0.22", optional = true }
 fjall = { workspace = true, optional = true }
+cpal = { version = "0.15.3", optional = true }
 
 [[example]]
 name = "welcome"
@@ -81,6 +83,10 @@ required-features = ["viewer"]
 name = "lyrebird"
 path = "examples/lyrebird/mod.rs"
 required-features = ["image", "reqwest", "fjall"]
+
+[[example]]
+name = "rooster"
+path = "examples/rooster/mod.rs"
 
 [lints]
 workspace = true
