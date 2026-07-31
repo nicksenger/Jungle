@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.14", features = ["tokio"] }
-iced-sugiyama = { git = "https://github.com/nicksenger/iced-sugiyama.git", branch = "jungle" }
-rust_sugiyama = { package = "iced-sugiyama-core", git = "https://github.com/nicksenger/iced-sugiyama.git", branch = "jungle" }
+iced-sugiyama = { git = "https://github.com/nicksenger/iced-sugiyama.git", branch = "blackholesun" }
+rust_sugiyama = { package = "iced-sugiyama-core", git = "https://github.com/nicksenger/iced-sugiyama.git", branch = "blackholesun" }
 jungle-client = { path = "../jungle-client" }
 jungle-core = { path = "../jungle-core" }
 jungle-types = { path = "../jungle-types" }

@@ -2658,7 +2658,7 @@ dependencies = [
 [[package]]
 name = "iced-sugiyama"
 version = "0.1.0"
-source = "git+https://github.com/nicksenger/iced-sugiyama.git?branch=jungle#b9522c122e3bf14cc2bc567d7a73e8c9314820ca"
+source = "git+https://github.com/nicksenger/iced-sugiyama.git?branch=blackholesun#dd07b85b739791c32d3a7d85b007c0b0a82ee7f1"
 dependencies = [
  "iced",
  "iced-sugiyama-core",
@@ -2669,7 +2669,7 @@ dependencies = [
 [[package]]
 name = "iced-sugiyama-core"
 version = "0.1.0"
-source = "git+https://github.com/nicksenger/iced-sugiyama.git?branch=jungle#b9522c122e3bf14cc2bc567d7a73e8c9314820ca"
+source = "git+https://github.com/nicksenger/iced-sugiyama.git?branch=blackholesun#dd07b85b739791c32d3a7d85b007c0b0a82ee7f1"
 dependencies = [
  "log",
  "petgraph",
