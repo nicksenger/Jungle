@@ -3,9 +3,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::Stream;
 use jungle_types::{
-    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedPerturbable, Ecosystem,
-    ExecutorError, JourneyRecord, JourneyReplayPage, JourneyStatus, JourneyUpdateEvent, OwnerWake,
-    RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn, WireOut, Work,
+    AnimalSet, Animals, BackendError, ClaimedPerturbable, Ecosystem, ExecutorError, JourneyRecord,
+    JourneyReplayPage, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, SpawnableAnimal,
+    StripAnimalHeaders, SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -23,7 +23,6 @@ use tokio::io::{AsyncRead, ReadBuf};
 use tracing::{error, info};
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::collections::Container;
-use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
@@ -562,17 +561,15 @@ where
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
-        A: Animal,
-        A::Id: AnimalIdValue,
-        A::Generation: Unsigned,
+        A: SpawnableAnimal,
         A::Seed: Sync,
     {
         let seed = postcard::to_allocvec(seed)
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
         let journey_id = self
             .spawn_by_id(
-                <A::Id as AnimalIdValue>::U32,
-                <A::Generation as Unsigned>::U32,
+                <A as SpawnableAnimal>::spawn_animal_id(),
+                <A as SpawnableAnimal>::spawn_generation(),
                 seed,
             )
             .await?;

@@ -5,14 +5,13 @@ use crate::{
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    Animal, AnimalIdValue, ClaimedPerturbable, Ecosystem, ExecutorError, JourneyRecord,
-    JourneyReplayPage, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+    ClaimedPerturbable, Ecosystem, ExecutorError, JourneyRecord, JourneyReplayPage, JourneyStatus,
+    OwnerWake, RunnerOut, SpawnableAnimal, SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
@@ -165,16 +164,14 @@ impl JungleClient for MockClient {
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
-        A: Animal,
-        A::Id: AnimalIdValue,
-        A::Generation: Unsigned,
+        A: SpawnableAnimal,
         A::Seed: Sync,
     {
         let seed = postcard::to_allocvec(seed)
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
         self.spawn_by_id(
-            <A::Id as AnimalIdValue>::U32,
-            <A::Generation as Unsigned>::U32,
+            <A as SpawnableAnimal>::spawn_animal_id(),
+            <A as SpawnableAnimal>::spawn_generation(),
             seed,
         )
         .await

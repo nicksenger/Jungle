@@ -3,8 +3,9 @@ pub use crate::typosaurus::list;
 #[cfg(feature = "fusion")]
 pub use crate::FusedClient;
 pub use crate::{
-    core::JungleWorker, Action, Animal, Animals, Ecosystem, Effects, Flow, Journey, JungleClient,
-    Optic, ScopeReboundAction, ScopedAction,
+    core::{JungleWorker, SpawnableAnimalsFor},
+    Action, Animal, Animals, Ecosystem, Effects, Flow, Journey, JungleClient, Optic,
+    ScopeReboundAction, ScopedAction,
 };
 
 pub mod jungle {

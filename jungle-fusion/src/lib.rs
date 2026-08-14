@@ -5,8 +5,8 @@ use jungle_client::{JourneyHandle, JourneyUpdateSubscription, JungleClient};
 use jungle_server::server::ServerBuilder as LocalServerBuilder;
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
 use jungle_types::{
-    Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyRecord,
-    JourneyReplayPage, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
+    BackendError, ClaimedPerturbable, ExecutorError, JourneyRecord, JourneyReplayPage,
+    JourneyStatus, OwnerWake, RunnerOut, SpawnableAnimal, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -14,7 +14,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
-use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const DEFAULT_NAMESPACE: &str = "default";
@@ -384,9 +383,7 @@ impl JungleClient for FusedClient {
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
-        A: Animal,
-        A::Id: AnimalIdValue,
-        A::Generation: Unsigned,
+        A: SpawnableAnimal,
         A::Seed: Sync,
     {
         let seed = postcard::to_allocvec(seed)
@@ -394,8 +391,8 @@ impl JungleClient for FusedClient {
         let response = self
             .send_wire_message(WireIn::CreateJourney {
                 namespace: self.namespace.clone(),
-                animal_id: <A::Id as AnimalIdValue>::U32,
-                generation: <A::Generation as Unsigned>::U32,
+                animal_id: <A as SpawnableAnimal>::spawn_animal_id(),
+                generation: <A as SpawnableAnimal>::spawn_generation(),
                 seed,
             })
             .await?;

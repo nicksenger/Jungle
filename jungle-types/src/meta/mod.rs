@@ -36,6 +36,42 @@ where
     const U32: u32 = <T as Unsigned>::U32;
 }
 
+/// Convenience bound for animals that can be spawned by client APIs.
+///
+/// This captures the commonly repeated generic requirements around id,
+/// generation, and seed thread-safety.
+pub trait SpawnableAnimal: Animal {
+    fn spawn_animal_id() -> u32;
+
+    fn spawn_generation() -> u32;
+}
+
+impl<T> SpawnableAnimal for T
+where
+    T: Animal,
+    T::Id: AnimalIdValue,
+    T::Generation: Unsigned,
+    T::Seed: Sync,
+{
+    fn spawn_animal_id() -> u32 {
+        <T::Id as AnimalIdValue>::U32
+    }
+
+    fn spawn_generation() -> u32 {
+        <T::Generation as Unsigned>::U32
+    }
+}
+
+/// Convenience bound for spawned animals when seed payloads must be sendable.
+pub trait SendSpawnableAnimal: SpawnableAnimal {}
+
+impl<T> SendSpawnableAnimal for T
+where
+    T: SpawnableAnimal,
+    T::Seed: Send,
+{
+}
+
 /// Blanket impl: `Id<T>` is equal to `Id<U>` iff `T` is equal to `U`.
 impl<T, U> Equality<Id<U>> for Id<T>
 where

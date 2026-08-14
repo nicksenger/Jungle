@@ -5,11 +5,10 @@ use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use futures::StreamExt;
 use jungle_types::{
-    Animal, AnimalIdValue, ClaimedPerturbable, ExecutorError, JourneyRecord, JourneyReplayPage,
-    JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+    ClaimedPerturbable, ExecutorError, JourneyRecord, JourneyReplayPage, JourneyStatus, OwnerWake,
+    RunnerOut, SpawnableAnimal, SupportedAnimal, Work,
 };
 use std::time::Duration;
-use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 pub mod client;
@@ -85,9 +84,7 @@ pub trait JungleClient: DynClone + Send + Sync {
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
-        A: Animal,
-        A::Id: AnimalIdValue,
-        A::Generation: Unsigned,
+        A: SpawnableAnimal,
         A::Seed: Sync;
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn journey_replay_page(

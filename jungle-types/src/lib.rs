@@ -33,8 +33,8 @@ pub use meta::{
     AllFrom, AnimalEffectCompatible, AnimalEffectMembers, AnimalIdValue, AnimalMember, AnimalSet,
     AnimalStates, AnimalStatesCompatible, AnimalVersion, AnimalVersionIdentitiesUnique,
     AnimalVersions, EffectIdentity, EffectMember, EffectSet, Generations, GenerationsForAnimals,
-    HighestGeneration, HighestGenerationForAnimals, IdValue, StripAnimalHeaders,
-    StripEffectHeaders, WithEffectFor,
+    HighestGeneration, HighestGenerationForAnimals, IdValue, SendSpawnableAnimal, SpawnableAnimal,
+    StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
 };
 pub use no_effect::NoEffect;
 use serde::de::DeserializeOwned;

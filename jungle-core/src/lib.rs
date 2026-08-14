@@ -7,7 +7,7 @@ mod worker;
 
 pub use executor::JungleExecutor;
 pub use runner::JungleRunner;
-pub use worker::{JungleWorker, SupportedAnimalGenerations};
+pub use worker::{JungleWorker, SpawnableAnimalsFor, SupportedAnimalGenerations};
 
 pub trait Jungle {
     fn manifest(self) -> impl std::future::Future<Output = Result<(), jungle_types::Error>>;

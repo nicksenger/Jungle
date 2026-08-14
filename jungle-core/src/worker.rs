@@ -38,6 +38,29 @@ const WORKER_SLOW_WAKE_WAIT_WARN_THRESHOLD: Duration = Duration::from_millis(120
 const WORKER_SLOW_HISTORY_SUBMIT_WARN_THRESHOLD: Duration = Duration::from_millis(80);
 const DEFAULT_REPLAY_PAGE_SIZE: u32 = 256;
 
+/// Convenience bound for generic `Animals` collections that can be spawned by a worker ecosystem.
+///
+/// This is primarily intended for downstream generic APIs that carry both an
+/// `Animals` type and a corresponding `Ecosystem` type parameter.
+pub trait SpawnableAnimalsFor<T>: Clone + Animals + Send + Sync + 'static
+where
+    T: Ecosystem<Animals = Self>,
+    <Self as Animals>::List: FlattenNodes,
+    SPFlatten<<Self as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<Self>: SupportedAnimalGenerations<T>,
+{
+}
+
+impl<As, T> SpawnableAnimalsFor<T> for As
+where
+    As: Clone + Animals + Send + Sync + 'static,
+    T: Ecosystem<Animals = As>,
+    <As as Animals>::List: FlattenNodes,
+    SPFlatten<<As as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<As>: SupportedAnimalGenerations<T>,
+{
+}
+
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
     let ttl_ms = lease_ttl_ms.max(1) as u64;
