@@ -726,6 +726,51 @@ fn self_impl_generics(
     (impl_generics, impl_where_clause)
 }
 
+fn effect_schema_impl_generics(
+    item_impl: &ItemImpl,
+    context_ty: &Type,
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let context_param_names = collect_ident_names(quote!(#context_ty));
+    let mut schema_generics = item_impl.generics.clone();
+
+    for param in schema_generics.params.iter_mut() {
+        match param {
+            GenericParam::Type(type_param)
+                if context_param_names.contains(&type_param.ident.to_string()) =>
+            {
+                type_param.bounds.clear();
+                type_param.eq_token = None;
+                type_param.default = None;
+            }
+            GenericParam::Lifetime(lifetime_param)
+                if context_param_names.contains(&lifetime_param.lifetime.ident.to_string()) =>
+            {
+                lifetime_param.bounds.clear();
+            }
+            GenericParam::Const(const_param)
+                if context_param_names.contains(&const_param.ident.to_string()) => {}
+            _ => {}
+        }
+    }
+
+    if let Some(where_clause) = &mut schema_generics.where_clause {
+        let mut retained_predicates = syn::punctuated::Punctuated::new();
+        for predicate in where_clause.predicates.iter().cloned() {
+            let used_names = collect_ident_names(quote!(#predicate));
+            if used_names.is_disjoint(&context_param_names) {
+                retained_predicates.push(predicate);
+            }
+        }
+        where_clause.predicates = retained_predicates;
+        if where_clause.predicates.is_empty() {
+            schema_generics.where_clause = None;
+        }
+    }
+
+    let (impl_generics, _, where_clause) = schema_generics.split_for_impl();
+    (quote!(#impl_generics), quote!(#where_clause))
+}
+
 fn primitive_marker_impl(
     item_impl: &ItemImpl,
     self_ty: &Type,
@@ -1098,13 +1143,15 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     };
 
+    let (schema_impl_generics, schema_where_clause) =
+        effect_schema_impl_generics(&item_impl, &context_ty);
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
     let effect_schema = jungle_type("EffectSchema");
     let effect_exec = jungle_type("Effect");
     let self_ty = &item_impl.self_ty;
 
     quote! {
-        impl #exec_impl_generics #effect_schema<#context_ty> for #self_ty #exec_where_clause {
+        impl #schema_impl_generics #effect_schema<#context_ty> for #self_ty #schema_where_clause {
             type Id = #id_ty;
             type In = #in_ty;
             type Out = #out_ty;
