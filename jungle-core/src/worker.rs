@@ -207,7 +207,8 @@ where
                 next_heartbeat_at = Instant::now() + heartbeat_interval;
             }
 
-            if should_poll {
+            let should_poll_owner_wakes = should_poll || !suspended.is_empty();
+            if should_poll_owner_wakes {
                 if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
                     enqueue_owner_wake(
                         &mut pending_wakes,
@@ -216,7 +217,9 @@ where
                         wake,
                     );
                 }
+            }
 
+            if should_poll {
                 while in_flight.len() < self.max_in_flight_journeys {
                     if let Some(wake_journey_id) = pending_wake_journeys.pop_front() {
                         pending_wake_journey_ids.remove(&wake_journey_id);

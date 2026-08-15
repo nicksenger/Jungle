@@ -662,6 +662,135 @@ async fn worker_ignores_stale_owner_wake_and_continues_on_matching_timer() {
 }
 
 #[tokio::test]
+async fn suspended_journey_wakes_while_another_owned_journey_remains_in_flight() {
+    use jungle_sdk::{JourneyReplayPage, MockClient, OwnerWake, Work};
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Mutex;
+    use uuid::Uuid;
+
+    let sleeping_journey_id = Uuid::from_u128(0x51ee_0000_0000_0000_0000_0000_0000_0011);
+    let blocking_journey_id = Uuid::from_u128(0x51ee_0000_0000_0000_0000_0000_0000_0012);
+    let seed = SleepState {
+        counter: 0,
+        phase: 0,
+        sleep_for_ms: 60_000,
+    };
+    let encoded_seed = postcard::to_allocvec(&seed).expect("sleep seed should serialize");
+    let next_work = Arc::new(AtomicUsize::new(0));
+    let scheduled_timer_id = Arc::new(Mutex::new(None::<Uuid>));
+    let wake_polls_after_schedule = Arc::new(AtomicUsize::new(0));
+    let sleeping_journey_completed = Arc::new(AtomicBool::new(false));
+
+    let client = MockClient::builder()
+        .on_poll_work({
+            let next_work = Arc::clone(&next_work);
+            move |_| {
+                let encoded_seed = encoded_seed.clone();
+                let work_index = next_work.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    let journey_id = match work_index {
+                        0 => sleeping_journey_id,
+                        1 => blocking_journey_id,
+                        _ => return Ok(None),
+                    };
+                    Ok(Some(Work::StartJourney {
+                        journey_id,
+                        animal_id: 0,
+                        generation: 0,
+                        seed: encoded_seed,
+                    }))
+                }
+            }
+        })
+        .on_journey_replay_page(move |journey_id, _, _, _| async move {
+            if journey_id == blocking_journey_id {
+                return std::future::pending::<Result<JourneyReplayPage, ExecutorError>>().await;
+            }
+            Ok(JourneyReplayPage {
+                snapshot_end_sequence_id: None,
+                events: Vec::new(),
+            })
+        })
+        .on_schedule_sleep_timer({
+            let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+            move |journey_id, timer_id, _| {
+                let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+                async move {
+                    assert_eq!(journey_id, sleeping_journey_id);
+                    *scheduled_timer_id
+                        .lock()
+                        .expect("scheduled timer mutex should lock") = Some(timer_id);
+                    Ok(())
+                }
+            }
+        })
+        .on_poll_owner_wake({
+            let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+            let wake_polls_after_schedule = Arc::clone(&wake_polls_after_schedule);
+            move |_| {
+                let scheduled_timer_id = Arc::clone(&scheduled_timer_id);
+                let wake_polls_after_schedule = Arc::clone(&wake_polls_after_schedule);
+                async move {
+                    let Some(timer_id) = *scheduled_timer_id
+                        .lock()
+                        .expect("scheduled timer mutex should lock")
+                    else {
+                        return Ok(None);
+                    };
+                    match wake_polls_after_schedule.fetch_add(1, Ordering::SeqCst) {
+                        0 => Ok(None),
+                        1 => Ok(Some(OwnerWake {
+                            journey_id: sleeping_journey_id,
+                            timer_id,
+                        })),
+                        _ => Ok(None),
+                    }
+                }
+            }
+        })
+        .on_flow_complete({
+            let sleeping_journey_completed = Arc::clone(&sleeping_journey_completed);
+            move |journey_id| {
+                let sleeping_journey_completed = Arc::clone(&sleeping_journey_completed);
+                async move {
+                    if journey_id == sleeping_journey_id {
+                        sleeping_journey_completed.store(true, Ordering::SeqCst);
+                    }
+                    Ok(())
+                }
+            }
+        })
+        .build();
+
+    let worker_handle = tokio::spawn(async move {
+        JungleWorker::new(SleepZoo, client)
+            .with_max_in_flight_journeys(2)
+            .spawn()
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !sleeping_journey_completed.load(Ordering::SeqCst) {
+            assert!(
+                !worker_handle.is_finished(),
+                "worker should not exit before the sleeping journey completes"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("sleeping journey should wake while the other journey remains in flight");
+
+    assert!(
+        wake_polls_after_schedule.load(Ordering::SeqCst) >= 2,
+        "worker should keep polling its owner wake queue while work remains in flight"
+    );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[tokio::test]
 async fn focused_join_sleep_suspends_until_backend_wake() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.fjall");
