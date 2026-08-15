@@ -811,29 +811,6 @@ impl<St, Tools> Action for RequestModelTurnAttempt<St, Tools> {
     }
 }
 
-pub struct ExtractModelTurnBackoffResult<St, Tools>(PhantomData<fn() -> (St, Tools)>);
-#[jungle::action(carry = (u32, (AgentModelRequest, Result<AgentModelTurn, Failure>)))]
-impl<St, Tools> Action for ExtractModelTurnBackoffResult<St, Tools> {
-    type Effect = NoEffect;
-    type Input = (u32, (AgentModelRequest, Result<AgentModelTurn, Failure>));
-    type Output = AgentModelTurn;
-
-    fn emit(
-        _state: &AgentState<St, Tools>,
-        input: Self::Input,
-    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        ((), input)
-    }
-
-    fn absorb(
-        _state: &mut AgentState<St, Tools>,
-        _output: EffectCompletion<Self::Effect>,
-        carry: Self::Carry,
-    ) -> Result<Self::Output, Failure> {
-        carry.1 .1
-    }
-}
-
 pub struct AbsorbModelTurn<St, Tools>(PhantomData<fn() -> (St, Tools)>);
 #[jungle::action]
 impl<St, Tools> Action for AbsorbModelTurn<St, Tools> {
@@ -1158,7 +1135,6 @@ pub struct AgentModelBranch<St, Tools: ToolList>(
         MODEL_TURN_BACKOFF_MAX_DELAY_MS,
         MODEL_TURN_BACKOFF_MULTIPLIER,
     >,
-    Step<ExtractModelTurnBackoffResult<St, Tools>>,
     Step<AbsorbModelTurn<St, Tools>>,
 );
 

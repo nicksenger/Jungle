@@ -953,29 +953,6 @@ impl Action for TriggerPerturbRoosterAttempt {
     }
 }
 
-pub struct ExtractTriggerPerturbBackoffResult;
-#[jungle::action(carry = (u32, (PerturbRoosterInput, Result<(), Failure>)))]
-impl Action for ExtractTriggerPerturbBackoffResult {
-    type Effect = NoEffect;
-    type Input = (u32, (PerturbRoosterInput, Result<(), Failure>));
-    type Output = ();
-
-    fn emit(
-        _state: &TriggerState,
-        input: Self::Input,
-    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        ((), input)
-    }
-
-    fn absorb(
-        _state: &mut TriggerState,
-        _output: EffectCompletion<Self::Effect>,
-        carry: Self::Carry,
-    ) -> Result<Self::Output, Failure> {
-        carry.1 .1
-    }
-}
-
 #[derive(Flow)]
 pub struct TriggerPerturbBackoff(
     Step<PrepareTriggerPerturbBackoffInput>,
@@ -988,7 +965,6 @@ pub struct TriggerPerturbBackoff(
         TRIGGER_PERTURB_BACKOFF_MAX_DELAY_MS,
         TRIGGER_PERTURB_BACKOFF_MULTIPLIER,
     >,
-    Step<ExtractTriggerPerturbBackoffResult>,
 );
 
 #[derive(Flow)]

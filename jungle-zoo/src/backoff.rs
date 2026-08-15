@@ -72,7 +72,30 @@ pub struct Backoff<
         IfRightErr<St, In, Out>,
         BackoffBody<St, In, Out, Flo, INITIAL_DELAY, MAX_DELAY, MULTIPLIER>,
     >,
+    Step<ExtractBackoffResult<St, In, Out>>,
 );
+
+/// Extracts the successful output of the retried flow from the loop state.
+pub struct ExtractBackoffResult<St, In, Out>(PhantomData<fn() -> (St, In, Out)>);
+
+#[jungle::action(carry = (u32, (In, Result<Out, Failure>)))]
+impl<St, In, Out> Action for ExtractBackoffResult<St, In, Out> {
+    type Effect = NoEffect;
+    type Input = (u32, (In, Result<Out, Failure>));
+    type Output = Out;
+
+    fn emit(_state: &St, input: Self::Input) -> ((), Self::Carry) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut St,
+        _output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Result<Self::Output, Failure> {
+        carry.1 .1
+    }
+}
 
 #[derive(Flow)]
 pub struct BackoffBody<
