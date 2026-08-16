@@ -2,11 +2,15 @@ mod cluster_panel;
 mod widgets;
 
 use iced::futures::{self, Stream, StreamExt};
+use iced::mouse;
+use iced::widget::canvas::{self, Path};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
-use iced::{Color, Element, Font, Length, Subscription, Task};
-use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
+use iced::{Color, Element, Font, Length, Point, Rectangle, Subscription, Task, Vector};
+use iced_sugiyama::{
+    AutoFit, Cluster, EdgeEndpointKind, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction,
+};
 use jungle_client::client::JourneyUpdateSubscription;
 use jungle_client::JungleClient;
 #[cfg(test)]
@@ -1682,6 +1686,65 @@ fn sidebar<'a>(
         .into()
 }
 
+#[derive(Debug, Clone, Copy)]
+enum EdgeEndpointGlyphKind {
+    NormalArrow,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EdgeEndpointGlyph {
+    kind: EdgeEndpointGlyphKind,
+    color: Color,
+    angle_radians: f32,
+}
+
+impl EdgeEndpointGlyph {
+    fn size(self) -> f32 {
+        match self.kind {
+            EdgeEndpointGlyphKind::NormalArrow => 20.0,
+        }
+    }
+}
+
+impl<Message, Theme, Renderer> canvas::Program<Message, Theme, Renderer> for EdgeEndpointGlyph
+where
+    Renderer: iced::advanced::graphics::geometry::Renderer,
+{
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry<Renderer>> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let anchor = frame.center();
+
+        match self.kind {
+            EdgeEndpointGlyphKind::NormalArrow => {
+                let arrow = Path::new(|path| {
+                    path.move_to(Point::new(0.0, 0.0));
+                    path.line_to(Point::new(-10.0, 4.0));
+                    path.line_to(Point::new(-7.25, 0.0));
+                    path.line_to(Point::new(-10.0, -4.0));
+                    path.close();
+                });
+
+                frame.with_save(|frame| {
+                    frame.translate(Vector::new(anchor.x, anchor.y));
+                    frame.rotate(self.angle_radians);
+                    frame.fill(&arrow, self.color);
+                });
+            }
+        }
+
+        vec![frame.into_geometry()]
+    }
+}
+
 fn graph_panel<'a, T, Scope>(
     model: &'a GraphModel,
     live_data: Option<&'a LiveData>,
@@ -1838,12 +1901,15 @@ where
         let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids;
         let runtime_ids_for_edge_colors = runtime_by_display_id;
         let runtime_ids_for_edge_strokes = runtime_by_display_id;
+        let runtime_ids_for_edge_arrows = runtime_by_display_id;
         let proxy_runtime_ids_for_edge_colors = proxy_runtime_ids_by_display_id;
         let proxy_runtime_ids_for_edge_strokes = proxy_runtime_ids_by_display_id;
+        let proxy_runtime_ids_for_edge_arrows = proxy_runtime_ids_by_display_id;
         let condition_successors_for_nodes = condition_successor_runtime_ids;
         let snapshot_for_nodes = snapshot.clone();
         let snapshot_for_edge_colors = snapshot.clone();
         let snapshot_for_edge_strokes = snapshot.clone();
+        let snapshot_for_edge_arrows = snapshot.clone();
         let snapshot_for_cluster_chips = snapshot.clone();
         let snapshot_for_cluster_overlays = snapshot.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
@@ -1976,6 +2042,58 @@ where
                 alpha: 1.0,
                 color_override: None,
             }
+        })
+        .edge_endpoint(move |edge_index, edge, kind, endpoint| {
+            if matches!(kind, EdgeEndpointKind::Source) {
+                return None;
+            }
+            let source_runtime_id = runtime_ids_for_edge_arrows
+                .get(&edge.0)
+                .copied()
+                .flatten();
+            let target_runtime_id = runtime_ids_for_edge_arrows
+                .get(&edge.1)
+                .copied()
+                .flatten();
+            let source_has_proxy_runtime = proxy_runtime_ids_for_edge_arrows
+                .get(&edge.0)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            let target_has_proxy_runtime = proxy_runtime_ids_for_edge_arrows
+                .get(&edge.1)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            let style = theme
+                .edge_style(
+                    theme_state,
+                    EdgeStyleCtx {
+                        edge_index,
+                        source_display_id: edge.0,
+                        target_display_id: edge.1,
+                        source_runtime_id,
+                        target_runtime_id,
+                        source_has_proxy_runtime,
+                        target_has_proxy_runtime,
+                        source_phase: snapshot_for_edge_arrows.node_phase(edge.0),
+                        target_phase: snapshot_for_edge_arrows.node_phase(edge.1),
+                        extent: 1.0,
+                    },
+                )
+                .unwrap_or(default_edge_style);
+            // iced-sugiyama paints the first edge_color tuple element at the
+            // edge's head, so color the arrowhead with `style.start` to match
+            // the stroke where it meets the target node.
+            let glyph = EdgeEndpointGlyph {
+                kind: EdgeEndpointGlyphKind::NormalArrow,
+                color: style.start,
+                angle_radians: endpoint.angle_radians(),
+            };
+            Some(
+                canvas::Canvas::new(glyph)
+                    .width(glyph.size())
+                    .height(glyph.size())
+                    .into(),
+            )
         })
         .stroke_width(1.0)
         .edge_corner_radius(18.0)
