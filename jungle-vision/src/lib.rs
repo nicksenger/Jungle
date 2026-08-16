@@ -1898,6 +1898,7 @@ where
                 text(format!("node {node_id}")).into()
             },
         )
+        .layout_fn(iced_sugiyama::microdot_layout)
         .id(graph_widget_id)
         .edge_color(move |ctx| {
             let source_runtime_id = runtime_ids_for_edge_colors
