@@ -15,6 +15,12 @@ struct FailingSubflow(Step<AnnounceFailure<(), ()>>, Step<Fail<()>>);
 type BackoffDagFlow =
     jungle_zoo::backoff::Backoff<(), (), (), FailingSubflow, 100u64, 10000u64, 2u8>;
 
+#[derive(Flow)]
+struct SuccessfulSubflow(Step<Succeed>);
+
+type FirstAttemptBackoffFlow =
+    jungle_zoo::backoff::Backoff<(), (), (), SuccessfulSubflow, 100u64, 10000u64, 2u8>;
+
 struct BackoffDagAnimal;
 
 #[jungle::animal(id = 212, generation = 0)]
@@ -24,8 +30,17 @@ impl Animal for BackoffDagAnimal {
     type Flow = BackoffDagFlow;
 }
 
+struct FirstAttemptBackoffAnimal;
+
+#[jungle::animal(id = 213, generation = 0)]
+impl Animal for FirstAttemptBackoffAnimal {
+    type State = ();
+    type Seed = ();
+    type Flow = FirstAttemptBackoffFlow;
+}
+
 #[derive(Animals)]
-struct BackoffDagAnimals(BackoffDagAnimal);
+struct BackoffDagAnimals(BackoffDagAnimal, FirstAttemptBackoffAnimal);
 
 struct BackoffDagZoo;
 
@@ -55,6 +70,24 @@ impl<In> Action for Fail<In> {
 
 struct AnnounceFailure<St, T>(PhantomData<St>, PhantomData<T>);
 
+struct Succeed;
+
+#[jungle::action]
+impl Action for Succeed {
+    type Effect = NoEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &(), _input: Self::Input) {}
+
+    fn absorb(
+        _state: &mut (),
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        Ok(())
+    }
+}
+
 #[jungle::action(carry = T)]
 impl<St, T> Action for AnnounceFailure<St, T> {
     type Effect = Println<String>;
@@ -72,6 +105,60 @@ impl<St, T> Action for AnnounceFailure<St, T> {
     ) -> Result<Self::Output, Failure> {
         Ok(carry)
     }
+}
+
+#[tokio::test]
+async fn backoff_does_not_sleep_before_first_attempt() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.fjall");
+    let backend = Server::builder()
+        .fjall_path(&db_path)
+        .build()
+        .await
+        .expect("local server backend should build");
+    let client = FusedClient::builder()
+        .namespace(BackoffDagZoo::NAME)
+        .backend(backend)
+        .build()
+        .await
+        .expect("local fused client should build");
+
+    let worker_client = client.clone();
+    let worker = JungleWorker::new(BackoffDagZoo, worker_client);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .spawn::<FirstAttemptBackoffAnimal>(&())
+        .await
+        .expect("journey should spawn")
+        .journey_id;
+    let mut subscription = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscribe_step_updates should succeed");
+
+    let sleep_count = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut sleep_count = 0;
+        while let Some(update) = subscription.next().await {
+            let update = update.expect("step update should decode");
+            if matches!(update.event, RunnerUpdateOut::SleepScheduled { .. }) {
+                sleep_count += 1;
+            }
+        }
+        sleep_count
+    })
+    .await
+    .expect("first attempt should complete without waiting for backoff");
+
+    assert_eq!(
+        sleep_count, 0,
+        "backoff should enter a successful first attempt without scheduling sleep"
+    );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
 
 #[tokio::test]

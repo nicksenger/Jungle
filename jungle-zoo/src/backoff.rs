@@ -5,6 +5,7 @@ use jungle_sdk::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::condition::FlattenEither;
 use crate::join::Pass;
 use crate::loops::WhileEnumerated;
 
@@ -126,16 +127,21 @@ impl<St, In, Out> Predicate<(&St, &(In, Result<Out, Failure>))> for IfRightErr<S
     }
 }
 
-pub struct IfNonZero<St>(PhantomData<St>);
-impl<St> Predicate<(&St, &u32)> for IfNonZero<St> {
-    fn eval((_state, input): &(&St, &u32)) -> bool {
-        !(**input == 0)
+pub struct IfRetryIteration<St>(PhantomData<St>);
+impl<St> Predicate<(St, u32)> for IfRetryIteration<St> {
+    fn eval((_state, input): &(St, u32)) -> bool {
+        *input > 1
     }
 }
 
 #[derive(Flow)]
 pub struct BackoffSleep<St, const INITIAL_DELAY: u64, const MAX_DELAY: u64, const MULTIPLIER: u8>(
-    Step<SleepMult<St, INITIAL_DELAY, MAX_DELAY, MULTIPLIER>>,
+    Conditional<
+        IfRetryIteration<St>,
+        Step<SleepMult<St, INITIAL_DELAY, MAX_DELAY, MULTIPLIER>>,
+        Pass<St, u32>,
+    >,
+    Step<FlattenEither<u32, St>>,
 );
 
 pub struct SleepMult<St, const INITIAL_DELAY: u64, const MAX_DELAY: u64, const MULTIPLIER: u8>(
