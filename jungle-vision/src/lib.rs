@@ -2592,7 +2592,7 @@ fn sidebar_style(_theme: &iced::Theme) -> iced::widget::container::Style {
 
 fn graph_panel_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgb8(7, 17, 11))),
+        background: Some(iced::Background::Color(Color::from_rgba8(7, 17, 11, 0.0))),
         ..Default::default()
     }
 }
