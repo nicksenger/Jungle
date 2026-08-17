@@ -2047,14 +2047,8 @@ where
             if matches!(kind, EdgeEndpointKind::Source) {
                 return None;
             }
-            let source_runtime_id = runtime_ids_for_edge_arrows
-                .get(&edge.0)
-                .copied()
-                .flatten();
-            let target_runtime_id = runtime_ids_for_edge_arrows
-                .get(&edge.1)
-                .copied()
-                .flatten();
+            let source_runtime_id = runtime_ids_for_edge_arrows.get(&edge.0).copied().flatten();
+            let target_runtime_id = runtime_ids_for_edge_arrows.get(&edge.1).copied().flatten();
             let source_has_proxy_runtime = proxy_runtime_ids_for_edge_arrows
                 .get(&edge.0)
                 .map(|ids| !ids.is_empty())
@@ -2103,6 +2097,7 @@ where
                 .copied()
                 .unwrap_or((NODE_WIDTH, NODE_HEIGHT))
         })
+        .measure_node_sizes(true)
         .clusters(visible_clusters)
         .cluster_container(move |index, _| {
             let source_index = visible_cluster_sources.get(index).copied()?;
