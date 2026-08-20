@@ -2128,7 +2128,7 @@ where
         .cluster_color(cluster_fill_color)
         .padding(24)
         .auto_fit(if auto_zoom_enabled {
-            AutoFit::Ongoing
+            AutoFit::Ongoing(0.9)
         } else {
             AutoFit::Off
         })
