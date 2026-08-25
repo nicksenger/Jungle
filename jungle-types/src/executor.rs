@@ -259,14 +259,6 @@ where
     In: DeserializeOwned + Serialize,
     F: FnOnce(&In) -> bool,
 {
-    if let Ok((should, carry)) = postcard::from_bytes::<(bool, In)>(input) {
-        let reencoded = postcard::to_allocvec(&(should, &carry))
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
-        if reencoded.as_slice() == input {
-            return Ok((should, carry));
-        }
-    }
-
     if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(input) {
         let carry_bytes = match either {
             Either::Left(carry) | Either::Right(carry) => carry,
@@ -279,9 +271,28 @@ where
         // actually an Either-wrapped loop control value).
     }
 
-    let carry = postcard::from_bytes::<In>(input)
-        .map_err(|err| input_deserialize_error("while direct carry", err))?;
-    Ok((fallback(&carry), carry))
+    // Prefer the loop's declared carry type over the legacy `(bool, In)`
+    // control envelope. Postcard's compact encoding is not self-describing:
+    // a carry beginning with an integer zero can also decode exactly as a
+    // `false` boolean followed by a shifted `In` (notably when `In` contains
+    // varints). In that ambiguous case the predicate, rather than the bytes,
+    // owns the loop decision.
+    let direct_err = match deserialize_exact::<In>(input) {
+        Ok(carry) => return Ok((fallback(&carry), carry)),
+        Err(err) => err,
+    };
+
+    if let Ok((should, carry)) = postcard::from_bytes::<(bool, In)>(input) {
+        let reencoded = postcard::to_allocvec(&(should, &carry))
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        if reencoded.as_slice() == input {
+            return Ok((should, carry));
+        }
+    }
+
+    Err(ExecutorError::InputDeserialize(format!(
+        "while direct carry: {direct_err}"
+    )))
 }
 
 fn deserialize_exact<T>(bytes: &[u8]) -> Result<T, String>

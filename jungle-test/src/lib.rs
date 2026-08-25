@@ -14,6 +14,7 @@ mod tests {
     mod adapt_helpers;
     mod aspect;
     mod backoff_dag;
+    mod backoff_varint_repro;
     mod conditional;
     mod connection;
     mod effect_attr;

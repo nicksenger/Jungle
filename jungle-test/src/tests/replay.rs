@@ -59,9 +59,7 @@ impl JungleClient for DropHistoryEventsClient {
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<jungle_sdk::JourneyHandle, ExecutorError>
     where
         Self: Sized,
-        A: jungle_sdk::Animal,
-        A::Id: jungle_sdk::AnimalIdValue,
-        A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+        A: jungle_sdk::SpawnableAnimal,
         A::Seed: Sync,
     {
         self.inner.spawn::<A>(seed).await
@@ -287,9 +285,7 @@ impl JungleClient for SnapshotProbeClient {
     async fn spawn<A>(&self, seed: &A::Seed) -> Result<jungle_sdk::JourneyHandle, ExecutorError>
     where
         Self: Sized,
-        A: jungle_sdk::Animal,
-        A::Id: jungle_sdk::AnimalIdValue,
-        A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+        A: jungle_sdk::SpawnableAnimal,
         A::Seed: Sync,
     {
         self.inner.spawn::<A>(seed).await
